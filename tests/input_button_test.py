@@ -228,6 +228,74 @@ class InputButtonTest(unittest.TestCase):
         self.assertIsNotNone(self.app._blink_id)
         self.assertEqual(self.looks_over(400), {(GREEN.normal, "#000000"), (GREEN_DARK.normal, "#ffffff")})
 
+    def open_input_window(self, act):
+        """Clicks the button; `act(window, callback)` plays the user's part while the input window is open."""
+        def fake_window(master, callback):
+            window = tk.Toplevel(master)
+            master.after(40, lambda: act(window, callback))
+            return window
+
+        self.choose("Playlists", "set_playlist_settings")
+        with patch.object(gui, "InputTextBox", fake_window):
+            self.app._generate_textbox()
+        self.app.update()
+
+    def test_does_not_blink_while_the_input_window_is_open(self):
+        seen = {}
+
+        def act(window, callback):
+            seen["blink_timer"] = self.app._blink_id
+            seen["looks"] = self.looks_over(200)  # several blink intervals
+            window.destroy()
+
+        self.open_input_window(act)
+
+        self.assertIsNone(seen["blink_timer"])
+        self.assertEqual(seen["looks"], {(GREEN.normal, "#000000")})
+
+    def test_blinks_again_when_the_window_is_closed_without_input(self):
+        self.open_input_window(lambda window, callback: window.destroy())
+
+        self.assertIsNotNone(self.app._blink_id)
+        self.assertEqual(self.looks_over(400), {(GREEN.normal, "#000000"), (GREEN_DARK.normal, "#ffffff")})
+
+    def test_stays_steady_when_the_window_is_closed_after_saving_input(self):
+        seen = {}
+
+        def act(window, callback):
+            callback("Playlist 1\n")  # what Save does before it closes the window
+            seen["blink_timer_after_save"] = self.app._blink_id
+            window.destroy()
+
+        self.open_input_window(act)
+
+        self.assertIsNone(seen["blink_timer_after_save"])
+        self.assertIsNone(self.app._blink_id)
+        self.assertEqual(self.looks_over(150), {(GREEN.normal, "#000000")})
+
+    def test_saving_blank_input_does_not_blink_before_the_window_closes_but_after(self):
+        seen = {}
+
+        def act(window, callback):
+            callback("\n")
+            seen["blink_timer_after_save"] = self.app._blink_id
+            window.destroy()
+
+        self.open_input_window(act)
+
+        self.assertIsNone(seen["blink_timer_after_save"])
+        self.assertIsNotNone(self.app._blink_id)
+
+    def test_the_window_flag_is_reset_even_when_opening_the_window_fails(self):
+        self.choose("Playlists", "set_playlist_settings")
+
+        with patch.object(gui, "InputTextBox", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                self.app._generate_textbox()
+
+        self.assertFalse(self.app._input_window_open)
+        self.assertIsNotNone(self.app._blink_id)
+
     def test_creating_without_input_is_refused_like_the_other_changing_actions(self):
         with patch("gui_app.gui.messagebox.showinfo") as info, \
                 patch.object(self.app, "open_action_log_box") as open_box:

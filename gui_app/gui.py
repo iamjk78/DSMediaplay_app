@@ -95,6 +95,7 @@ class DSMediaplayApp(tk.Tk):
         self._emphasis = {}  # widget -> size offset; these buttons are always bold, whatever the font setting
         self._blink_id = None
         self._blink_dark = False
+        self._input_window_open = False
 
         self._admin_row = 0
         self._profile_row = 1
@@ -303,7 +304,7 @@ class DSMediaplayApp(tk.Tk):
 
     def start_blinking(self):
         """Until the user has entered the input, the Input Prompt button alternates between light and dark green."""
-        if self._blink_id is None:
+        if self._blink_id is None and not self._input_window_open:
             self._blink_id = self.after(BLINK_INTERVAL_MS, self._blink)
 
     def _blink(self):
@@ -767,8 +768,13 @@ class DSMediaplayApp(tk.Tk):
         self.update_input_button()
 
     def _generate_textbox(self):
-        text_box = InputTextBox(self, self.save_data_from_text_box)
-        self.wait_window(text_box)
+        self._input_window_open = True
+        self.stop_blinking()  # steady while the input window is open
+        try:
+            self.wait_window(InputTextBox(self, self.save_data_from_text_box))
+        finally:
+            self._input_window_open = False
+            self.update_input_button()  # blinks again when the window was closed without any input
 
     def reload_account_configs(self):
         self.all_data = self.load_account_configs()
