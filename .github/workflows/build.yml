@@ -9,6 +9,10 @@ on:
         type: choice
         options: [all, windows, macos]
         default: all
+      release_tag:
+        description: "Publish a GitHub release with this tag (e.g. v1.0.0); leave empty for a plain build"
+        type: string
+        default: ""
   push:
     tags: ["v*"]
 
@@ -102,3 +106,33 @@ jobs:
           name: DSM_GUI-macos
           path: DSM_GUI-macos.zip
           if-no-files-found: error
+
+  release:
+    # Runs for a tag push or when a release tag is given; only after every requested platform built successfully
+    needs: build
+    if: inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "Invalid release tag: $TAG"; exit 1; }
+          files=()
+          if [ -d artifacts/DSM_GUI-windows ]; then
+            (cd artifacts/DSM_GUI-windows && zip -qr "$GITHUB_WORKSPACE/DSM_GUI-windows.zip" DSM_GUI)
+            files+=("DSM_GUI-windows.zip")
+          fi
+          if [ -f artifacts/DSM_GUI-macos/DSM_GUI-macos.zip ]; then
+            files+=("artifacts/DSM_GUI-macos/DSM_GUI-macos.zip")
+          fi
+          gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "DSM_GUI $TAG" --generate-notes
