@@ -1,4 +1,3 @@
-import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 from gui_app.color_button import GREEN, RED, make_color_button
@@ -16,6 +15,7 @@ from datetime import datetime
 from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
 from util import accounts, credentials
+from util.actions import action_needs_input
 from util.paths import resource_path
 import requests
 import webbrowser
@@ -307,9 +307,22 @@ class DSMediaplayApp(tk.Tk):
             self.option_choose_action.set('')
 
         self._text_box_data = None
+        self.update_input_button()
 
     def reset_data(self, _=None):
         self._text_box_data = None
+        self.update_input_button()
+
+    def update_input_button(self):
+        """Shows the "Input Prompt" button only when the selected action takes input."""
+        action = self.entity_actions.get(self.entity_type_var.get(), {}).get(self.option_choose_action.get())
+        button = self.input_prompt_button
+        if action and action_needs_input(action):
+            button.grid()
+        else:
+            button.grid_remove()
+        # The row keeps its height either way, so the window does not jump when the button comes and goes
+        self.grid_rowconfigure(self._text_box_row, minsize=button.winfo_reqheight() + 10)
 
     def refresh_ui(self):
         """Refreshes the entire UI to reflect changes in language or other settings."""
@@ -424,7 +437,7 @@ class DSMediaplayApp(tk.Tk):
         self.generate_csv(action[4:], url, login, password)
 
     def perform_set_action(self, action, url, login, password, data):
-        if action == "set_deploy_all_players":
+        if not action_needs_input(action):
             data = "Non-empty"
         if data is None or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
@@ -432,7 +445,7 @@ class DSMediaplayApp(tk.Tk):
         self.open_action_log_box(action[4:], url, login, password, data)
 
     def perform_remove_action(self, action, url, login, password, data):
-        if re.findall(r"remove_all", action):
+        if not action_needs_input(action):
             data = "Non-empty"
         if data is None or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
@@ -440,6 +453,9 @@ class DSMediaplayApp(tk.Tk):
         self.open_action_log_box(action, url, login, password, data)
 
     def perform_create_action(self, action, url, login, password, data):
+        if data is None or "" in [login, password]:
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
+            return
         self.open_action_log_box(action, url, login, password, data)
 
     def generate_csv(self, task_type, url, login, password):
