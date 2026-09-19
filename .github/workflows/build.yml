@@ -30,6 +30,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      # Only set when a release is being published; it becomes the installer version
+      RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -71,21 +74,51 @@ jobs:
 
       - name: Smoke test (app starts and serves its bundled documentation)
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            ./dist/DSM_GUI/DSM_GUI.exe &
-          else
-            ./dist/DSM_GUI.app/Contents/MacOS/DSM_GUI &
-          fi
-          app_pid=$!
-          for _ in $(seq 1 30); do
-            if curl -sf -o /dev/null http://127.0.0.1:8080/en/; then ok=1; break; fi
-            sleep 1
-          done
-          kill -0 $app_pid 2>/dev/null && alive=1
-          kill $app_pid 2>/dev/null || true
-          [ "${ok:-0}" = "1" ] && [ "${alive:-0}" = "1" ] || { echo "Application did not start or crashed"; exit 1; }
+          if [ "${{ runner.os }}" = "Windows" ]; then exe=./dist/DSM_GUI/DSM_GUI.exe; else exe=./dist/DSM_GUI.app/Contents/MacOS/DSM_GUI; fi
+          bash packaging/smoke_test.sh "$exe"
 
-      # GitHub wraps every artifact in a zip, so the Windows folder is uploaded as it is (no zip inside a zip).
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = if ($env:RELEASE_TAG) { $env:RELEASE_TAG.TrimStart('v') } else { '0.0.0-dev' }
+          $numeric = if ($version -match '^\d+\.\d+\.\d+') { "$($Matches[0]).0" } else { '0.0.0.0' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "/DAppNumericVersion=$numeric" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          Get-ChildItem dist-installer
+
+      - name: Test the installer (install, run, uninstall)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-ChildItem dist-installer -Filter 'DSM_GUI-Setup-*.exe').FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'DSM_GUI_installed'
+          $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{DB940A40-CA4A-48BB-B2CA-1A0D44974506}_is1'
+          $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DSMediaplay Control Panel.lnk'
+
+          Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$dir" -Wait
+          if (-not (Test-Path "$dir\DSM_GUI.exe")) { throw 'The installer did not install DSM_GUI.exe' }
+          if (-not (Test-Path $uninstallKey)) { throw 'No uninstall entry (Apps & features) was registered' }
+          if (-not (Test-Path $shortcut)) { throw 'No Start menu shortcut was created' }
+
+          & "$env:ProgramFiles\Git\bin\bash.exe" packaging/smoke_test.sh "$dir\DSM_GUI.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'The installed application failed the smoke test' }
+
+          Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          # The uninstaller finishes in a temporary copy of itself, so wait for the result
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $dir) -or (Test-Path $uninstallKey) -or (Test-Path $shortcut)) {
+            if ((Get-Date) -gt $deadline) { throw 'The uninstaller left files, the shortcut or the registry entry behind' }
+            Start-Sleep -Seconds 2
+          }
+
+      # GitHub wraps every artifact in a zip; a release asset is the file itself, so releases carry the bare installer.
       # macOS keeps its own zip because artifact uploads drop file permissions and symlinks that the .app needs.
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -96,7 +129,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DSM_GUI-windows
-          path: dist
+          path: dist-installer/DSM_GUI-Setup-*.exe
           if-no-files-found: error
 
       - name: Upload (macOS)
@@ -126,13 +159,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "Invalid release tag: $TAG"; exit 1; }
-          files=()
-          if [ -d artifacts/DSM_GUI-windows ]; then
-            (cd artifacts/DSM_GUI-windows && zip -qr "$GITHUB_WORKSPACE/DSM_GUI-windows.zip" DSM_GUI)
-            files+=("DSM_GUI-windows.zip")
-          fi
-          if [ -f artifacts/DSM_GUI-macos/DSM_GUI-macos.zip ]; then
-            files+=("artifacts/DSM_GUI-macos/DSM_GUI-macos.zip")
-          fi
+          shopt -s nullglob
+          files=(artifacts/DSM_GUI-windows/DSM_GUI-Setup-*.exe artifacts/DSM_GUI-macos/DSM_GUI-macos.zip)
+          [ "${#files[@]}" -gt 0 ] || { echo "No release files found"; exit 1; }
           gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "DSM_GUI $TAG" --generate-notes

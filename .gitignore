@@ -12,6 +12,7 @@ __pycache__
 # Build output
 build/
 dist/
+dist-installer/
 
 csv_exports
 *.log

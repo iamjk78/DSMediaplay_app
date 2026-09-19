@@ -29,15 +29,24 @@ Changing a customer's URL invalidates its stored passwords (they are keyed by lo
 
 ## Build
 
-GitHub Actions (`Build` workflow, run manually or by pushing a `v*` tag) builds the Windows and macOS packages
-with PyInstaller and attaches them to the run as artifacts. Running it manually with a `release_tag`
-(e.g. `v1.0.0`), or pushing a `v*` tag, also publishes a GitHub release with `DSM_GUI-windows.zip` and/or
-`DSM_GUI-macos.zip`. Locally:
+GitHub Actions (`Build` workflow, run manually or by pushing a `v*` tag) builds the Windows installer
+(`DSM_GUI-Setup-<version>.exe`, Inno Setup) and the macOS app with PyInstaller and attaches them to the run as artifacts.
+Running it manually with a `release_tag` (e.g. `v1.0.0`), or pushing a `v*` tag, also publishes a GitHub release
+with the installer and/or `DSM_GUI-macos.zip`. On Windows the workflow installs the installer silently, starts the
+installed app and uninstalls it again before the build counts as successful. Locally:
 
 ```bash
 pip install -r requirements-build.txt
 pyinstaller --noconfirm DSM_GUI.spec                 # output in dist/
 ```
 
+The installer needs no administrator rights: it installs for the current user
+(`%LOCALAPPDATA%\Programs\DSM_GUI`), adds a Start menu shortcut (optionally a desktop one) and an entry in
+*Apps & features* for uninstalling. Uninstalling keeps your account list and saved passwords, so a reinstall
+picks them up again.
+
+The app icon comes from `assets/ds_media_icon.jpg`; `python packaging/make_icons.py` regenerates
+`assets/app.ico` and `assets/app.icns` from it (a larger source image gives sharper large icons).
+
 The builds are unsigned: Windows SmartScreen and macOS Gatekeeper will warn on first launch.
-No administrator rights are needed to run them - unzip anywhere and start `DSM_GUI`.
+The macOS build is a zip with `DSM_GUI.app`.
