@@ -1,0 +1,11 @@
+{
+    "_comment": "This is example config for watchdog services",
+    "login": "admin1_login",
+    "url": "http://example.com/api",
+    "password": "admin1_password",
+    "interval": 300,
+    "green": "playing",
+    "admin": "Admin1",
+    "base_dir": "/path/to/base/directory",
+    "max_intervals": 6
+}

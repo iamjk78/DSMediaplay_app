@@ -1,0 +1,7 @@
+requests==2.34.2
+pillow==12.3.0
+urllib3~=2.7.0
+future~=1.0.0
+schedule~=1.2.2
+keyring~=25.7
+platformdirs~=4.11

@@ -1,0 +1,21 @@
+{
+    "lang": "en",
+    "font": [
+        "Helvetica",
+        12
+    ],
+    "default": [
+        "Example customer",
+        "Jane Doe"
+    ],
+    "logins": {
+        "Example customer": {
+            "url": "https://example.signage.dsmediaplay.com",
+            "names": {
+                "Jane Doe": {
+                    "login": "jane.doe"
+                }
+            }
+        }
+    }
+}

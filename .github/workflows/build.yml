@@ -1,0 +1,80 @@
+name: Build
+
+# Manual or tag-triggered only: macOS runners are billed at 10x and Windows at 2x of the included minutes.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: DSM_GUI-windows
+          - os: macos-latest
+            artifact: DSM_GUI-macos
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Build
+        run: python -m PyInstaller --noconfirm DSM_GUI.spec
+
+      - name: Verify that no local configuration or secrets ended up in the build
+        run: |
+          leaked=$(find dist \( -name 'login*.json' -o -name 'email_config.json' -o -name 'service.json' \) | grep -v 'login.example.json' || true)
+          if [ -n "$leaked" ]; then
+            echo "Sensitive files found in build output:"; echo "$leaked"; exit 1
+          fi
+
+      - name: Verify that the CA bundle needed for TLS verification is bundled
+        run: find dist -name cacert.pem | grep -q . || { echo "certifi CA bundle missing from build"; exit 1; }
+
+      - name: Smoke test (app starts and serves its bundled documentation)
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./dist/DSM_GUI/DSM_GUI.exe &
+          else
+            ./dist/DSM_GUI.app/Contents/MacOS/DSM_GUI &
+          fi
+          app_pid=$!
+          for _ in $(seq 1 30); do
+            if curl -sf -o /dev/null http://127.0.0.1:8080/en/; then ok=1; break; fi
+            sleep 1
+          done
+          kill -0 $app_pid 2>/dev/null && alive=1
+          kill $app_pid 2>/dev/null || true
+          [ "${ok:-0}" = "1" ] && [ "${alive:-0}" = "1" ] || { echo "Application did not start or crashed"; exit 1; }
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/DSM_GUI -DestinationPath DSM_GUI-windows.zip
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent dist/DSM_GUI.app DSM_GUI-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: DSM_GUI-*.zip
+          if-no-files-found: error
