@@ -2,6 +2,7 @@ import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 from gui_app.icons import set_window_icon
+from gui_app.tooltip import Tooltip
 import json
 import os
 from gui_app.input_box import InputTextBox
@@ -197,10 +198,10 @@ class DSMediaplayApp(tk.Tk):
         self.create_combobox(self, "select_action", self._action_row,
                              "option_choose_action", self.reset_data, self.action_var, columnspan=3)
         self.create_button(self, "input_prompt", self._text_box_row, self._generate_textbox, columnspan=3)
-        self.create_symbol_button(self._admin_row, 4, "+", self.open_add_account_dialog)
-        self.create_symbol_button(self._admin_row, 5, "\u2212", self.remove_account)
-        self.create_symbol_button(self._profile_row, 4, "+", self.open_add_login_dialog)
-        self.create_symbol_button(self._profile_row, 5, "\u2212", self.remove_login)
+        self.create_symbol_button(self._admin_row, 4, "+", self.open_add_account_dialog, "tip_add_account")
+        self.create_symbol_button(self._admin_row, 5, "\u2212", self.remove_account, "tip_remove_account")
+        self.create_symbol_button(self._profile_row, 4, "+", self.open_add_login_dialog, "tip_add_login")
+        self.create_symbol_button(self._profile_row, 5, "\u2212", self.remove_login, "tip_remove_login")
         self.create_button(self, "reload", self._admin_row, self.refresh_ui, column=6)
         self.create_action_buttons()
         self.refresh_ui()
@@ -228,14 +229,19 @@ class DSMediaplayApp(tk.Tk):
         setattr(self, f"{label_key}_label", label)
         setattr(self, var_name, entry)
 
+    def add_tooltip(self, widget, key):
+        Tooltip(widget, lambda: self.lang.get_message(key))
+
     def create_button(self, parent, label_key, row, command, column=1, columnspan=1):
         pad_x, pad_y = 5, 5
         button = tk.Button(parent, text=self.lang.get_message(label_key), font=self.font, command=command)
+        self.add_tooltip(button, f"tip_{label_key}")
         button.grid(row=row, column=column, columnspan=columnspan, padx=pad_x, pady=pad_y, sticky="w")
         setattr(self, f"{label_key}_button", button)
 
-    def create_symbol_button(self, row, column, symbol, command):
+    def create_symbol_button(self, row, column, symbol, command, tip_key):
         button = tk.Button(self, text=symbol, font=self.font, width=2, command=command)
+        self.add_tooltip(button, tip_key)
         button.grid(row=row, column=column, padx=5, pady=2, sticky="w")
 
     def create_label_and_button(self, parent, label_key, row, button_var_name, command, columnspan=1):
@@ -251,12 +257,15 @@ class DSMediaplayApp(tk.Tk):
         pad_x, pad_y = 5, 5
         self.quit_button = tk.Button(self, text=self.lang.get_message("quit"), font=self.font, command=self.quit)
         self.quit_button.grid(row=self._action_buttons_row, column=0, padx=pad_x, pady=pad_y, sticky="w")
+        self.add_tooltip(self.quit_button, "tip_quit")
         self.help_button = tk.Button(self, text=self.lang.get_message("help"), font=self.font, command=self.open_help)
         self.help_button.grid(row=self._action_buttons_row, column=1, padx=pad_x, pady=pad_y, sticky="w")
+        self.add_tooltip(self.help_button, "tip_help")
         self.create_button(self, "settings", self._action_buttons_row, self.open_settings_window, column=5)
         self.start_button = tk.Button(self, text=self.lang.get_message("start"), font=self.font,
                                       command=self.execute_action)
         self.start_button.grid(row=self._action_buttons_row, column=6, padx=pad_x, pady=pad_y, sticky="w")
+        self.add_tooltip(self.start_button, "tip_start")
 
     def open_settings_window(self):
         settings_window = SettingsWindow(self, self.lang)

@@ -202,7 +202,18 @@
         "select_login_first": "Nejdřív vyberte zákaznický účet a login.",
         "password_required": "Zadejte heslo.",
         "login_check_failed": "Přihlášení se nepodařilo ověřit: {error}",
-        "credential_delete_failed": "Některá uložená hesla se nepodařilo smazat ze systémového úložiště: {error}"
+        "credential_delete_failed": "Některá uložená hesla se nepodařilo smazat ze systémového úložiště: {error}",
+        "tip_add_account": "Přidat zákaznický účet",
+        "tip_remove_account": "Odebrat vybraný zákaznický účet se všemi jeho loginy a uloženými hesly",
+        "tip_add_login": "Přidat login k vybranému zákaznickému účtu",
+        "tip_remove_login": "Odebrat vybraný login a jeho uložené heslo",
+        "tip_reload": "Znovu načíst účty a nastavení ze souboru",
+        "tip_save_login_details": "Ověřit přihlášení a uložit heslo pro vybraný účet a login",
+        "tip_input_prompt": "Otevřít okno pro zadání vstupních dat pro vybranou činnost",
+        "tip_settings": "Jazyk, písmo a další nastavení",
+        "tip_help": "Otevřít nápovědu v prohlížeči",
+        "tip_quit": "Ukončit aplikaci",
+        "tip_start": "Spustit vybranou činnost"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -407,6 +418,17 @@
         "select_login_first": "Select a customer account and a login first.",
         "password_required": "Enter the password.",
         "login_check_failed": "The login could not be verified: {error}",
-        "credential_delete_failed": "Some saved passwords could not be deleted from the system credential store: {error}"
+        "credential_delete_failed": "Some saved passwords could not be deleted from the system credential store: {error}",
+        "tip_add_account": "Add a customer account",
+        "tip_remove_account": "Remove the selected customer account with all its logins and saved passwords",
+        "tip_add_login": "Add a login to the selected customer account",
+        "tip_remove_login": "Remove the selected login and its saved password",
+        "tip_reload": "Reload the accounts and settings from the file",
+        "tip_save_login_details": "Verify the login and save the password for the selected account and login",
+        "tip_input_prompt": "Open a window to enter the input data for the selected action",
+        "tip_settings": "Language, font and other settings",
+        "tip_help": "Open the help in the browser",
+        "tip_quit": "Quit the application",
+        "tip_start": "Run the selected action"
     }
 }
