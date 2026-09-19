@@ -6,6 +6,7 @@ from gui_app.icons import set_window_icon
 from gui_app.tooltip import Tooltip
 import json
 import os
+import tempfile
 from gui_app.input_box import InputTextBox
 from gui_app.settings_dialog import SettingsWindow
 from gui_app.account_dialogs import EntryDialog, LanguageDialog
@@ -46,6 +47,7 @@ class DSMediaplayApp(tk.Tk):
         self.title("DSMediaplay Control Panel")
         self.version = "1.0"
         self.config_file = logins_file
+        self._file_stamp = None  # (mtime, size) of the config file as this app last read or wrote it
         self.all_data = self.load_account_configs()
         if "lang" not in self.all_data:
             self.ask_language()
@@ -74,7 +76,6 @@ class DSMediaplayApp(tk.Tk):
         self.option_choose_action = None
         self.text_box_label = None
         self.text_box = None
-        self.reload_button = None
         self.settings_button = None
         self.help_button = None
         self.start_button = None
@@ -102,6 +103,8 @@ class DSMediaplayApp(tk.Tk):
 
         self.setup_ui()
         self.fill_default_login_details()
+        self.bind("<FocusIn>", self.on_focus_in)
+        self.resizable(False, False)
 
     def load_actions(self):
         actions = self.lang.get_message("actions")
@@ -201,11 +204,16 @@ class DSMediaplayApp(tk.Tk):
         self.create_combobox(self, "select_action", self._action_row,
                              "option_choose_action", self.reset_data, self.action_var, columnspan=3)
         self.create_button(self, "input_prompt", self._text_box_row, self._generate_textbox, columnspan=3)
-        self.create_symbol_button(self._admin_row, 4, "+", self.open_add_account_dialog, "tip_add_account")
-        self.create_symbol_button(self._admin_row, 5, "\u2212", self.remove_account, "tip_remove_account")
-        self.create_symbol_button(self._profile_row, 4, "+", self.open_add_login_dialog, "tip_add_login")
-        self.create_symbol_button(self._profile_row, 5, "\u2212", self.remove_login, "tip_remove_login")
-        self.create_button(self, "reload", self._admin_row, self.refresh_ui, column=6)
+        # Each group sits in its own frame: buttons sharing grid columns with wider ones were pushed far apart
+        for row, add_command, remove_command, tips in (
+                (self._admin_row, self.open_add_account_dialog, self.remove_account,
+                 ("tip_add_account", "tip_remove_account")),
+                (self._profile_row, self.open_add_login_dialog, self.remove_login,
+                 ("tip_add_login", "tip_remove_login"))):
+            group = tk.Frame(self)
+            group.grid(row=row, column=4, sticky="w")
+            self.create_symbol_button(group, 0, "+", add_command, tips[0])
+            self.create_symbol_button(group, 1, "\u2212", remove_command, tips[1])
         self.create_action_buttons()
         self.refresh_ui()
         self.fill_default_login_details()
@@ -242,10 +250,10 @@ class DSMediaplayApp(tk.Tk):
         button.grid(row=row, column=column, columnspan=columnspan, padx=pad_x, pady=pad_y, sticky="w")
         setattr(self, f"{label_key}_button", button)
 
-    def create_symbol_button(self, row, column, symbol, command, tip_key):
-        button = tk.Button(self, text=symbol, font=self.font, width=2, command=command)
+    def create_symbol_button(self, parent, column, symbol, command, tip_key):
+        button = tk.Button(parent, text=symbol, font=self.font, width=2, command=command)
         self.add_tooltip(button, tip_key)
-        button.grid(row=row, column=column, padx=5, pady=2, sticky="w")
+        button.grid(row=0, column=column, padx=5, pady=2, sticky="w")
 
     def create_label_and_button(self, parent, label_key, row, button_var_name, command, columnspan=1):
         pad_x, pad_y = 5, 5
@@ -264,16 +272,20 @@ class DSMediaplayApp(tk.Tk):
         self.help_button = tk.Button(self, text=self.lang.get_message("help"), font=self.font, command=self.open_help)
         self.help_button.grid(row=self._action_buttons_row, column=1, padx=pad_x, pady=pad_y, sticky="w")
         self.add_tooltip(self.help_button, "tip_help")
-        self.create_button(self, "settings", self._action_buttons_row, self.open_settings_window, column=5)
-        self.start_button = self.create_emphasised_button("start", self.execute_action, GREEN, size_offset=2)
-        self.start_button.grid(row=self._action_buttons_row, column=6, padx=pad_x, pady=pad_y, sticky="w")
+        # Spans the columns to its left, so it does not widen the window: its right edge is the one of the "+ -" buttons
+        right_buttons = tk.Frame(self)
+        right_buttons.grid(row=self._action_buttons_row, column=1, columnspan=4, sticky="e")
+        self.create_button(right_buttons, "settings", 0, self.open_settings_window, column=0)
+        self.start_button = self.create_emphasised_button("start", self.execute_action, GREEN, size_offset=2,
+                                                          parent=right_buttons)
+        self.start_button.grid(row=0, column=1, padx=pad_x, pady=pad_y, sticky="w")
         self.add_tooltip(self.start_button, "tip_start")
 
     def emphasised_font(self, size_offset):
         return (self.font[0], self.font[1] + size_offset, "bold")
 
-    def create_emphasised_button(self, label_key, command, colors, size_offset):
-        button = make_color_button(self, self.lang.get_message(label_key), command,
+    def create_emphasised_button(self, label_key, command, colors, size_offset, parent=None):
+        button = make_color_button(parent or self, self.lang.get_message(label_key), command,
                                    self.emphasised_font(size_offset), colors)
         self._emphasis[button] = size_offset
         return button
@@ -340,8 +352,6 @@ class DSMediaplayApp(tk.Tk):
             self.start_button.config(text=self.lang.get_message("start"))
         if self.quit_button:
             self.quit_button.config(text=self.lang.get_message("quit"))
-        if self.reload_button:
-            self.reload_button.config(text=self.lang.get_message("reload"))
         if self.settings_button:
             self.settings_button.config(text=self.lang.get_message("settings"))
         if self.help_button:
@@ -472,16 +482,70 @@ class DSMediaplayApp(tk.Tk):
         )
         self.wait_window(log_box)
 
+    def _config_stamp(self):
+        try:
+            stat = os.stat(self.config_file)
+        except OSError:
+            return None
+        return stat.st_mtime_ns, stat.st_size
+
     def load_account_configs(self):
-        if os.path.exists(self.config_file):
-            with open(self.config_file, "r", encoding='utf-8') as file:
-                return json.load(file)
-        else:
+        stamp = self._config_stamp()  # taken before reading: a change during the read is noticed next time
+        if stamp is None:
             return {"default": ["", ""], "logins": {}}
+        with open(self.config_file, "r", encoding='utf-8') as file:
+            data = json.load(file)
+        data.setdefault("logins", {})
+        data.setdefault("default", ["", ""])
+        self._file_stamp = stamp
+        return data
 
     def save_account_configs(self):
-        with open(self.config_file, "w", encoding='utf-8') as file:
-            json.dump(self.all_data, file, indent=4, ensure_ascii=False)
+        """Written to a temporary file first, so a crash or a concurrent reader never sees a half-written file."""
+        directory = os.path.dirname(os.path.abspath(self.config_file))
+        handle, temporary = tempfile.mkstemp(dir=directory, suffix=".tmp")
+        try:
+            with os.fdopen(handle, "w", encoding='utf-8') as file:
+                json.dump(self.all_data, file, indent=4, ensure_ascii=False)
+            os.replace(temporary, self.config_file)
+        except BaseException:
+            os.unlink(temporary)
+            raise
+        self._file_stamp = self._config_stamp()
+
+    def sync_from_disk(self):
+        """
+        Picks up changes made to the config file outside the app (Edit JSON, a text editor, another instance).
+        Called before every change, so a save never overwrites them with stale in-memory data.
+        Returns True when the file was re-read; an unreadable file is ignored and the app keeps its data.
+        """
+        if self._config_stamp() == self._file_stamp:
+            return False
+        try:
+            data = self.load_account_configs()
+        except (OSError, ValueError):
+            return False
+        self.all_data, self.account_data, self.default = data, data["logins"], data["default"]
+        self.refresh_selection_lists()
+        return True
+
+    def refresh_selection_lists(self):
+        """Updates the drop-down lists after the data changed, keeping the current selection while it is valid."""
+        account = self.option_choose_administration.get()
+        self.option_choose_administration['values'] = sorted(self.account_data.keys())
+        if account not in self.account_data:
+            self.option_choose_administration.set("")
+            account = ""
+        login = self.option_choose_name.get()
+        names = sorted(self.account_data.get(account, {}).get("names", {}).keys())
+        self.option_choose_name.config(values=names)
+        if login not in names:
+            self.option_choose_name.set("")
+        self.fill_password_details()
+
+    def on_focus_in(self, event):
+        if event.widget is self:  # the window itself came to the front, e.g. after Edit JSON or a text editor
+            self.sync_from_disk()
 
     def ask_language(self):
         """First start only: the choice is stored in the config, so it is never asked again."""
@@ -499,6 +563,7 @@ class DSMediaplayApp(tk.Tk):
                     self.add_account)
 
     def add_account(self, name, url):
+        self.sync_from_disk()
         name = accounts.add_account(self.all_data, name, url)
         self.save_account_configs()
         self.option_choose_administration['values'] = sorted(self.account_data.keys())
@@ -512,6 +577,7 @@ class DSMediaplayApp(tk.Tk):
         EntryDialog(self, self.lang.get_message("add_login"), [self.lang.get_message("login")], self.add_login)
 
     def add_login(self, login):
+        self.sync_from_disk()
         login = accounts.add_login(self.all_data, self.option_choose_administration.get(), login)
         self.save_account_configs()
         self.fill_login_details()
@@ -519,6 +585,7 @@ class DSMediaplayApp(tk.Tk):
         self.on_login_selected()
 
     def remove_login(self):
+        self.sync_from_disk()
         account = self.option_choose_administration.get()
         name = self.option_choose_name.get()
         if name not in self.account_data.get(account, {}).get("names", {}):
@@ -533,6 +600,7 @@ class DSMediaplayApp(tk.Tk):
         self.fill_login_details()
 
     def remove_account(self):
+        self.sync_from_disk()
         account = self.option_choose_administration.get()
         if account not in self.account_data:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("select_account_first"))
@@ -573,6 +641,7 @@ class DSMediaplayApp(tk.Tk):
                                    self.lang.get_message("credential_store_error", error=str(error)))
 
     def save_login_details(self):
+        self.sync_from_disk()
         administration = self.option_choose_administration.get()
         account_name = self.option_choose_name.get()
         if account_name not in self.account_data.get(administration, {}).get("names", {}):
@@ -626,6 +695,7 @@ class DSMediaplayApp(tk.Tk):
 
     def remember_selection(self):
         """Stores the last used account and its last used login, so the next start opens them again."""
+        self.sync_from_disk()
         account = self.option_choose_administration.get()
         if account in self.account_data and accounts.remember_selection(
                 self.all_data, account, self.option_choose_name.get()):
