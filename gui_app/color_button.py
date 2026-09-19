@@ -19,6 +19,8 @@ class ButtonColors:
 
 GREEN = ButtonColors(normal="#c6efce", hover="#b4e7bf", pressed="#9fd9ac", border="#7fb88b")
 RED = ButtonColors(normal="#ffc7ce", hover="#ffb5be", pressed="#f79ea9", border="#d98c96")
+# White text needs a really dark fill: 5.1:1 contrast (the light fills with black text have more than 14:1)
+GREEN_DARK = ButtonColors(normal="#2e7d32", hover="#276b2b", pressed="#205a24", border="#1b4d1f", text="#ffffff")
 
 
 def _rounded_rectangle(x1: float, y1: float, x2: float, y2: float, radius: float) -> List[float]:
@@ -57,6 +59,10 @@ class ColorButton(tk.Canvas):
                             fill=fill[self._state], outline=self._colors.border)
         self.create_text(width / 2, height / 2, text=self._text, font=self._font, fill=self._colors.text)
 
+    def set_colors(self, colors: ButtonColors) -> None:
+        self._colors = colors
+        self._draw()
+
     def _set_state(self, state: str) -> None:
         self._state = state
         self._draw()
@@ -85,6 +91,15 @@ class ColorButton(tk.Canvas):
         if key in ("text", "font", "command"):
             return getattr(self, "_" + key)
         return tk.Canvas.cget(self, key)
+
+
+def set_button_colors(button: tk.Widget, colors: ButtonColors) -> None:
+    """Changes the colours of a button made by make_color_button."""
+    if isinstance(button, ColorButton):
+        button.set_colors(colors)
+    else:
+        button.configure(background=colors.normal, activebackground=colors.pressed, foreground=colors.text,
+                         activeforeground=colors.text)
 
 
 def make_color_button(master: tk.Misc, text: str, command: Callable[[], None], font: FontSpec,

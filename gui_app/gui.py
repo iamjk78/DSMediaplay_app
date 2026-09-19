@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from gui_app.color_button import GREEN, RED, make_color_button
+from gui_app.color_button import GREEN, GREEN_DARK, RED, make_color_button, set_button_colors
 from gui_app.icons import set_window_icon
 from gui_app.tooltip import Tooltip
 import json
@@ -32,6 +32,9 @@ def get_download_path():
         return location
     else:
         return os.path.join(os.path.expanduser('~'), 'downloads')
+
+
+BLINK_INTERVAL_MS = 500
 
 
 class DSMediaplayApp(tk.Tk):
@@ -90,6 +93,8 @@ class DSMediaplayApp(tk.Tk):
         self._text_box_data = None
 
         self._emphasis = {}  # widget -> size offset; these buttons are always bold, whatever the font setting
+        self._blink_id = None
+        self._blink_dark = False
 
         self._admin_row = 0
         self._profile_row = 1
@@ -203,7 +208,10 @@ class DSMediaplayApp(tk.Tk):
                              self.entity_type_var, list(self.entity_actions.keys()), columnspan=3)
         self.create_combobox(self, "select_action", self._action_row,
                              "option_choose_action", self.reset_data, self.action_var, columnspan=3)
-        self.create_button(self, "input_prompt", self._text_box_row, self._generate_textbox, columnspan=3)
+        self.input_prompt_button = self.create_emphasised_button("input_prompt", self._generate_textbox, GREEN,
+                                                                 size_offset=0)
+        self.add_tooltip(self.input_prompt_button, "tip_input_prompt")
+        self.input_prompt_button.grid(row=self._text_box_row, column=1, columnspan=3, padx=5, pady=5, sticky="w")
         # Each group sits in its own frame: buttons sharing grid columns with wider ones were pushed far apart
         for row, add_command, remove_command, tips in (
                 (self._admin_row, self.open_add_account_dialog, self.remove_account,
@@ -290,6 +298,26 @@ class DSMediaplayApp(tk.Tk):
         self._emphasis[button] = size_offset
         return button
 
+    def has_input(self):
+        return bool(self._text_box_data and self._text_box_data.strip())
+
+    def start_blinking(self):
+        """Until the user has entered the input, the Input Prompt button alternates between light and dark green."""
+        if self._blink_id is None:
+            self._blink_id = self.after(BLINK_INTERVAL_MS, self._blink)
+
+    def _blink(self):
+        self._blink_dark = not self._blink_dark
+        set_button_colors(self.input_prompt_button, GREEN_DARK if self._blink_dark else GREEN)
+        self._blink_id = self.after(BLINK_INTERVAL_MS, self._blink)
+
+    def stop_blinking(self):
+        if self._blink_id is not None:
+            self.after_cancel(self._blink_id)
+            self._blink_id = None
+        self._blink_dark = False
+        set_button_colors(self.input_prompt_button, GREEN)
+
     def open_settings_window(self):
         settings_window = SettingsWindow(self, self.lang)
         self.wait_window(settings_window)
@@ -319,8 +347,13 @@ class DSMediaplayApp(tk.Tk):
         button = self.input_prompt_button
         if action and action_needs_input(action):
             button.grid()
+            if self.has_input():
+                self.stop_blinking()
+            else:
+                self.start_blinking()
         else:
             button.grid_remove()
+            self.stop_blinking()
         # The row keeps its height either way, so the window does not jump when the button comes and goes
         self.grid_rowconfigure(self._text_box_row, minsize=button.winfo_reqheight() + 10)
 
@@ -731,6 +764,7 @@ class DSMediaplayApp(tk.Tk):
         # Normalize line endings: Spreadsheet applications on macOS separate copied rows with a bare \r,
         # Windows uses \r\n - both must become \n before processors split on it.
         self._text_box_data = data.replace('\r\n', '\n').replace('\r', '\n')
+        self.update_input_button()
 
     def _generate_textbox(self):
         text_box = InputTextBox(self, self.save_data_from_text_box)

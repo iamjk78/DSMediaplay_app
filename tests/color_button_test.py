@@ -1,7 +1,7 @@
 import tkinter as tk
 import unittest
 
-from gui_app.color_button import GREEN, RED, ColorButton, make_color_button
+from gui_app.color_button import GREEN, GREEN_DARK, RED, ColorButton, make_color_button, set_button_colors
 
 
 class ColorButtonTest(unittest.TestCase):
@@ -73,6 +73,53 @@ class ColorButtonTest(unittest.TestCase):
         self.root.update()
 
         self.assertEqual(button.cget("text"), "Quit")
+
+
+def luminance(colour):
+    channels = [int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast(first, second):
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+class ColourReadabilityTest(unittest.TestCase):
+    def test_the_text_is_readable_on_every_shade_the_buttons_use(self):
+        for name, colors in (("GREEN", GREEN), ("RED", RED), ("GREEN_DARK", GREEN_DARK)):
+            for shade in ("normal", "hover", "pressed"):
+                with self.subTest(colors=name, shade=shade):
+                    self.assertGreaterEqual(contrast(colors.text, getattr(colors, shade)), 4.5)
+
+    def test_light_green_has_black_text_and_dark_green_white_text(self):
+        self.assertEqual(GREEN.text, "#000000")
+        self.assertEqual(GREEN_DARK.text, "#ffffff")
+
+
+class SetColorsTest(unittest.TestCase):
+    def setUp(self):
+        try:
+            self.root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("no display available")
+
+    def tearDown(self):
+        self.root.destroy()
+
+    def test_changing_the_colours_redraws_the_fill_and_the_text(self):
+        button = make_color_button(self.root, "Input", None, ("Helvetica", 12, "bold"), GREEN)
+        button.pack()
+
+        set_button_colors(button, GREEN_DARK)
+        self.root.update()
+
+        if isinstance(button, ColorButton):
+            self.assertEqual(button.itemcget(button.find_withtag("all")[0], "fill"), GREEN_DARK.normal)
+            self.assertEqual(button.itemcget(button.find_withtag("all")[1], "fill"), "#ffffff")
+        else:
+            self.assertEqual((button.cget("background"), button.cget("foreground")), (GREEN_DARK.normal, "#ffffff"))
 
 
 if __name__ == "__main__":

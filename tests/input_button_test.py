@@ -5,8 +5,14 @@ import tkinter as tk
 import unittest
 from unittest.mock import patch
 
+import time
+
+from gui_app import gui
+from gui_app.color_button import GREEN, GREEN_DARK, ColorButton
 from gui_app.gui import DSMediaplayApp
 from util.actions import action_needs_input
+
+DEFAULT_BLINK_INTERVAL_MS = gui.BLINK_INTERVAL_MS
 
 
 class ActionNeedsInputTest(unittest.TestCase):
@@ -29,6 +35,9 @@ class ActionNeedsInputTest(unittest.TestCase):
 
 class InputButtonTest(unittest.TestCase):
     def setUp(self):
+        interval = patch.object(gui, "BLINK_INTERVAL_MS", 30)
+        interval.start()
+        self.addCleanup(interval.stop)
         self.directory = tempfile.TemporaryDirectory()
         path = os.path.join(self.directory.name, "logins.json")
         with open(path, "w", encoding="utf-8") as file:
@@ -109,6 +118,115 @@ class InputButtonTest(unittest.TestCase):
         self.choose("Playlists", "get_playlist_details")
 
         self.assertIsNone(self.app._text_box_data)
+
+    def fill(self):
+        button = self.app.input_prompt_button
+        if isinstance(button, ColorButton):
+            return button.itemcget(button.find_withtag("all")[0], "fill")
+        return button.cget("background")
+
+    def fills_over(self, milliseconds):
+        seen, end = [], time.monotonic() + milliseconds / 1000
+        while time.monotonic() < end:
+            self.app.update()
+            seen.append(self.fill())
+            time.sleep(0.004)
+        return seen
+
+    def test_the_blink_interval_is_half_a_second(self):
+        self.assertEqual(DEFAULT_BLINK_INTERVAL_MS, 500)
+
+    def test_blinks_between_light_and_dark_green_while_shown(self):
+        self.choose("Playlists", "set_playlist_settings")
+
+        seen = self.fills_over(400)
+
+        self.assertEqual(set(seen), {GREEN.normal, GREEN_DARK.normal})
+
+    def test_does_not_blink_when_the_button_is_hidden(self):
+        self.choose("Playlists", "get_playlist_details")
+
+        self.assertIsNone(self.app._blink_id)
+        self.assertEqual(set(self.fills_over(200)), {GREEN.normal})
+
+    def test_stops_and_returns_to_light_green_when_the_action_needs_no_input(self):
+        self.choose("Playlists", "set_playlist_settings")
+        self.fills_over(150)
+
+        self.choose("Playlists", "get_playlist_details")
+
+        self.assertIsNone(self.app._blink_id)
+        self.assertEqual(set(self.fills_over(150)), {GREEN.normal})
+
+    def test_choosing_actions_repeatedly_never_starts_a_second_blink_timer(self):
+        self.choose("Playlists", "set_playlist_settings")
+        timers = len(self.app.tk.call("after", "info"))
+
+        for _ in range(5):
+            self.app.update_input_button()
+        self.choose("Groups", "set_group_rename")
+
+        self.assertEqual(len(self.app.tk.call("after", "info")), timers)
+
+    def test_the_text_is_always_bold(self):
+        button = self.app.input_prompt_button
+        self.assertEqual(button.cget("font"), ("Helvetica", 12, "bold"))
+
+        self.choose("Playlists", "set_playlist_settings")
+        self.fills_over(100)
+        self.assertEqual(button.cget("font"), ("Helvetica", 12, "bold"))
+
+        self.app.update_font(("Arial", 16))
+        self.app.refresh_ui()
+        self.assertEqual(button.cget("font"), ("Arial", 16, "bold"))
+
+    def text_colour(self):
+        button = self.app.input_prompt_button
+        if isinstance(button, ColorButton):
+            return button.itemcget(button.find_withtag("all")[1], "fill")
+        return button.cget("foreground")
+
+    def looks_over(self, milliseconds):
+        seen, end = [], time.monotonic() + milliseconds / 1000
+        while time.monotonic() < end:
+            self.app.update()
+            seen.append((self.fill(), self.text_colour()))
+            time.sleep(0.004)
+        return set(seen)
+
+    def test_black_text_on_light_green_and_white_text_on_dark_green(self):
+        self.choose("Playlists", "set_playlist_settings")
+
+        self.assertEqual(self.looks_over(400), {(GREEN.normal, "#000000"), (GREEN_DARK.normal, "#ffffff")})
+
+    def test_stops_blinking_once_the_user_has_entered_input(self):
+        self.choose("Playlists", "set_playlist_settings")
+        self.assertIsNotNone(self.app._blink_id)
+
+        self.app.save_data_from_text_box("Playlist 1\n")
+
+        self.assertIsNone(self.app._blink_id)
+        self.assertEqual(self.looks_over(150), {(GREEN.normal, "#000000")})
+        self.assertTrue(self.visible())
+
+    def test_empty_or_blank_input_does_not_stop_the_blinking(self):
+        self.choose("Playlists", "set_playlist_settings")
+
+        for blank in ("\n", "  \r\n \t"):
+            with self.subTest(blank=repr(blank)):
+                self.app.save_data_from_text_box(blank)
+                self.assertIsNotNone(self.app._blink_id)
+
+    def test_blinks_again_when_the_input_is_gone(self):
+        self.choose("Playlists", "set_playlist_settings")
+        self.app.save_data_from_text_box("Playlist 1\n")
+        self.assertIsNone(self.app._blink_id)
+
+        self.choose("Playlists", "create_playlist")  # choosing another action drops the typed input
+
+        self.assertIsNone(self.app._text_box_data)
+        self.assertIsNotNone(self.app._blink_id)
+        self.assertEqual(self.looks_over(400), {(GREEN.normal, "#000000"), (GREEN_DARK.normal, "#ffffff")})
 
     def test_creating_without_input_is_refused_like_the_other_changing_actions(self):
         with patch("gui_app.gui.messagebox.showinfo") as info, \
