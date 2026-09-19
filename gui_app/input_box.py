@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
-from util.paths import resource_path
+from gui_app.icons import set_window_icon
 
 
 class InputTextBox(tk.Toplevel):
@@ -9,7 +8,6 @@ class InputTextBox(tk.Toplevel):
         super().__init__(master=master)
         self.lang = master.lang
         self.details_text = None
-        self.tk_image = None
         entity_type = master.entity_type_var.get()
         action_name = master.option_choose_action.get()
         self.title(f"{self.lang.get_message("input")} - {entity_type} - {action_name}")
@@ -31,11 +29,7 @@ class InputTextBox(tk.Toplevel):
         self.geometry(f"{scaled_width}x{scaled_height}+0+{start_screen_height - scaled_height - 30}")
 
     def setup_icons(self):
-        dsm_icon = resource_path("assets/ds_media_icon_input.jpg")
-        icon_bitmap = Image.open(dsm_icon)
-        self.tk_image = ImageTk.PhotoImage(icon_bitmap)
-        # noinspection PyTypeChecker
-        self.iconphoto(False, self.tk_image)
+        set_window_icon(self)
 
     def setup_ui(self):
         self.setup_icons()

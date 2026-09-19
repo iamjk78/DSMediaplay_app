@@ -1,9 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, scrolledtext
-from PIL import Image, ImageTk
+from gui_app.icons import set_window_icon
 import logging
 from util.thread_manager import ThreadManager
-from util.paths import resource_path
 from gui_app.logger import TextHandler, OptionalLevelFormatter
 from processor.input_processing import FormatException, ProcessorFactory, InternalException
 
@@ -69,7 +68,6 @@ class LoggingTextBox(tk.Toplevel):
         self.indication_label = None
         self._activity_icon = None
         self._activity_canvas = None
-        self.tk_image = None
         self.lang = master.lang
         self.title(self.lang.get_message("log_title"))
         self.processor_type = processor_type
@@ -103,11 +101,7 @@ class LoggingTextBox(tk.Toplevel):
         self.unbind("<Visibility>")
 
     def setup_icons(self):
-        dsm_icon = resource_path("assets/ds_media_icon_textbox.jpg")
-        icon_bitmap = Image.open(dsm_icon)
-        self.tk_image = ImageTk.PhotoImage(icon_bitmap)
-        # noinspection PyTypeChecker
-        self.iconphoto(False, self.tk_image)
+        set_window_icon(self)
 
     def run(self):
         self.run_input_processing()

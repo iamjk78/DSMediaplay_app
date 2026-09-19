@@ -19,8 +19,9 @@ exe = EXE(
     exclude_binaries=True,
     name="DSM_GUI",
     console=False,
+    icon="assets/app.ico" if sys.platform == "win32" else None,  # regenerate with packaging/make_icons.py
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="DSM_GUI")
 
 if sys.platform == "darwin":
-    app = BUNDLE(coll, name="DSM_GUI.app", bundle_identifier="media.bluetouch.dsm-gui")
+    app = BUNDLE(coll, name="DSM_GUI.app", bundle_identifier="media.bluetouch.dsm-gui", icon="assets/app.icns")

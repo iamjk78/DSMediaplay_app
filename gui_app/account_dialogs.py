@@ -2,15 +2,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Callable, List, Optional
 
-from PIL import Image, ImageTk
+from gui_app.icons import set_window_icon
 from util.accounts import AccountError
-from util.paths import resource_path
-
-
-def _set_icon(window: tk.Toplevel) -> None:
-    window.tk_image = ImageTk.PhotoImage(Image.open(resource_path("assets/ds_media_icon_input.jpg")))
-    # noinspection PyTypeChecker
-    window.iconphoto(False, window.tk_image)
 
 
 class LanguageDialog(tk.Toplevel):
@@ -23,7 +16,7 @@ class LanguageDialog(tk.Toplevel):
         self.language: Optional[str] = None
         self.title("Jazyk / Language")
         self.resizable(False, False)
-        _set_icon(self)
+        set_window_icon(self)
         ttk.Label(self, text="Vyberte jazyk aplikace\nChoose the application language",
                   justify="center").grid(row=0, column=0, columnspan=2, padx=20, pady=(15, 10))
         for column, (code, label) in enumerate(self.LANGUAGES):
@@ -48,7 +41,7 @@ class EntryDialog(tk.Toplevel):
         self._entries: List[ttk.Entry] = []
         self.title(title)
         self.resizable(False, False)
-        _set_icon(self)
+        set_window_icon(self)
         for row, label in enumerate(labels):
             ttk.Label(self, text=label, font=self._font).grid(row=row, column=0, padx=5, pady=5, sticky="w")
             entry = ttk.Entry(self, width=40, font=self._font)

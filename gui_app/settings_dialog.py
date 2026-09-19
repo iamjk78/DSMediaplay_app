@@ -1,8 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from util.language import LanguageManager
-from util.paths import resource_path
-from PIL import Image, ImageTk
+from gui_app.icons import set_window_icon
 import os
 
 
@@ -10,7 +9,6 @@ import os
 class SettingsWindow(tk.Toplevel):
     def __init__(self, master: "DSMediaplayApp", lang_manager: LanguageManager):
         super().__init__(master)
-        self.tk_image = None
         self.lang_manager = lang_manager
         self.master = master
         self.title(self.lang_manager.get_message("settings"))
@@ -24,14 +22,7 @@ class SettingsWindow(tk.Toplevel):
         self.setup_icons()
 
     def setup_icons(self):
-        """
-        Sets up the application icon.
-        """
-        dsm_icon = resource_path("assets/ds_media_icon.jpg")
-        icon_bitmap = Image.open(dsm_icon)
-        self.tk_image = ImageTk.PhotoImage(icon_bitmap)
-        # noinspection PyTypeChecker
-        self.iconphoto(True, self.tk_image)
+        set_window_icon(self)
 
     def create_widgets(self):
         pad_x = 5

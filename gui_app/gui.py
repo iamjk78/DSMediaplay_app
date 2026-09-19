@@ -1,7 +1,7 @@
 import re
 import tkinter as tk
 from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
+from gui_app.icons import set_window_icon
 import json
 import os
 from gui_app.input_box import InputTextBox
@@ -40,7 +40,6 @@ class DSMediaplayApp(tk.Tk):
         Initializes the DSMediaplayApp with the given logins file.
         """
         super().__init__()
-        self.tk_image = None
         self.title("DSMediaplay Control Panel")
         self.version = "1.0"
         self.config_file = logins_file
@@ -180,11 +179,7 @@ class DSMediaplayApp(tk.Tk):
         }
 
     def setup_icons(self):
-        dsm_icon = resource_path("assets/ds_media_icon.jpg")
-        icon_bitmap = Image.open(dsm_icon)
-        self.tk_image = ImageTk.PhotoImage(icon_bitmap)
-        # noinspection PyTypeChecker
-        self.iconphoto(False, self.tk_image)
+        set_window_icon(self)
 
     def setup_ui(self):
         self.create_combobox(self, "customer_account", self._admin_row,
