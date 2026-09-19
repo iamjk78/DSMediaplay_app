@@ -59,7 +59,10 @@ jobs:
           find dist -iname 'tcl*.dll' | grep -q . || { echo "missing: Tcl DLL"; missing=1; }
           find dist -type d -name '_tcl_data' | grep -q . || { echo "missing: Tcl data"; missing=1; }
           find dist -type d -name '_tk_data' | grep -q . || { echo "missing: Tk data"; missing=1; }
-          find dist -type d -name 'win32ctypes' | grep -q . || { echo "missing: win32ctypes (Windows Credential Manager backend)"; missing=1; }
+          # Pure-Python modules are packed inside the executable's PYZ archive, not stored as folders
+          for module in keyring.backends.Windows win32ctypes.pywin32.win32cred; do
+            grep -q "$module" build/DSM_GUI/PYZ-00.toc || { echo "missing module: $module (Windows Credential Manager backend)"; missing=1; }
+          done
           [ "$missing" = "0" ] || { echo "--- bundle top level:"; ls dist/DSM_GUI dist/DSM_GUI/_internal | head -60; exit 1; }
 
       - name: Smoke test (app starts and serves its bundled documentation)
