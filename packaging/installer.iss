@@ -1,6 +1,6 @@
 ; Per-user installer for Windows (no administrator rights needed), built by the GitHub Actions workflow:
 ;   ISCC.exe /DAppVersion=1.0.0 /DAppNumericVersion=1.0.0.0 packaging\installer.iss
-; Expects the PyInstaller output in dist\DSM_GUI. The account list in %APPDATA%\DSM_GUI and the passwords in
+; Expects the PyInstaller output in dist\DSMediaplay_app. The account list in %APPDATA%\DSM_GUI and the passwords in
 ; Windows Credential Manager are user data: the uninstaller leaves them, so a reinstall keeps them.
 
 #ifndef AppVersion
@@ -9,8 +9,8 @@
 #ifndef AppNumericVersion
   #define AppNumericVersion "0.0.0.0"
 #endif
-#define AppName "DSMediaplay Control Panel"
-#define AppExe "DSM_GUI.exe"
+#define AppName "DSMediaplay_app"
+#define AppExe "DSMediaplay_app.exe"
 
 [Setup]
 ; Fixed identifier: it is what makes a newer installer upgrade the installed app instead of installing beside it
@@ -19,7 +19,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 VersionInfoVersion={#AppNumericVersion}
 AppPublisher=JKRE - BlueTouch Media
-DefaultDirName={autopf}\DSM_GUI
+DefaultDirName={autopf}\DSMediaplay_app
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
@@ -28,7 +28,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=..\assets\app.ico
 UninstallDisplayIcon={app}\{#AppExe}
 OutputDir=..\dist-installer
-OutputBaseFilename=DSM_GUI-Setup-{#AppVersion}
+OutputBaseFilename=DSMediaplay_app-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -43,7 +43,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\DSM_GUI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\DSMediaplay_app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

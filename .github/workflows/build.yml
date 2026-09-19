@@ -46,7 +46,7 @@ jobs:
         run: python -m pip install -r requirements-build.txt
 
       - name: Build
-        run: python -m PyInstaller --noconfirm DSM_GUI.spec
+        run: python -m PyInstaller --noconfirm DSMediaplay_app.spec
 
       - name: Verify that no local configuration or secrets ended up in the build
         run: |
@@ -68,13 +68,13 @@ jobs:
           find dist -type d -name '_tk_data' | grep -q . || { echo "missing: Tk data"; missing=1; }
           # Pure-Python modules are packed inside the executable's PYZ archive, not stored as folders
           for module in keyring.backends.Windows win32ctypes.pywin32.win32cred; do
-            grep -q "$module" build/DSM_GUI/PYZ-00.toc || { echo "missing module: $module (Windows Credential Manager backend)"; missing=1; }
+            grep -q "$module" build/DSMediaplay_app/PYZ-00.toc || { echo "missing module: $module (Windows Credential Manager backend)"; missing=1; }
           done
-          [ "$missing" = "0" ] || { echo "--- bundle top level:"; ls dist/DSM_GUI dist/DSM_GUI/_internal | head -60; exit 1; }
+          [ "$missing" = "0" ] || { echo "--- bundle top level:"; ls dist/DSMediaplay_app dist/DSMediaplay_app/_internal | head -60; exit 1; }
 
       - name: Smoke test (app starts and serves its bundled documentation)
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then exe=./dist/DSM_GUI/DSM_GUI.exe; else exe=./dist/DSM_GUI.app/Contents/MacOS/DSM_GUI; fi
+          if [ "${{ runner.os }}" = "Windows" ]; then exe=./dist/DSMediaplay_app/DSMediaplay_app.exe; else exe=./dist/DSMediaplay_app.app/Contents/MacOS/DSMediaplay_app; fi
           bash packaging/smoke_test.sh "$exe"
 
       - name: Install Inno Setup
@@ -97,17 +97,17 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $setup = (Get-ChildItem dist-installer -Filter 'DSM_GUI-Setup-*.exe').FullName
-          $dir = Join-Path $env:RUNNER_TEMP 'DSM_GUI_installed'
+          $setup = (Get-ChildItem dist-installer -Filter 'DSMediaplay_app-Setup-*.exe').FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'DSMediaplay_app_installed'
           $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{DB940A40-CA4A-48BB-B2CA-1A0D44974506}_is1'
-          $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DSMediaplay Control Panel.lnk'
+          $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DSMediaplay_app.lnk'
 
           Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$dir" -Wait
-          if (-not (Test-Path "$dir\DSM_GUI.exe")) { throw 'The installer did not install DSM_GUI.exe' }
+          if (-not (Test-Path "$dir\DSMediaplay_app.exe")) { throw 'The installer did not install DSMediaplay_app.exe' }
           if (-not (Test-Path $uninstallKey)) { throw 'No uninstall entry (Apps & features) was registered' }
           if (-not (Test-Path $shortcut)) { throw 'No Start menu shortcut was created' }
 
-          & "$env:ProgramFiles\Git\bin\bash.exe" packaging/smoke_test.sh "$dir\DSM_GUI.exe"
+          & "$env:ProgramFiles\Git\bin\bash.exe" packaging/smoke_test.sh "$dir\DSMediaplay_app.exe"
           if ($LASTEXITCODE -ne 0) { throw 'The installed application failed the smoke test' }
 
           Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
@@ -122,22 +122,22 @@ jobs:
       # macOS keeps its own zip because artifact uploads drop file permissions and symlinks that the .app needs.
       - name: Package (macOS)
         if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent dist/DSM_GUI.app DSM_GUI-macos.zip
+        run: ditto -c -k --keepParent dist/DSMediaplay_app.app DSMediaplay_app-macos.zip
 
       - name: Upload (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: DSM_GUI-windows
-          path: dist-installer/DSM_GUI-Setup-*.exe
+          name: DSMediaplay_app-windows
+          path: dist-installer/DSMediaplay_app-Setup-*.exe
           if-no-files-found: error
 
       - name: Upload (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: DSM_GUI-macos
-          path: DSM_GUI-macos.zip
+          name: DSMediaplay_app-macos
+          path: DSMediaplay_app-macos.zip
           if-no-files-found: error
 
   release:
@@ -160,7 +160,7 @@ jobs:
           set -euo pipefail
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "Invalid release tag: $TAG"; exit 1; }
           shopt -s nullglob
-          files=(artifacts/DSM_GUI-windows/DSM_GUI-Setup-*.exe artifacts/DSM_GUI-macos/DSM_GUI-macos.zip)
+          files=(artifacts/DSMediaplay_app-windows/DSMediaplay_app-Setup-*.exe artifacts/DSMediaplay_app-macos/DSMediaplay_app-macos.zip)
           [ "${#files[@]}" -gt 0 ] || { echo "No release files found"; exit 1; }
           gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "DSM_GUI $TAG" --generate-notes
+            --title "DSMediaplay_app $TAG" --generate-notes

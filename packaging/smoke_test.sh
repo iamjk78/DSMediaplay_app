@@ -23,7 +23,7 @@ alive=0
 kill -0 $app_pid 2>/dev/null && alive=1
 
 kill $app_pid 2>/dev/null || true
-command -v taskkill >/dev/null 2>&1 && taskkill //F //IM DSM_GUI.exe >/dev/null 2>&1
+command -v taskkill >/dev/null 2>&1 && taskkill //F //IM DSMediaplay_app.exe >/dev/null 2>&1
 sleep 2
 
 [ "$ok" = "1" ] && [ "$alive" = "1" ] || { echo "Application did not start or crashed"; exit 1; }
