@@ -1,6 +1,7 @@
 import re
 import tkinter as tk
 from tkinter import ttk, messagebox
+from gui_app.color_button import GREEN, RED, make_color_button
 from gui_app.icons import set_window_icon
 from gui_app.tooltip import Tooltip
 import json
@@ -86,6 +87,8 @@ class DSMediaplayApp(tk.Tk):
         self.save_login_details_button = None
         self.input_prompt_label = None
         self._text_box_data = None
+
+        self._emphasis = {}  # widget -> size offset; these buttons are always bold, whatever the font setting
 
         self._admin_row = 0
         self._profile_row = 1
@@ -255,17 +258,25 @@ class DSMediaplayApp(tk.Tk):
 
     def create_action_buttons(self):
         pad_x, pad_y = 5, 5
-        self.quit_button = tk.Button(self, text=self.lang.get_message("quit"), font=self.font, command=self.quit)
+        self.quit_button = self.create_emphasised_button("quit", self.quit, RED, size_offset=0)
         self.quit_button.grid(row=self._action_buttons_row, column=0, padx=pad_x, pady=pad_y, sticky="w")
         self.add_tooltip(self.quit_button, "tip_quit")
         self.help_button = tk.Button(self, text=self.lang.get_message("help"), font=self.font, command=self.open_help)
         self.help_button.grid(row=self._action_buttons_row, column=1, padx=pad_x, pady=pad_y, sticky="w")
         self.add_tooltip(self.help_button, "tip_help")
         self.create_button(self, "settings", self._action_buttons_row, self.open_settings_window, column=5)
-        self.start_button = tk.Button(self, text=self.lang.get_message("start"), font=self.font,
-                                      command=self.execute_action)
+        self.start_button = self.create_emphasised_button("start", self.execute_action, GREEN, size_offset=2)
         self.start_button.grid(row=self._action_buttons_row, column=6, padx=pad_x, pady=pad_y, sticky="w")
         self.add_tooltip(self.start_button, "tip_start")
+
+    def emphasised_font(self, size_offset):
+        return (self.font[0], self.font[1] + size_offset, "bold")
+
+    def create_emphasised_button(self, label_key, command, colors, size_offset):
+        button = make_color_button(self, self.lang.get_message(label_key), command,
+                                   self.emphasised_font(size_offset), colors)
+        self._emphasis[button] = size_offset
+        return button
 
     def open_settings_window(self):
         settings_window = SettingsWindow(self, self.lang)
@@ -350,7 +361,8 @@ class DSMediaplayApp(tk.Tk):
     def _update_widget_font(self, widget):
         """Applies the current font to a given widget, if applicable."""
         try:
-            widget.configure(font=self.font)
+            widget.configure(font=self.emphasised_font(self._emphasis[widget]) if widget in self._emphasis
+                             else self.font)
         except tk.TclError:
             pass
 
