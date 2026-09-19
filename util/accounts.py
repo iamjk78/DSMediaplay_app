@@ -1,3 +1,4 @@
+from typing import List, Tuple
 from urllib.parse import urlparse
 
 
@@ -43,3 +44,45 @@ def add_login(data: dict, account: str, login: str) -> str:
         raise AccountError("login_exists")
     names[login] = {"login": login}
     return login
+
+
+Credential = Tuple[str, str]  # (account URL, login): the key the password is stored under
+
+
+def remember_selection(data: dict, account: str, login: str) -> bool:
+    """
+    Records the last used account (the config's `default`) and the last used login of that account.
+    Returns True when `data` changed and has to be saved.
+    """
+    entry = data["logins"][account]
+    before = (data.get("default"), entry.get("last"))
+    if login in entry.get("names", {}):
+        entry["last"] = login
+    data["default"] = [account, entry.get("last", "")]
+    return before != (data["default"], entry.get("last"))
+
+
+def _unused(data: dict, candidates: List[Credential]) -> List[Credential]:
+    """Passwords are shared by every entry with the same URL and login, so only unreferenced ones may go."""
+    used = {(entry.get("url", ""), name["login"])
+            for entry in data["logins"].values() for name in entry.get("names", {}).values()}
+    return sorted(set(candidates) - used)
+
+
+def remove_login(data: dict, account: str, name: str) -> List[Credential]:
+    """Removes a login; returns the stored credentials that no remaining entry uses any more."""
+    entry = data["logins"][account]
+    removed = entry["names"].pop(name)
+    if entry.get("last") == name:
+        del entry["last"]
+    if data.get("default") == [account, name]:
+        data["default"] = [account, ""]
+    return _unused(data, [(entry.get("url", ""), removed["login"])])
+
+
+def remove_account(data: dict, account: str) -> List[Credential]:
+    """Removes an account with all its logins; returns the stored credentials that are no longer used."""
+    entry = data["logins"].pop(account)
+    if data.get("default", ["", ""])[0] == account:
+        data["default"] = ["", ""]
+    return _unused(data, [(entry.get("url", ""), name["login"]) for name in entry.get("names", {}).values()])

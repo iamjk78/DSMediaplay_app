@@ -196,7 +196,13 @@
         "url_invalid": "Zadejte platnou adresu začínající https://",
         "login_required": "Zadejte login.",
         "login_exists": "Tento login už u vybraného účtu existuje.",
-        "select_account_first": "Nejdřív vyberte zákaznický účet."
+        "select_account_first": "Nejdřív vyberte zákaznický účet.",
+        "remove_login_confirm": "Odebrat login '{login}' ze zákaznického účtu '{account}'?\nUložené heslo bude smazáno.",
+        "remove_account_confirm": "Odebrat zákaznický účet '{account}' se všemi jeho loginy ({count}) a uloženými hesly?",
+        "select_login_first": "Nejdřív vyberte zákaznický účet a login.",
+        "password_required": "Zadejte heslo.",
+        "login_check_failed": "Přihlášení se nepodařilo ověřit: {error}",
+        "credential_delete_failed": "Některá uložená hesla se nepodařilo smazat ze systémového úložiště: {error}"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -395,6 +401,12 @@
         "url_invalid": "Enter a valid address starting with https://",
         "login_required": "Enter the login.",
         "login_exists": "This login already exists for the selected account.",
-        "select_account_first": "Select a customer account first."
+        "select_account_first": "Select a customer account first.",
+        "remove_login_confirm": "Remove login '{login}' from account '{account}'?\nIts saved password will be deleted.",
+        "remove_account_confirm": "Remove customer account '{account}' with all its logins ({count}) and their saved passwords?",
+        "select_login_first": "Select a customer account and a login first.",
+        "password_required": "Enter the password.",
+        "login_check_failed": "The login could not be verified: {error}",
+        "credential_delete_failed": "Some saved passwords could not be deleted from the system credential store: {error}"
     }
 }

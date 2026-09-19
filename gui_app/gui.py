@@ -14,6 +14,7 @@ from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
 from util import accounts, credentials
 from util.paths import resource_path
+import requests
 import webbrowser
 
 
@@ -183,9 +184,9 @@ class DSMediaplayApp(tk.Tk):
 
     def setup_ui(self):
         self.create_combobox(self, "customer_account", self._admin_row,
-                             "option_choose_administration", self.fill_login_details, columnspan=3)
+                             "option_choose_administration", self.on_account_selected, columnspan=3)
         self.create_combobox(self, "name", self._profile_row,
-                             "option_choose_name", self.fill_password_details, columnspan=3)
+                             "option_choose_name", self.on_login_selected, columnspan=3)
         self.create_label_and_entry(self, "password", self._password_row,
                                     "input_for_password", show="*")
         self.create_button(self, "save_login_details", self._save_button_row,
@@ -196,9 +197,11 @@ class DSMediaplayApp(tk.Tk):
         self.create_combobox(self, "select_action", self._action_row,
                              "option_choose_action", self.reset_data, self.action_var, columnspan=3)
         self.create_button(self, "input_prompt", self._text_box_row, self._generate_textbox, columnspan=3)
-        self.create_add_button(self._admin_row, self.open_add_account_dialog)
-        self.create_add_button(self._profile_row, self.open_add_login_dialog)
-        self.create_button(self, "reload", self._admin_row, self.refresh_ui, column=5)
+        self.create_symbol_button(self._admin_row, 4, "+", self.open_add_account_dialog)
+        self.create_symbol_button(self._admin_row, 5, "\u2212", self.remove_account)
+        self.create_symbol_button(self._profile_row, 4, "+", self.open_add_login_dialog)
+        self.create_symbol_button(self._profile_row, 5, "\u2212", self.remove_login)
+        self.create_button(self, "reload", self._admin_row, self.refresh_ui, column=6)
         self.create_action_buttons()
         self.refresh_ui()
         self.fill_default_login_details()
@@ -231,9 +234,9 @@ class DSMediaplayApp(tk.Tk):
         button.grid(row=row, column=column, columnspan=columnspan, padx=pad_x, pady=pad_y, sticky="w")
         setattr(self, f"{label_key}_button", button)
 
-    def create_add_button(self, row, command):
-        button = tk.Button(self, text="+", font=self.font, width=2, command=command)
-        button.grid(row=row, column=4, padx=5, pady=2, sticky="w")
+    def create_symbol_button(self, row, column, symbol, command):
+        button = tk.Button(self, text=symbol, font=self.font, width=2, command=command)
+        button.grid(row=row, column=column, padx=5, pady=2, sticky="w")
 
     def create_label_and_button(self, parent, label_key, row, button_var_name, command, columnspan=1):
         pad_x, pad_y = 5, 5
@@ -250,10 +253,10 @@ class DSMediaplayApp(tk.Tk):
         self.quit_button.grid(row=self._action_buttons_row, column=0, padx=pad_x, pady=pad_y, sticky="w")
         self.help_button = tk.Button(self, text=self.lang.get_message("help"), font=self.font, command=self.open_help)
         self.help_button.grid(row=self._action_buttons_row, column=1, padx=pad_x, pady=pad_y, sticky="w")
-        self.create_button(self, "settings", self._action_buttons_row, self.open_settings_window, column=4)
+        self.create_button(self, "settings", self._action_buttons_row, self.open_settings_window, column=5)
         self.start_button = tk.Button(self, text=self.lang.get_message("start"), font=self.font,
                                       command=self.execute_action)
-        self.start_button.grid(row=self._action_buttons_row, column=5, padx=pad_x, pady=pad_y, sticky="w")
+        self.start_button.grid(row=self._action_buttons_row, column=6, padx=pad_x, pady=pad_y, sticky="w")
 
     def open_settings_window(self):
         settings_window = SettingsWindow(self, self.lang)
@@ -479,7 +482,7 @@ class DSMediaplayApp(tk.Tk):
         self.save_account_configs()
         self.option_choose_administration['values'] = sorted(self.account_data.keys())
         self.option_choose_administration.set(name)
-        self.fill_login_details()
+        self.on_account_selected()
 
     def open_add_login_dialog(self):
         if not self.option_choose_administration.get():
@@ -492,7 +495,52 @@ class DSMediaplayApp(tk.Tk):
         self.save_account_configs()
         self.fill_login_details()
         self.option_choose_name.set(login)
-        self.fill_password_details()
+        self.on_login_selected()
+
+    def remove_login(self):
+        account = self.option_choose_administration.get()
+        name = self.option_choose_name.get()
+        if name not in self.account_data.get(account, {}).get("names", {}):
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("select_login_first"))
+            return
+        if not messagebox.askyesno(self.lang.get_message("warning_title"),
+                                   self.lang.get_message("remove_login_confirm", login=name, account=account)):
+            return
+        unused = accounts.remove_login(self.all_data, account, name)
+        self.save_account_configs()
+        self.delete_passwords(unused)
+        self.fill_login_details()
+
+    def remove_account(self):
+        account = self.option_choose_administration.get()
+        if account not in self.account_data:
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("select_account_first"))
+            return
+        count = len(self.account_data[account].get("names", {}))
+        if not messagebox.askyesno(self.lang.get_message("warning_title"),
+                                   self.lang.get_message("remove_account_confirm", account=account, count=count)):
+            return
+        unused = accounts.remove_account(self.all_data, account)
+        self.save_account_configs()
+        self.delete_passwords(unused)
+        self.default = self.all_data["default"]
+        self.option_choose_administration['values'] = sorted(self.account_data.keys())
+        self.option_choose_administration.set("")
+        self.option_choose_name.config(values=[])
+        self.option_choose_name.set("")
+        self.input_for_password.delete(0, tk.END)
+
+    def delete_passwords(self, unused):
+        """Deletes the passwords of removed logins; a store failure is reported once, the removal stays."""
+        error = None
+        for url, login in unused:
+            try:
+                credentials.delete_password(url, login)
+            except credentials.KeyringError as failure:
+                error = failure
+        if error:
+            messagebox.showwarning(self.lang.get_message("warning_title"),
+                                   self.lang.get_message("credential_delete_failed", error=str(error)))
 
     def migrate_plaintext_passwords(self):
         """One-time move of passwords from an older config file into the OS credential store."""
@@ -506,39 +554,62 @@ class DSMediaplayApp(tk.Tk):
     def save_login_details(self):
         administration = self.option_choose_administration.get()
         account_name = self.option_choose_name.get()
-        login = self.account_data[administration].get("names", {})[account_name]["login"]
+        if account_name not in self.account_data.get(administration, {}).get("names", {}):
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("select_login_first"))
+            return
+        login = self.account_data[administration]["names"][account_name]["login"]
         password = self.input_for_password.get()
-        url = self.account_data[administration].get("url", [])
-        successful_login = try_login(url, login, password)
+        url = self.account_data[administration].get("url", "")
+        if not password:
+            messagebox.showerror(self.lang.get_message("error_title"), self.lang.get_message("password_required"))
+            return
+        self.config(cursor="watch")
+        self.update_idletasks()
+        try:
+            successful_login = try_login(url, login, password)
+        except requests.exceptions.RequestException as error:
+            messagebox.showerror(self.lang.get_message("error_title"),
+                                 self.lang.get_message("login_check_failed", error=str(error)))
+            return
+        finally:
+            self.config(cursor="")
         if not successful_login:
             messagebox.showerror(self.lang.get_message("error_title"), self.lang.get_message("save_failure"))
             return
-        if login and password:
-            try:
-                credentials.set_password(url, login, password)
-            except credentials.KeyringError as error:
-                messagebox.showerror(self.lang.get_message("error_title"),
-                                     self.lang.get_message("credential_store_error", error=str(error)))
-                return
-            self.account_data[administration].get("names", {})[account_name] = {"login": login}
-            self.save_account_configs()
-            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("save_success"))
-        else:
-            messagebox.showerror(self.lang.get_message("error_title"), self.lang.get_message("missing_data_or_login"))
+        try:
+            credentials.set_password(url, login, password)
+        except credentials.KeyringError as error:
+            messagebox.showerror(self.lang.get_message("error_title"),
+                                 self.lang.get_message("credential_store_error", error=str(error)))
+            return
+        self.account_data[administration]["names"][account_name] = {"login": login}
+        self.save_account_configs()
+        messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("save_success"))
 
     def fill_login_details(self, _=None):
         account = self.option_choose_administration.get()
-        previous_name = self.option_choose_name.get()
         if account in self.account_data:
             names = sorted(list(self.account_data[account].get("names", []).keys()))
             self.option_choose_name.config(values=names)
-
-            if previous_name in names:
-                self.option_choose_name.set(previous_name)
-            else:
-                self.option_choose_name.set("")
-
+            last = self.account_data[account].get("last")
+            self.option_choose_name.set(last if last in names else "")
             self.fill_password_details()
+
+    def on_account_selected(self, _=None):
+        self.fill_login_details()
+        self.remember_selection()
+
+    def on_login_selected(self, _=None):
+        self.fill_password_details()
+        self.remember_selection()
+
+    def remember_selection(self):
+        """Stores the last used account and its last used login, so the next start opens them again."""
+        account = self.option_choose_administration.get()
+        if account in self.account_data and accounts.remember_selection(
+                self.all_data, account, self.option_choose_name.get()):
+            self.default = self.all_data["default"]
+            self.save_account_configs()
 
     def fill_password_details(self, _=None):
         account = self.option_choose_administration.get()
@@ -564,7 +635,7 @@ class DSMediaplayApp(tk.Tk):
         self.default = self.all_data["default"]
 
     def fill_default_login_details(self):
-        admin, name = self.default
+        admin, name = (list(self.default) + ["", ""])[:2]
         if admin in self.account_data:
             self.option_choose_administration.set(admin)
             self.option_choose_name['values'] = sorted(list(self.account_data[admin].get("names", {}).keys()))

@@ -1,6 +1,7 @@
 import unittest
 
-from util.accounts import AccountError, add_account, add_login, normalize_url
+from util.accounts import (AccountError, add_account, add_login, normalize_url, remember_selection,
+                           remove_account, remove_login)
 
 
 def empty_config() -> dict:
@@ -74,6 +75,96 @@ class AddLoginTest(unittest.TestCase):
                 with self.assertRaises(AccountError) as context:
                     add_login(self.data, "Demo", login)
                 self.assertEqual(context.exception.key, key)
+
+
+def config_with_two_accounts() -> dict:
+    data = empty_config()
+    add_account(data, "A", "https://a.example.com")
+    add_account(data, "B", "https://b.example.com")
+    for account, logins in (("A", ("a1", "a2")), ("B", ("b1",))):
+        for login in logins:
+            add_login(data, account, login)
+    return data
+
+
+class RememberSelectionTest(unittest.TestCase):
+    def test_remembers_last_account_and_its_last_login(self):
+        data = config_with_two_accounts()
+
+        self.assertTrue(remember_selection(data, "A", "a2"))
+        self.assertTrue(remember_selection(data, "B", "b1"))
+
+        self.assertEqual(data["default"], ["B", "b1"])
+        self.assertEqual(data["logins"]["A"]["last"], "a2")
+        self.assertEqual(data["logins"]["B"]["last"], "b1")
+
+    def test_selecting_an_account_without_login_keeps_its_previous_last_login(self):
+        data = config_with_two_accounts()
+        remember_selection(data, "A", "a1")
+        remember_selection(data, "B", "b1")
+
+        remember_selection(data, "A", "")
+
+        self.assertEqual(data["default"], ["A", "a1"])
+
+    def test_reports_no_change_when_nothing_differs(self):
+        data = config_with_two_accounts()
+        remember_selection(data, "A", "a1")
+
+        self.assertFalse(remember_selection(data, "A", "a1"))
+
+    def test_ignores_a_login_that_does_not_belong_to_the_account(self):
+        data = config_with_two_accounts()
+
+        remember_selection(data, "A", "b1")
+
+        self.assertNotIn("last", data["logins"]["A"])
+        self.assertEqual(data["default"], ["A", ""])
+
+
+class RemoveTest(unittest.TestCase):
+    def test_remove_login_returns_its_credential_and_clears_the_pointers(self):
+        data = config_with_two_accounts()
+        remember_selection(data, "A", "a1")
+
+        unused = remove_login(data, "A", "a1")
+
+        self.assertEqual(unused, [("https://a.example.com", "a1")])
+        self.assertNotIn("a1", data["logins"]["A"]["names"])
+        self.assertNotIn("last", data["logins"]["A"])
+        self.assertEqual(data["default"], ["A", ""])
+
+    def test_remove_login_keeps_the_password_another_entry_still_uses(self):
+        data = config_with_two_accounts()
+        data["logins"]["A"]["names"]["a1 copy"] = {"login": "a1"}  # same URL and login, another display name
+
+        self.assertEqual(remove_login(data, "A", "a1"), [])
+        self.assertEqual(remove_login(data, "A", "a1 copy"), [("https://a.example.com", "a1")])
+
+    def test_remove_account_returns_all_its_credentials_and_resets_default(self):
+        data = config_with_two_accounts()
+        remember_selection(data, "A", "a2")
+
+        unused = remove_account(data, "A")
+
+        self.assertEqual(unused, [("https://a.example.com", "a1"), ("https://a.example.com", "a2")])
+        self.assertNotIn("A", data["logins"])
+        self.assertEqual(data["default"], ["", ""])
+
+    def test_remove_account_keeps_credentials_used_by_another_account_with_the_same_url(self):
+        data = config_with_two_accounts()
+        add_account(data, "A again", "https://a.example.com")
+        add_login(data, "A again", "a1")
+
+        self.assertEqual(remove_account(data, "A"), [("https://a.example.com", "a2")])
+
+    def test_removing_another_account_leaves_default_alone(self):
+        data = config_with_two_accounts()
+        remember_selection(data, "A", "a1")
+
+        remove_account(data, "B")
+
+        self.assertEqual(data["default"], ["A", "a1"])
 
 
 if __name__ == "__main__":

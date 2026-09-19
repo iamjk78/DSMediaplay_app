@@ -6,6 +6,8 @@ from requests.adapters import HTTPAdapter
 import json
 from dataclasses import dataclass
 
+LOGIN_TIMEOUT = 30  # seconds; without it a network black hole would freeze the window forever
+
 
 class _AssertHostnameAdapter(HTTPAdapter):
     """Verifies the server certificate against `assert_hostname` instead of the host that is connected to."""
@@ -137,9 +139,11 @@ class ServerApi:
             "password": self._password,
             "getToken": "true"
         }
-        response = self._post(self._url + "/session", json=data)
-        response = response.json()
-        token = response.get("token")
+        response = self._post(self._url + "/session", json=data, timeout=LOGIN_TIMEOUT)
+        if response.status_code in (401, 403):
+            raise LoginError
+        body = response.json()  # a failed login answers with the JSON literal null
+        token = body.get("token") if isinstance(body, dict) else None
         if not token:
             raise LoginError
         return token
