@@ -2,12 +2,17 @@ import tkinter as tk
 from typing import Callable, Optional
 
 TOOLTIP_DELAY_MS = 500
+# Distance from the pointer's hotspot: the arrow cursor reaches ~15 px to the right of it, and the tooltip must never
+# sit under the pointer, or entering it would count as leaving the button and the tooltip would flicker
+GAP_RIGHT_OF_POINTER = 20
+GAP_LEFT_OF_POINTER = 8
 
 
 class Tooltip:
     """
-    Floating help shown when the pointer rests on `widget` for `delay_ms`, hidden when it leaves or the widget is
-    clicked. The text is read when the tooltip appears, so it always follows the current language.
+    Floating help shown to the right of the pointer (to the left when there is no room) when it rests on `widget`
+    for `delay_ms`, hidden when it leaves or the widget is clicked. The text is read when the tooltip appears,
+    so it always follows the current language.
     """
 
     def __init__(self, widget: tk.Widget, text: Callable[[], str], delay_ms: int = TOOLTIP_DELAY_MS) -> None:
@@ -17,7 +22,9 @@ class Tooltip:
         self._after_id: Optional[str] = None
         self._window: Optional[tk.Toplevel] = None
         self._label: Optional[tk.Label] = None
-        widget.bind("<Enter>", self._schedule, add="+")
+        self._pointer = (0, 0)
+        widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Motion>", self._remember_pointer, add="+")
         for event in ("<Leave>", "<ButtonPress>", "<Destroy>"):
             widget.bind(event, self._hide, add="+")
         widget.tooltip = self
@@ -39,7 +46,14 @@ class Tooltip:
         self._label.pack()
         self._window = window
 
-    def _schedule(self, _event=None) -> None:
+    def _remember_pointer(self, event: tk.Event) -> None:
+        self._pointer = (event.x_root, event.y_root)
+
+    def _on_enter(self, event: tk.Event) -> None:
+        self._remember_pointer(event)
+        self._schedule()
+
+    def _schedule(self) -> None:
         self._hide()
         self._after_id = self._widget.after(self._delay_ms, self._show)
         if self._window is None:  # after the timer started, so building the window does not lengthen the delay
@@ -54,10 +68,12 @@ class Tooltip:
         self._label.configure(text=text, font=widget.cget("font"))
         window.update_idletasks()
         width, height = window.winfo_reqwidth(), window.winfo_reqheight()
-        x = min(widget.winfo_rootx(), widget.winfo_screenwidth() - width - 8)
-        y = widget.winfo_rooty() + widget.winfo_height() + 4
-        if y + height > widget.winfo_screenheight():
-            y = widget.winfo_rooty() - height - 4
+        pointer_x, pointer_y = self._pointer
+        x = pointer_x + GAP_RIGHT_OF_POINTER
+        if x + width > widget.winfo_screenwidth() - 4:
+            x = pointer_x - GAP_LEFT_OF_POINTER - width
+        y = pointer_y - height // 2
+        y = min(max(y, 0), widget.winfo_screenheight() - height - 4)
         window.geometry(f"+{max(x, 0)}+{y}")
         window.deiconify()
 
