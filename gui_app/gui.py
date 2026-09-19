@@ -6,12 +6,13 @@ import json
 import os
 from gui_app.input_box import InputTextBox
 from gui_app.settings_dialog import SettingsWindow
+from gui_app.account_dialogs import EntryDialog, LanguageDialog
 from processor.csv_generator import CSVTaskFactory
 from processor.input_processing import try_login
 from datetime import datetime
 from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
-from util import credentials
+from util import accounts, credentials
 from util.paths import resource_path
 import webbrowser
 
@@ -44,6 +45,8 @@ class DSMediaplayApp(tk.Tk):
         self.version = "1.0"
         self.config_file = logins_file
         self.all_data = self.load_account_configs()
+        if "lang" not in self.all_data:
+            self.ask_language()
         self.lang = LanguageManager(language=self.all_data.get("lang", "en"), config_path=language_file)
         self.migrate_plaintext_passwords()
         self.font = tuple(self.all_data.get("font", ["Helvetica", 12]))
@@ -198,7 +201,9 @@ class DSMediaplayApp(tk.Tk):
         self.create_combobox(self, "select_action", self._action_row,
                              "option_choose_action", self.reset_data, self.action_var, columnspan=3)
         self.create_button(self, "input_prompt", self._text_box_row, self._generate_textbox, columnspan=3)
-        self.create_button(self, "reload", self._admin_row, self.refresh_ui, column=4)
+        self.create_add_button(self._admin_row, self.open_add_account_dialog)
+        self.create_add_button(self._profile_row, self.open_add_login_dialog)
+        self.create_button(self, "reload", self._admin_row, self.refresh_ui, column=5)
         self.create_action_buttons()
         self.refresh_ui()
         self.fill_default_login_details()
@@ -231,6 +236,10 @@ class DSMediaplayApp(tk.Tk):
         button.grid(row=row, column=column, columnspan=columnspan, padx=pad_x, pady=pad_y, sticky="w")
         setattr(self, f"{label_key}_button", button)
 
+    def create_add_button(self, row, command):
+        button = tk.Button(self, text="+", font=self.font, width=2, command=command)
+        button.grid(row=row, column=4, padx=5, pady=2, sticky="w")
+
     def create_label_and_button(self, parent, label_key, row, button_var_name, command, columnspan=1):
         pad_x, pad_y = 5, 5
         label = ttk.Label(parent, text=self.lang.get_message(label_key), font=self.font)
@@ -246,10 +255,10 @@ class DSMediaplayApp(tk.Tk):
         self.quit_button.grid(row=self._action_buttons_row, column=0, padx=pad_x, pady=pad_y, sticky="w")
         self.help_button = tk.Button(self, text=self.lang.get_message("help"), font=self.font, command=self.open_help)
         self.help_button.grid(row=self._action_buttons_row, column=1, padx=pad_x, pady=pad_y, sticky="w")
-        self.create_button(self, "settings", self._action_buttons_row, self.open_settings_window, column=3)
+        self.create_button(self, "settings", self._action_buttons_row, self.open_settings_window, column=4)
         self.start_button = tk.Button(self, text=self.lang.get_message("start"), font=self.font,
                                       command=self.execute_action)
-        self.start_button.grid(row=self._action_buttons_row, column=4, padx=pad_x, pady=pad_y, sticky="w")
+        self.start_button.grid(row=self._action_buttons_row, column=5, padx=pad_x, pady=pad_y, sticky="w")
 
     def open_settings_window(self):
         settings_window = SettingsWindow(self, self.lang)
@@ -454,6 +463,41 @@ class DSMediaplayApp(tk.Tk):
     def save_account_configs(self):
         with open(self.config_file, "w", encoding='utf-8') as file:
             json.dump(self.all_data, file, indent=4, ensure_ascii=False)
+
+    def ask_language(self):
+        """First start only: the choice is stored in the config, so it is never asked again."""
+        self.withdraw()
+        dialog = LanguageDialog(self)
+        self.wait_window(dialog)
+        self.deiconify()
+        if dialog.language:
+            self.all_data["lang"] = dialog.language
+            self.save_account_configs()
+
+    def open_add_account_dialog(self):
+        EntryDialog(self, self.lang.get_message("add_account"),
+                    [self.lang.get_message("account_name"), self.lang.get_message("account_url")],
+                    self.add_account)
+
+    def add_account(self, name, url):
+        name = accounts.add_account(self.all_data, name, url)
+        self.save_account_configs()
+        self.option_choose_administration['values'] = sorted(self.account_data.keys())
+        self.option_choose_administration.set(name)
+        self.fill_login_details()
+
+    def open_add_login_dialog(self):
+        if not self.option_choose_administration.get():
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("select_account_first"))
+            return
+        EntryDialog(self, self.lang.get_message("add_login"), [self.lang.get_message("login")], self.add_login)
+
+    def add_login(self, login):
+        login = accounts.add_login(self.all_data, self.option_choose_administration.get(), login)
+        self.save_account_configs()
+        self.fill_login_details()
+        self.option_choose_name.set(login)
+        self.fill_password_details()
 
     def migrate_plaintext_passwords(self):
         """One-time move of passwords from an older config file into the OS credential store."""

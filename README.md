@@ -14,6 +14,9 @@ python run.py                                        # optional: -j path/to/logi
 
 Nothing secret is stored in this repository or in the build.
 
+- On the first start the app asks for the language (Czech or English) and remembers it; it can be changed in *Settings*.
+- **Customer accounts and logins** are added in the app with the **+** buttons next to the two drop-downs
+  (an account needs a name and an `https://` address; a login is added to the selected account).
 - **Account list** (customer name, URL, login - no passwords) is a JSON file in the per-user config folder:
   `%APPDATA%\DSM_GUI\logins.json` on Windows, `~/Library/Application Support/DSM_GUI/logins.json` on macOS.
   Use `login.example.json` as a template, or pass another file with `-j`.
@@ -26,8 +29,10 @@ Changing a customer's URL invalidates its stored passwords (they are keyed by lo
 
 ## Build
 
-GitHub Actions (`Build` workflow, run manually or by pushing a `v*` tag) builds `DSM_GUI-windows.zip` and
-`DSM_GUI-macos.zip` with PyInstaller and attaches them to the run as artifacts. Locally:
+GitHub Actions (`Build` workflow, run manually or by pushing a `v*` tag) builds the Windows and macOS packages
+with PyInstaller and attaches them to the run as artifacts. Running it manually with a `release_tag`
+(e.g. `v1.0.0`), or pushing a `v*` tag, also publishes a GitHub release with `DSM_GUI-windows.zip` and/or
+`DSM_GUI-macos.zip`. Locally:
 
 ```bash
 pip install -r requirements-build.txt
