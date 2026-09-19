@@ -81,17 +81,24 @@ jobs:
           kill $app_pid 2>/dev/null || true
           [ "${ok:-0}" = "1" ] && [ "${alive:-0}" = "1" ] || { echo "Application did not start or crashed"; exit 1; }
 
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Compress-Archive -Path dist/DSM_GUI -DestinationPath DSM_GUI-windows.zip
-
+      # GitHub wraps every artifact in a zip, so the Windows folder is uploaded as it is (no zip inside a zip).
+      # macOS keeps its own zip because artifact uploads drop file permissions and symlinks that the .app needs.
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: ditto -c -k --keepParent dist/DSM_GUI.app DSM_GUI-macos.zip
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
         with:
-          name: DSM_GUI-${{ matrix.platform }}
-          path: DSM_GUI-*.zip
+          name: DSM_GUI-windows
+          path: dist
+          if-no-files-found: error
+
+      - name: Upload (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSM_GUI-macos
+          path: DSM_GUI-macos.zip
           if-no-files-found: error
