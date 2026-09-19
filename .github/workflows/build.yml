@@ -20,15 +20,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            platform: windows
-            artifact: DSM_GUI-windows
-          - os: macos-latest
-            platform: macos
-            artifact: DSM_GUI-macos
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == matrix.platform
-    runs-on: ${{ matrix.os }}
+        # `inputs` is empty for tag pushes, which build everything
+        platform: ${{ fromJSON((inputs.platform || 'all') == 'all' && '["windows","macos"]' || format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ matrix.platform == 'windows' && 'windows-latest' || 'macos-latest' }}
     defaults:
       run:
         shell: bash
@@ -95,6 +89,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: DSM_GUI-${{ matrix.platform }}
           path: DSM_GUI-*.zip
           if-no-files-found: error
