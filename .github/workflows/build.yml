@@ -3,6 +3,12 @@ name: Build
 # Manual or tag-triggered only: macOS runners are billed at 10x and Windows at 2x of the included minutes.
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Which platform to build
+        type: choice
+        options: [all, windows, macos]
+        default: all
   push:
     tags: ["v*"]
 
@@ -16,9 +22,12 @@ jobs:
       matrix:
         include:
           - os: windows-latest
+            platform: windows
             artifact: DSM_GUI-windows
           - os: macos-latest
+            platform: macos
             artifact: DSM_GUI-macos
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == matrix.platform
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -47,6 +56,17 @@ jobs:
 
       - name: Verify that the CA bundle needed for TLS verification is bundled
         run: find dist -name cacert.pem | grep -q . || { echo "certifi CA bundle missing from build"; exit 1; }
+
+      - name: Verify that the Windows runtime pieces are bundled (Tcl/Tk, credential store backend)
+        if: runner.os == 'Windows'
+        run: |
+          missing=0
+          find dist -iname '_tkinter*' | grep -q . || { echo "missing: _tkinter"; missing=1; }
+          find dist -iname 'tcl*.dll' | grep -q . || { echo "missing: Tcl DLL"; missing=1; }
+          find dist -type d -name '_tcl_data' | grep -q . || { echo "missing: Tcl data"; missing=1; }
+          find dist -type d -name '_tk_data' | grep -q . || { echo "missing: Tk data"; missing=1; }
+          find dist -type d -name 'win32ctypes' | grep -q . || { echo "missing: win32ctypes (Windows Credential Manager backend)"; missing=1; }
+          [ "$missing" = "0" ] || { echo "--- bundle top level:"; ls dist/DSM_GUI dist/DSM_GUI/_internal | head -60; exit 1; }
 
       - name: Smoke test (app starts and serves its bundled documentation)
         run: |
