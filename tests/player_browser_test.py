@@ -12,8 +12,8 @@ import requests
 
 from api_testing.request_calls import LoginError, ServerApi
 from gui_app import gui
-from gui_app.player_browser import (COLUMNS, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, SEPARATOR_COLOR, PlayerBrowser,
-                                    valid_widths)
+from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
+                                    SEPARATOR_COLOR, SORT_CURSOR, PlayerBrowser, valid_widths)
 from util.language import LanguageManager
 
 ACTION = "show_player_snapshots"
@@ -394,6 +394,136 @@ class ColumnWidthTest(BrowserTestCase):
         self.app.update()
 
         self.assertLessEqual(browser.winfo_width(), self.app.winfo_screenwidth())
+
+
+class ResizeZoneTest(BrowserTestCase):
+    """The whole length of a line, EDGE_ZONE pixels to each side of it, is where the column can be grabbed."""
+
+    def setUp(self):
+        super().setUp()
+        self.browser = self.open()
+        self.app.update()
+        self.line = self.browser._header_separators[0].winfo_rootx() + 3  # the x of the first line
+        self.body_cell = self.browser._widgets[id(self.browser._visible[0])][0]
+        self.header_cell = self.browser._header_cells["status"]
+
+    def event(self, widget, kind, offset, **options):
+        widget.event_generate(kind, x=2, y=2, rootx=self.line + offset, rooty=widget.winfo_rooty() + 2, **options)
+
+    def drag_on(self, widget, start, distance):
+        self.event(widget, "<ButtonPress-1>", start)
+        self.event(widget, "<B1-Motion>", start + distance // 2, state=0x100)
+        self.event(widget, "<B1-Motion>", start + distance, state=0x100)
+        self.event(widget, "<ButtonRelease-1>", start + distance)
+        self.app.update()
+
+    def test_the_zone_is_ten_pixels_to_each_side_of_the_line(self):
+        self.assertEqual(EDGE_ZONE, 10)
+        for offset in (-10, -5, 0, 5, 10):
+            with self.subTest(offset=offset):
+                self.assertEqual(self.browser._edge_at(self.line + offset), "name")
+        for offset in (-11, 11, -40, 40):
+            with self.subTest(offset=offset):
+                self.assertIsNone(self.browser._edge_at(self.line + offset))
+
+    def test_the_pointer_changes_over_the_zone_in_the_rows_and_in_the_header(self):
+        for widget, own_cursor in ((self.body_cell, ""), (self.header_cell, SORT_CURSOR)):
+            for offset in (-10, 0, 10):
+                with self.subTest(widget=str(widget), offset=offset):
+                    self.event(widget, "<Motion>", offset)
+                    self.assertEqual(str(widget.cget("cursor")), RESIZE_CURSOR)
+            for offset in (-11, 11):
+                with self.subTest(widget=str(widget), offset=offset):
+                    self.event(widget, "<Motion>", offset)
+                    self.assertEqual(str(widget.cget("cursor")), own_cursor)
+
+    def test_the_pointer_goes_back_when_it_leaves(self):
+        self.event(self.body_cell, "<Motion>", 3)
+        self.assertEqual(str(self.body_cell.cget("cursor")), RESIZE_CURSOR)
+
+        self.body_cell.event_generate("<Leave>")
+
+        self.assertEqual(str(self.body_cell.cget("cursor")), "")
+
+    def test_the_rows_can_be_used_to_resize_not_only_the_header(self):
+        before = self.browser.column_widths()["name"]
+
+        self.drag_on(self.body_cell, 4, 50)
+
+        self.assertEqual(self.browser.column_widths()["name"], before + 50)
+
+    def test_pressing_and_holding_resizes_live_and_letting_go_saves(self):
+        saved = []
+        browser = self.open(save_column_widths=saved.append)
+        self.app.update()
+        line = browser._header_separators[1].winfo_rootx() + 3
+        cell = browser._widgets[id(browser._visible[0])][2]
+        before = browser.column_widths()["status"]
+
+        def at(offset, kind, **options):
+            cell.event_generate(kind, x=2, y=2, rootx=line + offset, rooty=cell.winfo_rooty() + 2, **options)
+        at(0, "<ButtonPress-1>")
+        at(15, "<B1-Motion>", state=0x100)
+        self.assertEqual(browser.column_widths()["status"], before + 15)  # follows the pointer while held
+        at(40, "<B1-Motion>", state=0x100)
+        self.assertEqual(browser.column_widths()["status"], before + 40)
+        at(-20, "<B1-Motion>", state=0x100)
+        self.assertEqual(browser.column_widths()["status"], before - 20)  # and back again
+        self.assertEqual(saved, [])
+        at(-20, "<ButtonRelease-1>")
+
+        self.assertEqual(saved, [browser.column_widths()])
+        at(60, "<B1-Motion>", state=0x100)  # moving without the button changes nothing any more
+        self.assertEqual(browser.column_widths()["status"], before - 20)
+
+    def test_the_resize_pointer_stays_during_the_drag_wherever_the_pointer_is(self):
+        self.event(self.body_cell, "<ButtonPress-1>", 0)
+
+        self.event(self.body_cell, "<Motion>", 200)
+
+        self.assertEqual(str(self.body_cell.cget("cursor")), RESIZE_CURSOR)
+        self.event(self.body_cell, "<ButtonRelease-1>", 200)
+
+    def test_a_press_outside_the_zone_does_not_resize(self):
+        before = self.browser.column_widths()
+
+        self.drag_on(self.body_cell, 11, 50)
+
+        self.assertEqual(self.browser.column_widths(), before)
+
+    def test_a_click_on_a_header_sorts_but_not_inside_a_zone(self):
+        self.assertEqual(self.browser._sort, ("name", False))
+        self.event(self.header_cell, "<ButtonPress-1>", 4)  # the status header, in the zone of the name column's line
+        self.event(self.header_cell, "<ButtonRelease-1>", 4)
+        self.assertEqual(self.browser._sort, ("name", False))
+
+        self.header_cell.event_generate("<ButtonPress-1>", x=2, y=2, rootx=self.line + 60, rooty=10)
+        self.header_cell.event_generate("<ButtonRelease-1>", x=2, y=2, rootx=self.line + 60, rooty=10)
+
+        self.assertEqual(self.browser._sort, ("status", False))
+
+    def test_widgets_outside_the_table_are_left_alone(self):
+        entry = self.browser.name_entry
+        before = str(entry.cget("cursor"))
+
+        self.event(entry, "<Motion>", 0)
+        self.event(entry, "<ButtonPress-1>", 0)
+
+        self.assertEqual(str(entry.cget("cursor")), before)
+        self.assertIsNone(self.browser._drag)
+
+    def test_the_zones_follow_the_lines_when_a_column_is_widened_and_when_the_table_is_scrolled(self):
+        self.drag_on(self.body_cell, 0, 80)
+        moved = self.browser._header_separators[1].winfo_rootx() + 3
+        self.assertEqual(self.browser._edge_at(moved), "status")
+
+        browser = self.open(column_widths={"name": 1400, "group": 1400})
+        self.app.update()
+        browser._scroll_x("moveto", 0.5)
+        self.app.update()
+        scrolled = browser._header_separators[2].winfo_rootx() + 3
+        self.assertEqual(browser._edge_at(scrolled), "group")
+        self.assertIsNone(browser._edge_at(scrolled + 40))
 
 
 class ResetFiltersTest(BrowserTestCase):

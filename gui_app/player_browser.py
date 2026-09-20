@@ -22,7 +22,10 @@ COLUMNS = (
 )
 MIN_COLUMN_WIDTH = 40  # pixels
 MAX_COLUMN_WIDTH = 1500
-SEPARATOR_WIDTH = 7  # the grab area of the line between two columns; the line itself is 1 px
+SEPARATOR_WIDTH = 7  # the space between two columns; the line itself is 1 px wide
+EDGE_ZONE = 10  # pixels to each side of a line where the pointer changes and the column can be resized
+RESIZE_CURSOR = "sb_h_double_arrow"
+SORT_CURSOR = "hand2"
 SEPARATOR_COLOR = "black"
 SNAPSHOT_COLUMN_MINSIZE = 110
 ONLINE_COLOR = "#2e7d32"
@@ -50,7 +53,8 @@ class PlayerBrowser(tk.Toplevel):
     """
     The players of one account in a table that can be filtered by name, state, group, location and category.
     The data is fetched once (and again on "Refresh"); the filters work on it locally. The columns can be resized by
-    dragging the black lines between them; `save_column_widths` is called with the widths when the user lets go
+    dragging the black lines between them (anywhere along a line, EDGE_ZONE pixels to each side of it);
+    `save_column_widths` is called with the widths when the user lets go
     (and with {} when they go back to the defaults).
     """
 
@@ -137,7 +141,7 @@ class PlayerBrowser(tk.Toplevel):
         return box
 
     def _build_table(self):
-        frame = tk.Frame(self)
+        frame = self._table = tk.Frame(self)
         frame.grid(row=2, column=0, sticky="nsew", padx=10)
         frame.grid_rowconfigure(1, weight=1)
         frame.grid_columnconfigure(0, weight=1)
@@ -151,9 +155,9 @@ class PlayerBrowser(tk.Toplevel):
         self._header_cells: Dict[str, tk.Label] = {}
         self._header_separators: List[tk.Canvas] = []
         for index, (key, _, _) in enumerate(COLUMNS):
-            cell = tk.Label(self._header, font=bold, width=1, anchor="w", cursor="hand2")
+            cell = tk.Label(self._header, font=bold, width=1, anchor="w", cursor=SORT_CURSOR)
             cell.grid(row=0, column=2 * index, sticky="ew", padx=CELL_PADDING)
-            cell.bind("<Button-1>", lambda _, column=key: self._sort_by(column))
+            cell.bind("<Button-1>", lambda event, column=key: self._on_header_click(event, column))
             self._header_cells[key] = cell
             self._header_separators.append(self._header_separator(index, key))
         self._show_sort_arrow()
@@ -173,16 +177,19 @@ class PlayerBrowser(tk.Toplevel):
         self._apply_widths()
         self.bind("<MouseWheel>", self._on_mouse_wheel)
         self.bind("<Shift-MouseWheel>", self._on_shift_mouse_wheel)
+        # On the window, not on the lines: the events of every widget of the table arrive here, so the whole
+        # length of a line (header and rows) can be grabbed, and the zone reaches over the text beside it
+        self.bind("<Motion>", self._on_pointer_move, add="+")
+        self.bind("<Leave>", self._on_pointer_leave, add="+")
+        self.bind("<ButtonPress-1>", self._start_drag, add="+")
+        self.bind("<B1-Motion>", self._drag_to, add="+")
+        self.bind("<ButtonRelease-1>", self._end_drag, add="+")
 
     def _header_separator(self, index: int, key: str) -> tk.Canvas:
         middle = SEPARATOR_WIDTH // 2
-        separator = tk.Canvas(self._header, width=SEPARATOR_WIDTH, height=1, highlightthickness=0, borderwidth=0,
-                              cursor="sb_h_double_arrow")
+        separator = tk.Canvas(self._header, width=SEPARATOR_WIDTH, height=1, highlightthickness=0, borderwidth=0)
         line = separator.create_line(middle, 0, middle, 1, fill=SEPARATOR_COLOR)
         separator.bind("<Configure>", lambda event: separator.coords(line, middle, 0, middle, event.height))
-        separator.bind("<ButtonPress-1>", lambda event: self._start_drag(key, event))
-        separator.bind("<B1-Motion>", self._drag_to)
-        separator.bind("<ButtonRelease-1>", self._end_drag)
         separator.grid(row=0, column=2 * index + 1, sticky="ns")
         return separator
 
@@ -208,8 +215,42 @@ class PlayerBrowser(tk.Toplevel):
                 frame.grid_columnconfigure(2 * index + 1, minsize=SEPARATOR_WIDTH)
             frame.grid_columnconfigure(2 * len(COLUMNS), minsize=SNAPSHOT_COLUMN_MINSIZE)
 
-    def _start_drag(self, key: str, event):
-        self._drag = (key, event.x_root, self._widths[key])
+    def _edge_at(self, x_root: int) -> Optional[str]:
+        """The column whose right-hand line is within EDGE_ZONE pixels of the pointer, if any."""
+        for (key, _, _), separator in zip(COLUMNS, self._header_separators):
+            if abs(x_root - (separator.winfo_rootx() + SEPARATOR_WIDTH // 2)) <= EDGE_ZONE:
+                return key
+        return None
+
+    def _in_table(self, widget) -> bool:
+        return str(widget) == str(self._table) or str(widget).startswith(str(self._table) + ".")
+
+    def _on_pointer_move(self, event):
+        if not self._in_table(event.widget):
+            return
+        resize = self._drag is not None or self._edge_at(event.x_root) is not None
+        self._set_cursor(event.widget, RESIZE_CURSOR if resize else None)
+
+    def _on_pointer_leave(self, event):
+        if self._drag is None and self._in_table(event.widget):
+            self._set_cursor(event.widget, None)
+
+    def _set_cursor(self, widget, cursor: Optional[str]):
+        """The resize cursor, or the widget's own (the header cells sort, everything else has none)."""
+        own = SORT_CURSOR if widget in self._header_cells.values() else ""
+        try:
+            widget.configure(cursor=cursor or own)
+        except tk.TclError:
+            pass
+
+    def _on_header_click(self, event, column: str):
+        if self._edge_at(event.x_root) is None:  # a press on a line's zone is the start of a resize
+            self._sort_by(column)
+
+    def _start_drag(self, event):
+        key = self._edge_at(event.x_root) if self._in_table(event.widget) else None
+        if key:
+            self._drag = (key, event.x_root, self._widths[key])
 
     def _drag_to(self, event):
         if self._drag:
