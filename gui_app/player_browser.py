@@ -11,7 +11,7 @@ from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Tuple
 import requests
 
 from api_testing.request_calls import LoginError, ServerApi
-from gui_app.color_button import GREEN, RED, make_color_button, set_button_colors
+from gui_app.color_button import GREEN, RED, make_color_button, set_button_colors, set_button_interactive
 from gui_app.icons import set_window_icon
 from gui_app.multi_select import MultiSelectCombo
 from gui_app.snapshot_viewer import SnapshotSlots, SnapshotViewer, fetch_snapshot_from_server
@@ -52,6 +52,8 @@ OFFLINE_COLOR = "#c62828"
 NAME_FILTER_DELAY_MS = 150
 MAX_SNAPSHOT_WINDOWS = 5  # players whose snapshot can be open at the same time
 MIN_REFRESH_INTERVAL = 10  # seconds between the starts of two downloads, however often the button is pressed
+AUTO_REFRESH_SECONDS = 600  # a window that is left open updates itself this long after its last download started
+AUTO_REFRESH_RETRY_MS = 5000  # how long an automatic update waits when the user is in the middle of something
 COUNTDOWN_TICK_MS = 500
 POLL_INTERVAL_MS = 100
 CELL_PADDING = 4
@@ -137,6 +139,7 @@ class PlayerBrowser(tk.Toplevel):
         self._filter_after_id: Optional[str] = None
         self._poll_after_id: Optional[str] = None
         self._tick_after_id: Optional[str] = None
+        self._auto_after_id: Optional[str] = None
         self._settle_after_id: Optional[str] = None
         self._last_fetch_started: Optional[float] = None
         self._pending = False  # an update was asked for while it was too early: it runs when the interval is over
@@ -283,7 +286,7 @@ class PlayerBrowser(tk.Toplevel):
 
     def _measure_first_column(self):
         """The first column holds the screenshot buttons and the font buttons: never narrower than they need."""
-        probe = ttk.Button(self, text=self.lang.get_message("pb_snapshot"), style=BUTTON_STYLE)
+        probe = make_color_button(self, self.lang.get_message("pb_snapshot"), lambda: None, self._font, GREEN)
         self.update_idletasks()
         needed = max(probe.winfo_reqwidth(), self._font_holder.winfo_reqwidth())
         probe.destroy()
@@ -412,8 +415,8 @@ class PlayerBrowser(tk.Toplevel):
         for viewer in self._viewers.values():
             viewer.set_font(self._font)
         for widgets in self._widgets.values():
-            for cell in widgets[1:]:
-                cell.configure(font=self._font)
+            for widget in widgets:  # the button first, then the cells
+                widget.configure(font=self._font)
         zero = tkfont.Font(root=self, font=self._font).measure("0")
         self._default_widths = {key: chars * zero + 2 * CELL_PADDING for key, _, chars in COLUMNS}
         self._widths = ({key: round(width * ratio) for key, width in self._widths.items()} if self._customized
@@ -641,6 +644,25 @@ class PlayerBrowser(tk.Toplevel):
         self._update_refresh_state()
         threading.Thread(target=self._load, daemon=True).start()
         self._poll_after_id = self.after(POLL_INTERVAL_MS, self._poll)
+        self._schedule_auto_refresh(AUTO_REFRESH_SECONDS * 1000)
+
+    def _schedule_auto_refresh(self, delay_ms: int):
+        if self._auto_after_id:
+            self.after_cancel(self._auto_after_id)
+        self._auto_after_id = self.after(int(delay_ms), self._auto_refresh)
+
+    def _auto_refresh(self):
+        """
+        The update of a window that has been open a long time (a player can have gone offline meanwhile). It waits
+        while the user is in the middle of something the new data would disturb: a list of choices that is open,
+        a column that is being resized.
+        """
+        self._auto_after_id = None
+        if self._drag is not None or any(box.is_open for box in (self.group_box, self.location_box, self.label_box,
+                                                                  self.version_box)):
+            self._schedule_auto_refresh(AUTO_REFRESH_RETRY_MS)
+            return
+        self.refresh()
 
     def _seconds_until_refresh(self) -> float:
         if self._last_fetch_started is None:
@@ -706,6 +728,7 @@ class PlayerBrowser(tk.Toplevel):
         self._update_refresh_state()
 
     def _show_players(self, rows: List[PlayerRow]):
+        scroll = self._canvas.yview()[0]  # the table stays where it was scrolled to, also when it updates itself
         for widgets in self._widgets.values():
             for widget in widgets:
                 widget.destroy()
@@ -721,7 +744,11 @@ class PlayerBrowser(tk.Toplevel):
             {row.version for row in rows if row.version}, key=version_key)])
         self.location_box.set_options([(location, location) for location in sorted(
             {row.location for row in rows if row.location}, key=str.casefold)])
-        self.apply_filters()
+        self.apply_filters(keep_scroll=True)
+        self.update_idletasks()
+        self._update_scroll_regions()
+        if not self._fits("y"):
+            self._canvas.yview_moveto(scroll)
 
     def _moment(self, moment) -> str:
         return moment.strftime("%d.%m.%Y %H:%M") if moment else self.lang.get_message("pb_never")
@@ -734,11 +761,12 @@ class PlayerBrowser(tk.Toplevel):
         cells: List[tk.Widget] = [tk.Label(self._body, text=text, font=self._font, width=1, anchor="w")
                                   for text in texts]
         cells[1].configure(foreground=ONLINE_COLOR if row.online else OFFLINE_COLOR)
-        button = ttk.Button(self._body, text=self.lang.get_message("pb_snapshot"), style=BUTTON_STYLE,
-                            command=lambda: self.show_snapshot(row))
         can_ask = row.online and bool(row.player_id)  # an offline player cannot answer
+        # Green where a snapshot can be asked for, red where it cannot: seen at a glance
+        button = make_color_button(self._body, self.lang.get_message("pb_snapshot"),
+                                   lambda: self.show_snapshot(row), self._font, GREEN if can_ask else RED)
         if not can_ask:
-            button.state(["disabled"])
+            set_button_interactive(button, False, RED)
         Tooltip(button, lambda: self.lang.get_message("pb_tip_snapshot" if can_ask else "pb_tip_snapshot_offline"))
         return [button] + cells
 
@@ -816,8 +844,8 @@ class PlayerBrowser(tk.Toplevel):
             arrow = (" ▼" if self._sort[1] else " ▲") if key == self._sort[0] else ""
             self._header_cells[key].configure(text=self.lang.get_message(message) + arrow)
 
-    def apply_filters(self):
-        """Shows the players that match all the filters, in the chosen order."""
+    def apply_filters(self, keep_scroll: bool = False):
+        """Shows the players that match all the filters, in the chosen order (from the top, unless `keep_scroll`)."""
         if self._filter_after_id:
             self.after_cancel(self._filter_after_id)
             self._filter_after_id = None
@@ -840,7 +868,8 @@ class PlayerBrowser(tk.Toplevel):
                 line.grid_remove()
             else:
                 line.grid(row=0, column=self._cell_column(column) + 1, rowspan=max(1, len(visible)), sticky="ns")
-        self._canvas.yview_moveto(0)
+        if not keep_scroll:
+            self._canvas.yview_moveto(0)
         self._schedule_scroll_update()
         self._visible = visible
         if not self._rows:
@@ -854,7 +883,8 @@ class PlayerBrowser(tk.Toplevel):
         return [row.name for row in self._visible]
 
     def destroy(self):
-        for after_id in (self._filter_after_id, self._poll_after_id, self._tick_after_id, self._settle_after_id):
+        for after_id in (self._filter_after_id, self._poll_after_id, self._tick_after_id, self._auto_after_id,
+                         self._settle_after_id):
             if after_id:
                 self.after_cancel(after_id)
         super().destroy()

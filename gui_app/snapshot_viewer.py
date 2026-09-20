@@ -14,6 +14,7 @@ from PIL import Image, ImageTk
 from api_testing.request_calls import LoginError, ServerApi, SnapshotError, snapshot_file_stem, snapshot_reason
 from gui_app.icons import set_window_icon
 from gui_app.tooltip import Tooltip
+from util.paths import downloads_dir
 
 LIVE_INTERVALS = (2, 5, 10, 15, 20)  # seconds between two snapshots of the live view; 2 is the least a player can bear
 DEFAULT_LIVE_INTERVAL = 5
@@ -21,7 +22,7 @@ MIN_REQUEST_INTERVAL = 10  # seconds between the starts of two snapshots asked f
 MAX_CONCURRENT_SNAPSHOTS = 3
 SLOT_RETRY_MS = 500
 POLL_INTERVAL_MS = 100
-RESIZE_DELAY_MS = 40
+SHARPEN_DELAY_MS = 150  # quiet time after a resize before the image is scaled again with the best filter
 IMAGE_BACKGROUND = "#1e1e1e"
 ERROR_COLOR = "#c62828"
 
@@ -63,8 +64,8 @@ def decode_image(data: bytes) -> Image.Image:
 
 
 def ask_save_path(window: tk.Misc, initial_file: str, extension: str) -> str:
-    return filedialog.asksaveasfilename(parent=window, initialfile=initial_file, defaultextension=extension,
-                                        filetypes=[(extension.lstrip(".").upper(), f"*{extension}")])
+    return filedialog.asksaveasfilename(parent=window, initialdir=str(downloads_dir()), initialfile=initial_file,
+                                        defaultextension=extension, filetypes=[(extension.lstrip(".").upper(), f"*{extension}")])
 
 
 class SnapshotViewer(tk.Toplevel):
@@ -106,7 +107,7 @@ class SnapshotViewer(tk.Toplevel):
         self._next_id: Optional[str] = None
         self._poll_id: Optional[str] = None
         self._slot_id: Optional[str] = None  # the wait for a free slot
-        self._resize_id: Optional[str] = None
+        self._sharpen_id: Optional[str] = None
         self._closed = False
 
         self.title(self.lang.get_message("sv_title", player=player_name))
@@ -149,7 +150,7 @@ class SnapshotViewer(tk.Toplevel):
         self.canvas = tk.Canvas(self, background=IMAGE_BACKGROUND, highlightthickness=0, borderwidth=0, width=1,
                                 height=1)
         self.canvas.grid(row=1, column=0, sticky="nsew", padx=10)
-        self.canvas.bind("<Configure>", lambda _: self._schedule_render())
+        self.canvas.bind("<Configure>", lambda _: self._render(sharp=False))
 
         bottom = tk.Frame(self)
         bottom.grid(row=2, column=0, sticky="ew", padx=10, pady=(6, 8))
@@ -294,25 +295,29 @@ class SnapshotViewer(tk.Toplevel):
         self._duration = duration
         self._render()
 
-    def _schedule_render(self):
-        if self._resize_id:
-            self.after_cancel(self._resize_id)
-        self._resize_id = self.after(RESIZE_DELAY_MS, self._render)
-
-    def _render(self):
-        self._resize_id = None
+    def _render(self, sharp: bool = True):
+        """
+        Scales the image to the largest size that fits the window with its proportions kept, and centres it. While
+        the window is being resized it is done at once with a quick filter, so the image follows the window; when
+        the resizing has stopped it is done again with the best filter.
+        """
+        if self._sharpen_id:
+            self.after_cancel(self._sharpen_id)
+            self._sharpen_id = None
         self.canvas.delete("all")
         self._photo = None
         width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
         if self._image is None:
             text = self.lang.get_message("sv_taking" if self._busy else "sv_no_image")
-            self.canvas.create_text(width // 2, height // 2, text=text,
-                                    fill="#9e9e9e", font=self._font)
+            self.canvas.create_text(width // 2, height // 2, text=text, fill="#9e9e9e", font=self._font)
             return
         scale = min(width / self._image.width, height / self._image.height)
         size = (max(1, int(self._image.width * scale)), max(1, int(self._image.height * scale)))
-        self._photo = ImageTk.PhotoImage(self._image.resize(size, Image.Resampling.LANCZOS))
+        resample = Image.Resampling.LANCZOS if sharp else Image.Resampling.BILINEAR
+        self._photo = ImageTk.PhotoImage(self._image.resize(size, resample))
         self.canvas.create_image(width // 2, height // 2, image=self._photo, anchor="center")
+        if not sharp:
+            self._sharpen_id = self.after(SHARPEN_DELAY_MS, self._render)
 
     # ---- live view
 
@@ -421,7 +426,7 @@ class SnapshotViewer(tk.Toplevel):
     def destroy(self):
         self._closed = True
         self._live = False
-        for after_id in (self._next_id, self._slot_id, self._poll_id, self._resize_id):
+        for after_id in (self._next_id, self._slot_id, self._poll_id, self._sharpen_id):
             if after_id:
                 self.after_cancel(after_id)
         self._image = self._photo = self._raw = None

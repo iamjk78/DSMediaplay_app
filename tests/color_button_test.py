@@ -1,8 +1,8 @@
 import tkinter as tk
 import unittest
 
-from gui_app.color_button import (DISABLED, GREEN, GREEN_DARK, RED, ColorButton, button_enabled, make_color_button,
-                                  set_button_colors, set_button_enabled)
+from gui_app.color_button import (DISABLED, GREEN, GREEN_DARK, RED, ColorButton, button_enabled, button_interactive,
+                                  make_color_button, set_button_colors, set_button_enabled, set_button_interactive)
 
 
 class ColorButtonTest(unittest.TestCase):
@@ -180,6 +180,36 @@ class DisabledButtonTest(unittest.TestCase):
         self.button.set_enabled(False)
         self.button.event_generate("<ButtonRelease-1>", x=5, y=5)
 
+        self.assertEqual(self.clicks, [])
+
+    def test_an_inert_button_keeps_its_colour_but_ignores_the_pointer_and_clicks(self):
+        set_button_interactive(self.button, False, RED)
+
+        self.assertFalse(button_interactive(self.button))
+        self.assertEqual(self.fill(), RED.normal)
+        self.button.event_generate("<Enter>")
+        self.assertEqual(self.fill(), RED.normal)
+        self.click()
+        self.assertEqual(self.clicks, [])
+        self.assertEqual(self.fill(), RED.normal)
+
+    def test_an_inert_button_can_be_made_pressable_again(self):
+        set_button_interactive(self.button, False, RED)
+        set_button_interactive(self.button, True, GREEN)
+
+        self.assertTrue(button_interactive(self.button))
+        self.assertEqual(self.fill(), GREEN.normal)
+        self.click()
+        self.assertEqual(self.clicks, [1])
+
+    def test_the_inert_helper_works_for_a_native_button_too(self):
+        native = tk.Button(self.root, text="Native", command=lambda: self.clicks.append(1))
+        native.pack()
+
+        set_button_interactive(native, False, RED)
+        self.assertFalse(button_interactive(native))
+        self.assertEqual(str(native.cget("background")), RED.normal)
+        native.invoke()
         self.assertEqual(self.clicks, [])
 
     def test_the_helpers_work_for_the_canvas_button(self):

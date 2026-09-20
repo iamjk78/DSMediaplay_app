@@ -10,13 +10,15 @@ import time
 import tkinter as tk
 import unittest
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
 from api_testing.request_calls import LoginError, ResponseError, SnapshotError
 from gui_app import gui
-from gui_app.snapshot_viewer import (LIVE_INTERVALS, MIN_REQUEST_INTERVAL, SnapshotSlots, SnapshotViewer)
+from gui_app.snapshot_viewer import (LIVE_INTERVALS, MIN_REQUEST_INTERVAL, SnapshotSlots, SnapshotViewer,
+                                     ask_save_path)
 from util.language import LanguageManager
 
 
@@ -194,6 +196,104 @@ class TakingSnapshotsTest(ViewerTestCase):
 def requests_error():
     import requests
     return requests.exceptions.ConnectionError("secret-token")
+
+
+class ScalingTest(ViewerTestCase):
+    """The image follows the size of the window and keeps its proportions (400 x 200 here, so 2 : 1)."""
+
+    def open_wide_image(self):
+        viewer = self.open(MagicMock(return_value=(png((400, 200)), ".png")))
+        viewer.geometry("800x600")
+        self.app.update()
+        return viewer
+
+    @staticmethod
+    def shown(viewer):
+        return viewer._photo.width(), viewer._photo.height()
+
+    def assert_fits_with_proportions(self, viewer):
+        width, height = self.shown(viewer)
+        canvas = viewer.canvas.winfo_width(), viewer.canvas.winfo_height()
+        self.assertLessEqual(width, canvas[0])
+        self.assertLessEqual(height, canvas[1])
+        self.assertTrue(width == canvas[0] or height == canvas[1], "the image is as large as the window allows")
+        self.assertAlmostEqual(width / height, 2.0, delta=0.05)
+
+    def test_the_image_fills_the_window_with_its_proportions(self):
+        viewer = self.open_wide_image()
+
+        self.assert_fits_with_proportions(viewer)
+        self.assertGreater(self.shown(viewer)[0], 400)  # a smaller image is enlarged too
+
+    def test_the_image_grows_and_shrinks_with_the_window(self):
+        viewer = self.open_wide_image()
+        medium = self.shown(viewer)
+
+        viewer.geometry("1200x800")
+        self.app.update()
+        large = self.shown(viewer)
+        self.assert_fits_with_proportions(viewer)
+
+        viewer.geometry("600x500")
+        self.app.update()
+        small = self.shown(viewer)
+        self.assert_fits_with_proportions(viewer)
+
+        self.assertGreater(large[0], medium[0])
+        self.assertLess(small[0], medium[0])
+
+    def test_widening_the_window_alone_does_not_change_the_image(self):
+        viewer = self.open_wide_image()
+        viewer.geometry("800x400")  # the height is what limits the image now
+        self.app.update()
+        before = self.shown(viewer)
+
+        viewer.geometry("1200x400")
+        self.app.update()
+
+        self.assertEqual(self.shown(viewer), before)
+        self.assertAlmostEqual(before[0] / before[1], 2.0, delta=0.05)
+
+    def test_heightening_the_window_alone_does_not_change_the_image(self):
+        viewer = self.open_wide_image()
+        before = self.shown(viewer)  # 800 wide: the width limits it
+
+        viewer.geometry("800x900")
+        self.app.update()
+
+        self.assertEqual(self.shown(viewer), before)
+
+    def test_the_image_stays_in_the_middle(self):
+        viewer = self.open_wide_image()
+        viewer.geometry("1200x800")
+        self.app.update()
+
+        item = viewer.canvas.find_all()[0]
+        self.assertEqual(viewer.canvas.coords(item), [viewer.canvas.winfo_width() // 2,
+                                                       viewer.canvas.winfo_height() // 2])
+
+    def test_the_image_follows_the_window_at_once_and_is_sharpened_when_it_stops(self):
+        viewer = self.open_wide_image()
+
+        viewer.geometry("1000x700")
+        self.app.update()  # no waiting: the image is already scaled to the new size
+        self.assert_fits_with_proportions(viewer)
+        self.assertIsNotNone(viewer._sharpen_id)
+
+        self.wait_for(lambda: viewer._sharpen_id is None)
+        self.assert_fits_with_proportions(viewer)
+
+    def test_a_new_snapshot_is_scaled_to_the_current_window_size(self):
+        viewer = self.open(MagicMock(side_effect=[(png((400, 200)), ".png"), (png((200, 400)), ".png")]))
+        viewer.geometry("1000x700")
+        self.app.update()
+
+        viewer.take_snapshot()
+        self.wait_for(lambda: not viewer.busy)
+
+        width, height = self.shown(viewer)
+        self.assertAlmostEqual(width / height, 0.5, delta=0.05)  # the new image is tall
+        self.assertLessEqual(height, viewer.canvas.winfo_height())
 
 
 class SlotsTest(ViewerTestCase):
@@ -455,6 +555,24 @@ class SavingTest(ViewerTestCase):
 
         with open(target, "rb") as file:
             self.assertEqual(file.read(), RED)
+
+    def test_the_dialog_starts_in_the_downloads_folder_of_the_user(self):
+        downloads = os.path.join(self.directory.name, "Downloads")
+        os.mkdir(downloads)
+        with patch("util.paths.user_downloads_path", return_value=Path(downloads)), \
+                patch("gui_app.snapshot_viewer.filedialog.asksaveasfilename", return_value="") as dialog:
+            ask_save_path(self.app, "Lobby_1.png", ".png")
+
+        self.assertEqual(dialog.call_args.kwargs["initialdir"], downloads)
+        self.assertEqual(dialog.call_args.kwargs["initialfile"], "Lobby_1.png")
+
+    def test_without_a_downloads_folder_the_dialog_starts_in_the_home_folder(self):
+        missing = Path(self.directory.name) / "nowhere"
+        with patch("util.paths.user_downloads_path", return_value=missing), \
+                patch("gui_app.snapshot_viewer.filedialog.asksaveasfilename", return_value="") as dialog:
+            ask_save_path(self.app, "Lobby_1.png", ".png")
+
+        self.assertEqual(dialog.call_args.kwargs["initialdir"], os.path.expanduser("~"))
 
     def test_cancelling_the_dialog_saves_nothing(self):
         viewer = self.open(ask_path=MagicMock(return_value=""))

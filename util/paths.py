@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from platformdirs import user_config_path, user_log_path
+from platformdirs import user_config_path, user_downloads_path, user_log_path
 
 APP_NAME = "DSM_GUI"
 DEFAULT_LOGINS_FILE = "logins.json"
@@ -21,3 +21,9 @@ def default_logins_file() -> Path:
 
 def log_dir() -> Path:
     return user_log_path(APP_NAME, appauthor=False, ensure_exists=True)
+
+
+def downloads_dir() -> Path:
+    """The Downloads folder of the current user; the home folder if there is none (or it has been removed)."""
+    folder = user_downloads_path()
+    return folder if folder.is_dir() else Path.home()

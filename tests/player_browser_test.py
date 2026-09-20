@@ -1,3 +1,4 @@
+import gc
 import json
 import os
 import re
@@ -14,7 +15,7 @@ import requests
 
 from api_testing.request_calls import LoginError, ResponseError, ServerApi
 from gui_app import gui
-from gui_app.color_button import GREEN, RED, ColorButton
+from gui_app.color_button import GREEN, RED, ColorButton, button_interactive
 from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
                                     SEPARATOR_COLOR, SEPARATOR_WIDTH, SNAPSHOT_COLUMN_MINSIZE, SORT_CURSOR, TOGGLE_COLUMNS,
                                     PlayerBrowser, valid_hidden, valid_widths)
@@ -55,6 +56,8 @@ PLAYERS = make_players()  # refreshed for every test: the times in it are relati
 
 class BrowserTestCase(unittest.TestCase):
     def setUp(self):
+        gc.collect()  # Tk variables of earlier tests are freed here, not by a worker thread (that call would wait)
+        self.addCleanup(gc.collect)
         PLAYERS[:] = make_players()  # in place: the tests hold on to this list
         self.clock = [1000.0]  # the time of the refresh interval: the tests move it, they do not wait
         clock_patch = patch("gui_app.player_browser._clock", lambda: self.clock[0])
@@ -2040,34 +2043,83 @@ class MainWindowTest(BrowserTestCase):
         self.assertIsNone(self.app._player_browser)
 
 
-class SnapshotButtonTest(BrowserTestCase):
-    def open_with_snapshots(self, players=PLAYERS, **options):
-        self.snapshot_fetch = MagicMock(return_value=(b"\x89PNG\r\n\x1a\n", ".png"))
-        return self.open(players=players, snapshot_fetch=self.snapshot_fetch, **options)
+class TableButtons:
+    """Finding, pressing and looking at the snapshot buttons of the table."""
 
     @staticmethod
     def button(browser, name):
         row = next(row for row in browser._rows if row.name == name)
         return row, browser._widgets[id(row)][0]
 
-    def test_the_button_is_grey_for_an_offline_player_only(self):
+    @staticmethod
+    def press(button):
+        if isinstance(button, ColorButton):  # drawn on a canvas: pressed and let go inside it, as with the mouse
+            button.event_generate("<ButtonPress-1>", x=5, y=5)
+            button.event_generate("<ButtonRelease-1>", x=5, y=5)
+        else:
+            self.press(button)
+
+    @staticmethod
+    def fill(button):
+        if isinstance(button, ColorButton):
+            return button.itemcget(button.find_withtag("all")[0], "fill")
+        return button.cget("background")
+
+
+class SnapshotButtonTest(TableButtons, BrowserTestCase):
+    def open_with_snapshots(self, players=PLAYERS, **options):
+        self.snapshot_fetch = MagicMock(return_value=(b"\x89PNG\r\n\x1a\n", ".png"))
+        return self.open(players=players, snapshot_fetch=self.snapshot_fetch, **options)
+
+    def test_the_button_is_pressable_for_an_online_player_only(self):
         browser = self.open_with_snapshots()
 
-        self.assertNotIn("disabled", self.button(browser, "Lobby")[1].state())
-        self.assertNotIn("disabled", self.button(browser, "Sklad")[1].state())
-        self.assertIn("disabled", self.button(browser, "Prerov 1")[1].state())
+        self.assertTrue(button_interactive(self.button(browser, "Lobby")[1]))
+        self.assertTrue(button_interactive(self.button(browser, "Sklad")[1]))
+        self.assertFalse(button_interactive(self.button(browser, "Prerov 1")[1]))
+
+    def test_the_button_is_green_where_a_snapshot_can_be_asked_for_and_red_where_not(self):
+        browser = self.open_with_snapshots()
+
+        self.assertEqual(self.fill(self.button(browser, "Lobby")[1]), GREEN.normal)
+        self.assertEqual(self.fill(self.button(browser, "Sklad")[1]), GREEN.normal)
+        self.assertEqual(self.fill(self.button(browser, "Prerov 1")[1]), RED.normal)
+
+    def test_a_red_button_does_nothing_when_pressed_or_hovered(self):
+        browser = self.open_with_snapshots()
+        button = self.button(browser, "Prerov 1")[1]
+
+        button.event_generate("<Enter>")
+        self.assertEqual(self.fill(button), RED.normal)
+        self.press(button)
+        self.app.update()
+
+        self.assertEqual(browser._viewers, {})
+        self.snapshot_fetch.assert_not_called()
+
+    def test_the_colours_stay_after_a_refresh_and_a_change_of_the_text_size(self):
+        browser = self.open_with_snapshots()
+
+        self.clock[0] += 20
+        browser.refresh()
+        self.wait_for(lambda: not browser._loading)
+        browser.set_font_size(16)
+
+        self.assertEqual(self.fill(self.button(browser, "Lobby")[1]), GREEN.normal)
+        self.assertEqual(self.fill(self.button(browser, "Prerov 1")[1]), RED.normal)
+        self.assertEqual(self.button(browser, "Lobby")[1].cget("font")[1], 16)
 
     def test_a_player_without_an_id_cannot_be_asked(self):
         rows = [{**player("Bez id"), "_id": ""}]
         browser = self.open_with_snapshots(players=rows)
 
-        self.assertIn("disabled", self.button(browser, "Bez id")[1].state())
+        self.assertFalse(button_interactive(self.button(browser, "Bez id")[1]))
 
     def test_pressing_the_button_opens_the_window_of_that_player(self):
         browser = self.open_with_snapshots()
         row, button = self.button(browser, "Lobby")
 
-        button.invoke()
+        self.press(button)
         viewer = browser._viewers["id-Lobby"]
         self.wait_for(lambda: not viewer.busy)
 
@@ -2077,11 +2129,11 @@ class SnapshotButtonTest(BrowserTestCase):
     def test_a_second_press_brings_the_same_window_forward(self):
         browser = self.open_with_snapshots()
         row, button = self.button(browser, "Lobby")
-        button.invoke()
+        self.press(button)
         viewer = browser._viewers["id-Lobby"]
         self.wait_for(lambda: not viewer.busy)
 
-        button.invoke()
+        self.press(button)
         self.app.update()
 
         self.assertIs(browser._viewers["id-Lobby"], viewer)
@@ -2090,7 +2142,7 @@ class SnapshotButtonTest(BrowserTestCase):
     def test_every_player_has_a_window_of_its_own(self):
         browser = self.open_with_snapshots()
         for name in ("Lobby", "Sklad"):
-            self.button(browser, name)[1].invoke()
+            self.press(self.button(browser, name)[1])
 
         self.assertEqual(sorted(browser._viewers), ["id-Lobby", "id-Sklad"])
 
@@ -2099,10 +2151,10 @@ class SnapshotButtonTest(BrowserTestCase):
         browser = self.open_with_snapshots(players=players)
         with patch("gui_app.player_browser.messagebox.showinfo") as info:
             for index in range(5):
-                self.button(browser, f"P{index}")[1].invoke()
+                self.press(self.button(browser, f"P{index}")[1])
             info.assert_not_called()
 
-            self.button(browser, "P5")[1].invoke()
+            self.press(self.button(browser, "P5")[1])
 
             self.assertEqual(len(browser._viewers), 5)
             self.assertNotIn("id-P5", browser._viewers)
@@ -2111,7 +2163,7 @@ class SnapshotButtonTest(BrowserTestCase):
             browser._viewers["id-P0"].destroy()
             self.assertEqual(len(browser._viewers), 4)
             info.reset_mock()
-            self.button(browser, "P5")[1].invoke()
+            self.press(self.button(browser, "P5")[1])
 
             info.assert_not_called()
             self.assertIn("id-P5", browser._viewers)
@@ -2121,27 +2173,27 @@ class SnapshotButtonTest(BrowserTestCase):
         browser = self.open_with_snapshots(players=players)
         with patch("gui_app.player_browser.messagebox.showinfo") as info:
             for index in range(5):
-                self.button(browser, f"P{index}")[1].invoke()
-            self.button(browser, "P2")[1].invoke()
+                self.press(self.button(browser, f"P{index}")[1])
+            self.press(self.button(browser, "P2")[1])
 
             info.assert_not_called()
 
     def test_a_window_stays_when_the_players_are_refreshed(self):
         browser = self.open_with_snapshots()
-        self.button(browser, "Lobby")[1].invoke()
+        self.press(self.button(browser, "Lobby")[1])
         viewer = browser._viewers["id-Lobby"]
 
         self.clock[0] += 20
         browser.refresh()
         self.wait_for(lambda: not browser._loading)
-        self.button(browser, "Lobby")[1].invoke()
+        self.press(self.button(browser, "Lobby")[1])
 
         self.assertIs(browser._viewers["id-Lobby"], viewer)
         self.assertTrue(viewer.winfo_exists())
 
     def test_the_text_size_follows_to_the_open_windows(self):
         browser = self.open_with_snapshots()
-        self.button(browser, "Lobby")[1].invoke()
+        self.press(self.button(browser, "Lobby")[1])
 
         browser.set_font_size(16)
 
@@ -2149,11 +2201,138 @@ class SnapshotButtonTest(BrowserTestCase):
 
     def test_the_slots_are_shared_by_the_windows_of_the_account(self):
         browser = self.open_with_snapshots()
-        self.button(browser, "Lobby")[1].invoke()
-        self.button(browser, "Sklad")[1].invoke()
+        self.press(self.button(browser, "Lobby")[1])
+        self.press(self.button(browser, "Sklad")[1])
 
         self.assertIs(browser._viewers["id-Lobby"]._slots, browser._viewers["id-Sklad"]._slots)
         self.assertEqual(browser._snapshot_slots.limit, 3)
+
+
+class AutoRefreshTest(TableButtons, BrowserTestCase):
+    """A window left open updates itself (the interval is made short here, and the refresh interval is skipped)."""
+
+    def setUp(self):
+        super().setUp()
+        for name, value in (("AUTO_REFRESH_SECONDS", 0.25), ("AUTO_REFRESH_RETRY_MS", 100)):
+            patcher = patch(f"gui_app.player_browser.{name}", value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def open_auto(self, fetch, **options):
+        browser = self.open(fetch=fetch, snapshot_fetch=MagicMock(), **options)
+        self.clock[0] += 1000  # the ten seconds between two downloads are over
+        return browser
+
+    def test_the_window_updates_itself_after_the_interval(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open_auto(fetch)
+
+        self.wait_for(lambda: fetch.call_count == 2 and not browser._loading)
+        self.clock[0] += 1000
+        self.wait_for(lambda: fetch.call_count == 3 and not browser._loading)
+
+    def test_the_interval_starts_again_with_every_update(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open_auto(fetch)
+        before = browser._auto_after_id
+
+        browser.refresh()
+        self.wait_for(lambda: not browser._loading)
+
+        self.assertIsNotNone(browser._auto_after_id)
+        self.assertNotEqual(browser._auto_after_id, before)
+
+    def test_a_player_that_went_offline_gets_a_red_button(self):
+        changed = make_players()
+        changed[0]["isConnected"] = False  # Lobby
+        fetch = MagicMock(side_effect=[PLAYERS, changed, changed, changed, changed])
+        browser = self.open_auto(fetch)
+        self.assertEqual(self.fill(self.button(browser, "Lobby")[1]), GREEN.normal)
+
+        self.wait_for(lambda: fetch.call_count >= 2 and not browser._loading)
+
+        button = self.button(browser, "Lobby")[1]
+        self.assertEqual(self.fill(button), RED.normal)
+        self.assertFalse(button_interactive(button))
+        self.assertEqual(self.button(browser, "Sklad")[1].cget("text"), "Snímek")
+
+    def test_a_player_that_came_online_gets_a_green_button(self):
+        changed = make_players()
+        changed[1]["isConnected"] = True  # Prerov 1
+        fetch = MagicMock(side_effect=[PLAYERS, changed, changed, changed, changed])
+        browser = self.open_auto(fetch)
+        self.assertEqual(self.fill(self.button(browser, "Prerov 1")[1]), RED.normal)
+
+        self.wait_for(lambda: fetch.call_count >= 2 and not browser._loading)
+
+        self.assertEqual(self.fill(self.button(browser, "Prerov 1")[1]), GREEN.normal)
+        self.assertTrue(button_interactive(self.button(browser, "Prerov 1")[1]))
+
+    def test_a_failed_automatic_update_keeps_the_table_and_says_so(self):
+        fetch = MagicMock(side_effect=[PLAYERS] + [requests.exceptions.ConnectionError()] * 5)
+        browser = self.open_auto(fetch)
+
+        self.wait_for(lambda: fetch.call_count >= 2 and not browser._loading)
+
+        self.assertEqual(len(browser._rows), 4)
+        self.assertIn("nepodařilo načíst", browser.status_var.get())
+
+    def test_the_table_stays_scrolled_where_it_was(self):
+        many = [player(f"P{index:02d}") for index in range(60)]
+        fetch = MagicMock(return_value=many)
+        browser = self.open(fetch=fetch, snapshot_fetch=MagicMock())
+        browser.geometry("1000x400")
+        self.app.update()
+        browser._canvas.yview_moveto(0.5)
+        self.app.update()
+        before = browser._canvas.yview()[0]
+        self.assertGreater(before, 0.3)
+
+        self.clock[0] += 1000
+        browser.refresh()
+        self.wait_for(lambda: not browser._loading)
+        self.app.update()
+
+        self.assertAlmostEqual(browser._canvas.yview()[0], before, delta=0.02)
+
+    def test_a_filter_change_still_goes_back_to_the_top(self):
+        many = [player(f"P{index:02d}") for index in range(60)]
+        browser = self.open(fetch=MagicMock(return_value=many), snapshot_fetch=MagicMock())
+        browser.geometry("1000x400")
+        self.app.update()
+        browser._canvas.yview_moveto(0.5)
+        self.app.update()
+
+        browser.name_var.set("P")
+        self.wait_for(lambda: len(browser.visible_names()) == 60 and browser._canvas.yview()[0] == 0)
+
+    def test_it_waits_while_a_list_of_choices_is_open(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch=fetch, snapshot_fetch=MagicMock())
+        browser.group_box.open()
+        self.clock[0] += 1000
+
+        end = time.monotonic() + 0.8
+        while time.monotonic() < end:
+            self.app.update()
+            time.sleep(0.01)
+        self.assertEqual(fetch.call_count, 1)
+
+        browser.group_box.close()
+        self.wait_for(lambda: fetch.call_count == 2)
+
+    def test_a_closed_window_updates_no_more(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open_auto(fetch)
+
+        browser.destroy()
+        count = fetch.call_count
+        end = time.monotonic() + 0.6
+        while time.monotonic() < end:
+            self.app.update()
+            time.sleep(0.01)
+
+        self.assertEqual(fetch.call_count, count)
 
 
 class MessageKeysTest(unittest.TestCase):

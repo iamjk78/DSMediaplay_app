@@ -49,6 +49,7 @@ class ColorButton(tk.Canvas):
         self._text, self._command, self._font, self._colors = text, command, font, colors
         self._min_width, self._padding_x = min_width, padding_x
         self._enabled = True
+        self._interactive = True
         self._state = "normal"
         self._draw()
         self.bind("<Enter>", lambda _: self._set_state("hover"))
@@ -86,18 +87,28 @@ class ColorButton(tk.Canvas):
         self._state = "normal"
         self._draw()
 
+    @property
+    def interactive(self) -> bool:
+        return self._interactive
+
+    def set_interactive(self, interactive: bool) -> None:
+        """A button that is not interactive keeps its colours but does not react to the pointer or run its command."""
+        self._interactive = interactive
+        self._state = "normal"
+        self._draw()
+
     def set_colors(self, colors: ButtonColors) -> None:
         self._colors = colors
         self._draw()
 
     def _set_state(self, state: str) -> None:
-        if not self._enabled:
+        if not self._enabled or not self._interactive:
             return
         self._state = state
         self._draw()
 
     def _release(self, event: tk.Event) -> None:
-        if not self._enabled:
+        if not self._enabled or not self._interactive:
             return
         inside = 0 <= event.x < self.winfo_width() and 0 <= event.y < self.winfo_height()
         self._set_state("hover" if inside else "normal")
@@ -171,3 +182,18 @@ def set_button_enabled(button: tk.Widget, enabled: bool, colors: ButtonColors) -
 
 def button_enabled(button: tk.Widget) -> bool:
     return button.enabled if isinstance(button, ColorButton) else str(button.cget("state")) != "disabled"
+
+
+def set_button_interactive(button: tk.Widget, interactive: bool, colors: ButtonColors) -> None:
+    """Shows a button in `colors` and lets it be pressed, or not: unlike a disabled button it stays coloured."""
+    if isinstance(button, ColorButton):
+        button.set_colors(colors)
+        button.set_interactive(interactive)
+    else:
+        button.configure(state="normal" if interactive else "disabled", background=colors.normal,
+                         activebackground=colors.pressed, foreground=colors.text, activeforeground=colors.text,
+                         disabledforeground=colors.text)
+
+
+def button_interactive(button: tk.Widget) -> bool:
+    return button.interactive if isinstance(button, ColorButton) else str(button.cget("state")) != "disabled"
