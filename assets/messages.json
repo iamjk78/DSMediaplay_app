@@ -86,6 +86,7 @@
                 "set_player_labels": "Nastavení - kategorie",
                 "get_player_details": "CSV - parametry",
                 "set_player_rename": "Přejmenování - playery",
+                "set_player_snapshot": "Snímek obrazovky - playery",
                 "create_player": "Vytvořit player - zatím nefunkční",
                 "get_player_versions": "CSV - verze",
                 "create_label": "Vytvoření - kategorie",
@@ -210,7 +211,14 @@
         "tip_help": "Otevřít nápovědu v prohlížeči",
         "tip_quit": "Ukončit aplikaci",
         "tip_start": "Spustit vybranou činnost",
-        "no_input_template": "Pro tuto činnost není k dispozici vzor vstupu."
+        "no_input_template": "Pro tuto činnost není k dispozici vzor vstupu.",
+        "snapshot_saved": "Snímek playeru '{player}' uložen: {path}",
+        "snapshot_failed": "Snímek playeru '{player}' se nepodařilo pořídit: {reason}",
+        "snapshot_reason_server": "server požadavek odmítl (player je pravděpodobně offline)",
+        "snapshot_reason_download": "obrázek se nepodařilo stáhnout",
+        "snapshot_reason_bad_url": "server vrátil nepoužitelnou adresu obrázku",
+        "snapshot_reason_not_image": "server nevrátil obrázek",
+        "snapshot_reason_too_large": "obrázek je příliš velký"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -299,6 +307,7 @@
                 "get_label_unused": "CSV - Unused Categories",
                 "set_player_labels": "Change - Player Categories",
                 "set_player_rename": "Change - Player Name",
+                "set_player_snapshot": "Screenshot - Players",
                 "create_player": "Create Player - under construction",
                 "get_player_versions": "CSV - Player version",
                 "create_label": "Create - Category",
@@ -423,6 +432,13 @@
         "tip_help": "Open the help in the browser",
         "tip_quit": "Quit the application",
         "tip_start": "Run the selected action",
-        "no_input_template": "There is no input template for this action."
+        "no_input_template": "There is no input template for this action.",
+        "snapshot_saved": "Screenshot of player '{player}' saved: {path}",
+        "snapshot_failed": "Could not take a screenshot of player '{player}': {reason}",
+        "snapshot_reason_server": "the server refused the request (the player is probably offline)",
+        "snapshot_reason_download": "the image could not be downloaded",
+        "snapshot_reason_bad_url": "the server returned an unusable image address",
+        "snapshot_reason_not_image": "the server did not return an image",
+        "snapshot_reason_too_large": "the image is too large"
     }
 }

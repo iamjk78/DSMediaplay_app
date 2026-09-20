@@ -20,6 +20,7 @@ class LoggingTextBoxFactory:
             "remove_playlist_list": RemovePlaylistList,
             "groups_to_players": GroupToPlayerLogBox,
             "notes_to_players": NotesToPlayerLogBox,
+            "player_snapshot": PlayerSnapshotLogBox,
             "player_config_location": PlayerConfigLocationLogBox,
             "location_plan": LocationsPlanLogBox,
             "group_rename": GroupRenameLogBox,
@@ -294,6 +295,11 @@ class GroupSettingsLogBox(LoggingTextBox):
 class PlaylistSettingsLogBox(LoggingTextBox):
     def __init__(self, **kwargs):
         super().__init__(processor_type="playlist_settings", **kwargs)
+
+
+class PlayerSnapshotLogBox(LoggingTextBox):
+    def __init__(self, **kwargs):
+        super().__init__(processor_type="player_snapshot", **kwargs)
 
 
 class PlayerRenameLogBox(LoggingTextBox):

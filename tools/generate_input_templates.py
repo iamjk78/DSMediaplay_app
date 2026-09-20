@@ -163,6 +163,11 @@ cz = {
         "remove_unused_assets": action(
             "Smazání nepoužívaných assetů.", ["1. název assetu (jeden na řádek)"], ["<název assetu>"],
             ["Assety se štítkem \"test\" se přeskočí."]),
+        "set_player_snapshot": action(
+            "Snímek obrazovky: uloží obrázek toho, co přehrávač právě zobrazuje. Uloží se do složky "
+            "DSMediaplay_snapshots ve stažených souborech.",
+            ["1. název přehrávače (jeden na řádek)"], ["<název přehrávače>"],
+            ["Přehrávač musí být online, pořízení snímku může trvat několik sekund."]),
         "set_deploy_selected_groups": action(
             "Deploy vybraných skupin: obsah se nasadí na všechny online přehrávače těchto skupin.",
             ["1. název skupiny (jeden na řádek)"], ["<název skupiny>"]),
@@ -290,6 +295,11 @@ en = {
         "remove_unused_assets": action(
             "Delete unused assets.", ["1. asset name (one per line)"], ["<asset name>"],
             ["Assets labelled \"test\" are skipped."]),
+        "set_player_snapshot": action(
+            "Screenshot: saves an image of what the player is showing right now. It is saved to the "
+            "DSMediaplay_snapshots folder in Downloads.",
+            ["1. player name (one per line)"], ["<player name>"],
+            ["The player must be online; taking the screenshot can take a few seconds."]),
         "set_deploy_selected_groups": action(
             "Deploy the selected groups: the content is deployed to all online players of these groups.",
             ["1. group name (one per line)"], ["<group name>"]),

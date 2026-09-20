@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple, Optional, Union
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 import requests
 from requests.adapters import HTTPAdapter
 import json
 from dataclasses import dataclass
 
 LOGIN_TIMEOUT = 30  # seconds; without it a network black hole would freeze the window forever
+SNAPSHOT_TIMEOUT = 60  # seconds; the server asks the player for the screenshot and waits for it
+SNAPSHOT_MAX_BYTES = 20 * 1024 * 1024
+IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF8", ".gif"))
 
 # The order of the days in the server's location schedule (`weekDays`, index 0 = Sunday), the way the web UI shows them
 # (SU MO TU ... SA). Reading, writing, the CSV export and the input all use this one order.
@@ -72,6 +75,20 @@ class ResponseError(ServerApiError):
         The parameters of the failed request.
     """
     params: dict
+
+
+class SnapshotError(ServerApiError):
+    """
+    A player snapshot could not be fetched.
+
+    Attributes
+    ----------
+    reason : str
+        One of "bad_url", "download", "not_image", "too_large".
+    """
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class ServerApi:
@@ -1808,6 +1825,54 @@ class ServerApi:
         api_end_point = f"/pishell/{player_id}"
         request_body = {"cmd": command}
         return self._make_request("post", api_end_point, json=request_body)
+
+    def take_player_snapshot(self, player_name: str) -> Dict[str, Any]:
+        """
+        Asks the player for a screenshot of what it is playing right now.
+
+        Returns
+        -------
+        dict
+            `url` of the image on the server and the time it was taken (`lastTaken`).
+        """
+        player_id = self.get_player_id_by_name(player_name)
+        return self._make_request("post", f"/snapshot/{player_id}", timeout=SNAPSHOT_TIMEOUT)["data"]
+
+    def download_snapshot(self, image_url: str) -> Tuple[bytes, str]:
+        """
+        Downloads the snapshot image and returns its bytes with the file extension.
+
+        The address comes from the server's answer, so it is checked before it is followed: https only, and the
+        session token is sent only to the server's own host, never to another one.
+
+        Raises
+        ------
+        SnapshotError
+            The address is unusable, the download failed, or the response is not an image or is too large.
+        """
+        server = urlparse(self._url)
+        address = urljoin(f"{server.scheme}://{server.netloc}/", str(image_url))
+        target = urlparse(address)
+        if target.scheme != "https" or not target.hostname:
+            raise SnapshotError("bad_url")
+
+        try:
+            if target.hostname == server.hostname:
+                response = self._request("get", address, params={"token": self._session_token},
+                                         timeout=SNAPSHOT_TIMEOUT)
+            else:
+                response = requests.get(address, timeout=SNAPSHOT_TIMEOUT)
+        except requests.exceptions.RequestException:
+            raise SnapshotError("download")
+        if not response.ok:
+            raise SnapshotError("download")
+        content = response.content
+        if len(content) > SNAPSHOT_MAX_BYTES:
+            raise SnapshotError("too_large")
+        for signature, extension in IMAGE_SIGNATURES:
+            if content.startswith(signature):
+                return content, extension
+        raise SnapshotError("not_image")
 
     def get_players_by_name(self, name: str):
         request_body = {

@@ -452,6 +452,18 @@
           "<název assetu>"
         ]
       },
+      "set_player_snapshot": {
+        "summary": "Snímek obrazovky: uloží obrázek toho, co přehrávač právě zobrazuje. Uloží se do složky DSMediaplay_snapshots ve stažených souborech.",
+        "columns": [
+          "1. název přehrávače (jeden na řádek)"
+        ],
+        "notes": [
+          "Přehrávač musí být online, pořízení snímku může trvat několik sekund."
+        ],
+        "example": [
+          "<název přehrávače>"
+        ]
+      },
       "set_deploy_selected_groups": {
         "summary": "Deploy vybraných skupin: obsah se nasadí na všechny online přehrávače těchto skupin.",
         "columns": [
@@ -915,6 +927,18 @@
         ],
         "example": [
           "<asset name>"
+        ]
+      },
+      "set_player_snapshot": {
+        "summary": "Screenshot: saves an image of what the player is showing right now. It is saved to the DSMediaplay_snapshots folder in Downloads.",
+        "columns": [
+          "1. player name (one per line)"
+        ],
+        "notes": [
+          "The player must be online; taking the screenshot can take a few seconds."
+        ],
+        "example": [
+          "<player name>"
         ]
       },
       "set_deploy_selected_groups": {

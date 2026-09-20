@@ -1,12 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import List, Generator, Dict, Any, Tuple, Optional, Set
 from dataclasses import dataclass
+from itertools import count
 from time import sleep
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests.exceptions
-from api_testing.request_calls import ServerApi, LoginError, ResponseError, WEEK_DAYS
+from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
+                                       WEEK_DAYS)
 import json
+import os
 import re
 
 
@@ -131,6 +134,7 @@ class ProcessorFactory:
             "playlist": PlaylistProcessor,
             "asset_to_playlist": AssetToPlaylistProcessor,
             "player_note": PlayerNoteProcessor,
+            "player_snapshot": PlayerSnapshotProcessor,
             "remove_playlists": RemovePlaylistsProcessor,
             "remove_playlist_list": RemovePlaylistsByListProcessor,
             "remove_assets": RemoveAssetsProcessor,
@@ -1221,6 +1225,60 @@ class PlayerNoteProcessor(AssignProcessor):
         for player, note in self.data.items():
             response = server.set_player_note(player, note)
             yield Response(200, response)
+
+
+class PlayerSnapshotProcessor(EntityValidationProcessor):
+    """Saves a screenshot of what each of the named players is playing right now."""
+    entity_type = "player_names"
+
+    def __init__(self, *args, output_dir: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.output_dir = output_dir
+
+    def run(self) -> Generator[None, None, None]:
+        try:
+            server = self._try_server_login()
+            if not server:
+                self._write_no_server_returned()
+                return
+            os.makedirs(self.output_dir, exist_ok=True)
+            with server:
+                for player in self.data:
+                    self._save_snapshot(server, player)
+                    yield
+        except Exception as e:
+            self._write_internal_error(e)
+            raise InternalException()
+
+    def _save_snapshot(self, server: ServerApi, player: str):
+        # Only a reason is logged, never the exception text: a ResponseError carries the request incl. the token
+        try:
+            image, extension = server.download_snapshot(server.take_player_snapshot(player)["url"])
+        except SnapshotError as e:
+            self._write_snapshot_failed(player, self.lang.get_message(f"snapshot_reason_{e.reason}"))
+            return
+        except (ResponseError, NameResolutionError):
+            self._write_snapshot_failed(player, self.lang.get_message("snapshot_reason_server"))
+            return
+        except (requests.exceptions.RequestException, KeyError, TypeError):
+            self._write_snapshot_failed(player, self.lang.get_message("snapshot_reason_download"))
+            return
+
+        # The player name becomes part of a file name: nothing that could leave the folder or is illegal there
+        safe_name = re.sub(r"[^\w.-]+", "_", player).strip("._") or "player"
+        stem = os.path.join(self.output_dir, f"{safe_name}_{datetime.now():%Y-%m-%d_%H-%M-%S}")
+        for attempt in count():  # two names can end up as the same file name ("a b" and "a_b")
+            path = f"{stem}{extension}" if attempt == 0 else f"{stem}_{attempt}{extension}"
+            try:
+                with open(path, "xb") as file:
+                    file.write(image)
+                break
+            except FileExistsError:
+                continue
+        self._write_log("snapshot_saved", player=player, path=path)
+
+    def _write_snapshot_failed(self, player: str, reason: str):
+        self._write_log_error("snapshot_failed", player=player, reason=reason)
 
 
 class PlayerConfigLocationProcessor(AssignProcessor):

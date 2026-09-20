@@ -160,6 +160,7 @@ class DSMediaplayApp(tk.Tk):
                 actions["Players"]["set_player_labels"]: "set_player_labels",
                 actions["Players"]["get_player_details"]: "get_player_details",
                 actions["Players"]["set_player_rename"]: "set_player_rename",
+                actions["Players"]["set_player_snapshot"]: "set_player_snapshot",
                 # actions["Players"]["create_player"]: "create_player",
                 actions["Players"]["get_player_versions"]: "get_player_versions",
                 actions["Players"]["create_label"]: "create_label",
@@ -528,6 +529,8 @@ class DSMediaplayApp(tk.Tk):
                 "batch_size": self.all_data.get("deploy_batch_size", 10),
                 "batch_interval": self.all_data.get("deploy_batch_interval", 3)
             }
+        elif processor_type == "player_snapshot":
+            extra_settings = {"output_dir": os.path.join(get_download_path(), "DSMediaplay_snapshots")}
         log_box = LoggingTextBoxFactory.create_log_box(
             processor_type=processor_type,
             master=self,
