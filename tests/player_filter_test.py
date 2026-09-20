@@ -45,6 +45,10 @@ def chosen(*values):
 
 
 class PlayerRowTest(unittest.TestCase):
+    def test_the_id_of_the_player_is_kept(self):
+        self.assertEqual(player_row({"_id": "abc", "name": "a"}).player_id, "abc")
+        self.assertEqual(player_row({"name": "a"}).player_id, "")
+
     def test_online_needs_a_connection_and_a_licence(self):
         self.assertTrue(player_row(player("a", True)).online)
         self.assertFalse(player_row(player("a", False)).online)

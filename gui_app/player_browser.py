@@ -4,9 +4,9 @@ import threading
 import time
 import tkinter as tk
 from datetime import datetime
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from tkinter import font as tkfont
-from typing import Callable, Dict, FrozenSet, Iterable, List, Optional
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Tuple
 
 import requests
 
@@ -14,6 +14,7 @@ from api_testing.request_calls import LoginError, ServerApi
 from gui_app.color_button import GREEN, RED, make_color_button, set_button_colors
 from gui_app.icons import set_window_icon
 from gui_app.multi_select import MultiSelectCombo
+from gui_app.snapshot_viewer import SnapshotSlots, SnapshotViewer, fetch_snapshot_from_server
 from gui_app.tooltip import Tooltip
 from util.accounts import DEFAULT_HIDDEN_COLUMNS
 from util.player_filter import (AGE_OPTIONS, TEMPERATURE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row,
@@ -49,6 +50,7 @@ LARGE_A_STYLE = "PlayerBrowserLargeA.TButton"
 ONLINE_COLOR = "#2e7d32"
 OFFLINE_COLOR = "#c62828"
 NAME_FILTER_DELAY_MS = 150
+MAX_SNAPSHOT_WINDOWS = 5  # players whose snapshot can be open at the same time
 MIN_REFRESH_INTERVAL = 10  # seconds between the starts of two downloads, however often the button is pressed
 COUNTDOWN_TICK_MS = 500
 POLL_INTERVAL_MS = 100
@@ -106,7 +108,8 @@ class PlayerBrowser(tk.Toplevel):
                  hidden_columns: Optional[Iterable[str]] = None,
                  save_hidden_columns: Callable[[List[str]], None] = lambda hidden: None,
                  font_size: Optional[int] = None,
-                 save_font_size: Callable[[int], None] = lambda size: None):
+                 save_font_size: Callable[[int], None] = lambda size: None,
+                 snapshot_fetch: Callable[[str, str, str, str], Tuple[bytes, str]] = fetch_snapshot_from_server):
         super().__init__(master)
         self.lang = master.lang
         self.connection = (url, login)
@@ -126,6 +129,9 @@ class PlayerBrowser(tk.Toplevel):
         self._widgets: Dict[int, List[tk.Widget]] = {}
         self._sort = ("name", False)
         self._results: "queue.Queue" = queue.Queue()
+        self._snapshot_fetch = snapshot_fetch
+        self._snapshot_slots = SnapshotSlots()  # shared by the snapshot windows of this account
+        self._viewers: Dict[str, SnapshotViewer] = {}  # by the id of the player: one window for each
         self._loading = False
         self._drag = None
         self._filter_after_id: Optional[str] = None
@@ -403,6 +409,8 @@ class PlayerBrowser(tk.Toplevel):
             box.set_font(self._font)
         for cell in self._header_cells.values():
             cell.configure(font=bold)
+        for viewer in self._viewers.values():
+            viewer.set_font(self._font)
         for widgets in self._widgets.values():
             for cell in widgets[1:]:
                 cell.configure(font=self._font)
@@ -726,9 +734,30 @@ class PlayerBrowser(tk.Toplevel):
         cells: List[tk.Widget] = [tk.Label(self._body, text=text, font=self._font, width=1, anchor="w")
                                   for text in texts]
         cells[1].configure(foreground=ONLINE_COLOR if row.online else OFFLINE_COLOR)
-        button = ttk.Button(self._body, text=self.lang.get_message("pb_snapshot"), style=BUTTON_STYLE)
-        button.state(["disabled"])  # its function is defined later
+        button = ttk.Button(self._body, text=self.lang.get_message("pb_snapshot"), style=BUTTON_STYLE,
+                            command=lambda: self.show_snapshot(row))
+        can_ask = row.online and bool(row.player_id)  # an offline player cannot answer
+        if not can_ask:
+            button.state(["disabled"])
+        Tooltip(button, lambda: self.lang.get_message("pb_tip_snapshot" if can_ask else "pb_tip_snapshot_offline"))
         return [button] + cells
+
+    def show_snapshot(self, row: PlayerRow):
+        """Opens the window with the player's snapshot; when it is open already it is brought forward."""
+        viewer = self._viewers.get(row.player_id)
+        if viewer is not None and viewer.winfo_exists():
+            viewer.request_snapshot()
+            return
+        if len(self._viewers) >= MAX_SNAPSHOT_WINDOWS:
+            messagebox.showinfo(self.lang.get_message("info_title"),
+                                self.lang.get_message("pb_viewer_limit", count=MAX_SNAPSHOT_WINDOWS), parent=self)
+            return
+        viewer = SnapshotViewer(self, player_name=row.name, player_id=row.player_id, credentials=self._credentials,
+                                slots=self._snapshot_slots, font=self._font, button_style=BUTTON_STYLE,
+                                fetch=self._snapshot_fetch)
+        self._viewers[row.player_id] = viewer
+        viewer.bind("<Destroy>", lambda event: self._viewers.pop(row.player_id, None) if event.widget is viewer else None,
+                    add="+")
 
     # ---- filtering and sorting
 

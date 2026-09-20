@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests.exceptions
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
-                                       WEEK_DAYS)
+                                       WEEK_DAYS, snapshot_file_stem, snapshot_reason)
 import json
 import os
 import re
@@ -1254,19 +1254,12 @@ class PlayerSnapshotProcessor(EntityValidationProcessor):
         # Only a reason is logged, never the exception text: a ResponseError carries the request incl. the token
         try:
             image, extension = server.download_snapshot(server.take_player_snapshot(player)["url"])
-        except SnapshotError as e:
-            self._write_snapshot_failed(player, self.lang.get_message(f"snapshot_reason_{e.reason}"))
-            return
-        except (ResponseError, NameResolutionError):
-            self._write_snapshot_failed(player, self.lang.get_message("snapshot_reason_server"))
-            return
-        except (requests.exceptions.RequestException, KeyError, TypeError):
-            self._write_snapshot_failed(player, self.lang.get_message("snapshot_reason_download"))
+        except (SnapshotError, ResponseError, NameResolutionError, requests.exceptions.RequestException, KeyError,
+                TypeError) as e:
+            self._write_snapshot_failed(player, self.lang.get_message(f"snapshot_reason_{snapshot_reason(e)}"))
             return
 
-        # The player name becomes part of a file name: nothing that could leave the folder or is illegal there
-        safe_name = re.sub(r"[^\w.-]+", "_", player).strip("._") or "player"
-        stem = os.path.join(self.output_dir, f"{safe_name}_{datetime.now():%Y-%m-%d_%H-%M-%S}")
+        stem = os.path.join(self.output_dir, snapshot_file_stem(player, datetime.now()))
         for attempt in count():  # two names can end up as the same file name ("a b" and "a_b")
             path = f"{stem}{extension}" if attempt == 0 else f"{stem}_{attempt}{extension}"
             try:

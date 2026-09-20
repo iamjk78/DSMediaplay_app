@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple, Optional, Union
 from urllib.parse import urljoin, urlparse
@@ -89,6 +90,21 @@ class SnapshotError(ServerApiError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+def snapshot_reason(error: Exception) -> str:
+    """Why a snapshot could not be taken, as the ending of the message key "snapshot_reason_<...>"."""
+    if isinstance(error, SnapshotError):
+        return error.reason
+    if isinstance(error, (ResponseError, NameResolutionError)):
+        return "server"
+    return "download"
+
+
+def snapshot_file_stem(player: str, moment: datetime) -> str:
+    """The file name (without extension) of a snapshot: the player name is made of nothing that could leave the folder."""
+    safe_name = re.sub(r"[^\w.-]+", "_", player).strip("._") or "player"
+    return f"{safe_name}_{moment:%Y-%m-%d_%H-%M-%S}"
 
 
 class ServerApi:
@@ -1851,7 +1867,10 @@ class ServerApi:
         dict
             `url` of the image on the server and the time it was taken (`lastTaken`).
         """
-        player_id = self.get_player_id_by_name(player_name)
+        return self.take_snapshot(self.get_player_id_by_name(player_name))
+
+    def take_snapshot(self, player_id: str) -> Dict[str, Any]:
+        """Like `take_player_snapshot`, for a player whose id is already known (no lookup of the name)."""
         return self._make_request("post", f"/snapshot/{player_id}", timeout=SNAPSHOT_TIMEOUT)["data"]
 
     def download_snapshot(self, image_url: str) -> Tuple[bytes, str]:

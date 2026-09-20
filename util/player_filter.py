@@ -19,6 +19,7 @@ class PlayerRow:
     note: str
     temperature: Optional[float]  # of the processor in degrees Celsius; None = the player does not say
     version: str  # of the player software
+    player_id: str = ""  # the server's id of the player; what a snapshot is asked for by
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,7 @@ def player_row(player: Dict[str, Any]) -> PlayerRow:
         note=" ".join(str(player.get("notes") or "").split()),  # one line: a note can contain line breaks
         temperature=parse_temperature(player.get("piTemperature")),
         version=str(player.get("version") or "").strip(),
+        player_id=str(player.get("_id") or ""),
     )
 
 

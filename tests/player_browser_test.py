@@ -25,7 +25,7 @@ ACTION = "show_player_snapshots"
 
 def player(name, connected=True, group="Obchod", location="Praha", labels=(), uploaded=0, reported=0, notes="",
            temperature=None, version=""):
-    result = {"name": name, "isConnected": connected, "group": {"name": group} if group else None,
+    result = {"_id": f"id-{name}", "name": name, "isConnected": connected, "group": {"name": group} if group else None,
               "configLocation": location, "labels": list(labels), "lastUpload": uploaded, "lastReported": reported,
               "notes": notes}
     if temperature is not None:
@@ -133,14 +133,13 @@ class PlayerBrowserTest(BrowserTestCase):
         self.assertEqual(ungrouped[2].cget("text"), "")
         self.assertEqual((ungrouped[5].cget("text"), ungrouped[6].cget("text")), ("nikdy", "nikdy"))
 
-    def test_every_row_has_a_snapshot_button_that_is_inactive_for_now(self):
+    def test_every_row_has_a_snapshot_button(self):
         browser = self.open()
 
         buttons = [widgets[0] for widgets in browser._widgets.values()]
         self.assertEqual(len(buttons), 4)
         for button in buttons:
             self.assertEqual(button.cget("text"), "Snímek")
-            self.assertTrue(button.instate(["disabled"]))
 
     def test_the_name_filter_takes_a_part_of_the_name(self):
         browser = self.open()
@@ -2039,6 +2038,122 @@ class MainWindowTest(BrowserTestCase):
 
         self.assertFalse(browser.winfo_exists())
         self.assertIsNone(self.app._player_browser)
+
+
+class SnapshotButtonTest(BrowserTestCase):
+    def open_with_snapshots(self, players=PLAYERS, **options):
+        self.snapshot_fetch = MagicMock(return_value=(b"\x89PNG\r\n\x1a\n", ".png"))
+        return self.open(players=players, snapshot_fetch=self.snapshot_fetch, **options)
+
+    @staticmethod
+    def button(browser, name):
+        row = next(row for row in browser._rows if row.name == name)
+        return row, browser._widgets[id(row)][0]
+
+    def test_the_button_is_grey_for_an_offline_player_only(self):
+        browser = self.open_with_snapshots()
+
+        self.assertNotIn("disabled", self.button(browser, "Lobby")[1].state())
+        self.assertNotIn("disabled", self.button(browser, "Sklad")[1].state())
+        self.assertIn("disabled", self.button(browser, "Prerov 1")[1].state())
+
+    def test_a_player_without_an_id_cannot_be_asked(self):
+        rows = [{**player("Bez id"), "_id": ""}]
+        browser = self.open_with_snapshots(players=rows)
+
+        self.assertIn("disabled", self.button(browser, "Bez id")[1].state())
+
+    def test_pressing_the_button_opens_the_window_of_that_player(self):
+        browser = self.open_with_snapshots()
+        row, button = self.button(browser, "Lobby")
+
+        button.invoke()
+        viewer = browser._viewers["id-Lobby"]
+        self.wait_for(lambda: not viewer.busy)
+
+        self.assertEqual(viewer.title(), "Snímek - Lobby")
+        self.snapshot_fetch.assert_called_once_with("https://demo.example.com", "jane", "pw", "id-Lobby")
+
+    def test_a_second_press_brings_the_same_window_forward(self):
+        browser = self.open_with_snapshots()
+        row, button = self.button(browser, "Lobby")
+        button.invoke()
+        viewer = browser._viewers["id-Lobby"]
+        self.wait_for(lambda: not viewer.busy)
+
+        button.invoke()
+        self.app.update()
+
+        self.assertIs(browser._viewers["id-Lobby"], viewer)
+        self.assertEqual(len(browser._viewers), 1)
+
+    def test_every_player_has_a_window_of_its_own(self):
+        browser = self.open_with_snapshots()
+        for name in ("Lobby", "Sklad"):
+            self.button(browser, name)[1].invoke()
+
+        self.assertEqual(sorted(browser._viewers), ["id-Lobby", "id-Sklad"])
+
+    def test_the_sixth_window_is_refused_with_a_message_until_one_is_closed(self):
+        players = [player(f"P{index}") for index in range(7)]
+        browser = self.open_with_snapshots(players=players)
+        with patch("gui_app.player_browser.messagebox.showinfo") as info:
+            for index in range(5):
+                self.button(browser, f"P{index}")[1].invoke()
+            info.assert_not_called()
+
+            self.button(browser, "P5")[1].invoke()
+
+            self.assertEqual(len(browser._viewers), 5)
+            self.assertNotIn("id-P5", browser._viewers)
+            self.assertIn("5 náhledů", info.call_args.args[1])
+
+            browser._viewers["id-P0"].destroy()
+            self.assertEqual(len(browser._viewers), 4)
+            info.reset_mock()
+            self.button(browser, "P5")[1].invoke()
+
+            info.assert_not_called()
+            self.assertIn("id-P5", browser._viewers)
+
+    def test_pressing_the_button_of_an_open_window_is_allowed_at_the_limit(self):
+        players = [player(f"P{index}") for index in range(6)]
+        browser = self.open_with_snapshots(players=players)
+        with patch("gui_app.player_browser.messagebox.showinfo") as info:
+            for index in range(5):
+                self.button(browser, f"P{index}")[1].invoke()
+            self.button(browser, "P2")[1].invoke()
+
+            info.assert_not_called()
+
+    def test_a_window_stays_when_the_players_are_refreshed(self):
+        browser = self.open_with_snapshots()
+        self.button(browser, "Lobby")[1].invoke()
+        viewer = browser._viewers["id-Lobby"]
+
+        self.clock[0] += 20
+        browser.refresh()
+        self.wait_for(lambda: not browser._loading)
+        self.button(browser, "Lobby")[1].invoke()
+
+        self.assertIs(browser._viewers["id-Lobby"], viewer)
+        self.assertTrue(viewer.winfo_exists())
+
+    def test_the_text_size_follows_to_the_open_windows(self):
+        browser = self.open_with_snapshots()
+        self.button(browser, "Lobby")[1].invoke()
+
+        browser.set_font_size(16)
+
+        self.assertEqual(browser._viewers["id-Lobby"]._font[1], 16)
+
+    def test_the_slots_are_shared_by_the_windows_of_the_account(self):
+        browser = self.open_with_snapshots()
+        self.button(browser, "Lobby")[1].invoke()
+        self.button(browser, "Sklad")[1].invoke()
+
+        self.assertIs(browser._viewers["id-Lobby"]._slots, browser._viewers["id-Sklad"]._slots)
+        self.assertEqual(browser._snapshot_slots.limit, 3)
 
 
 class MessageKeysTest(unittest.TestCase):

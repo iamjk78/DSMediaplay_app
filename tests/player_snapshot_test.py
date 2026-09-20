@@ -6,7 +6,10 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from api_testing.request_calls import ResponseError, ServerApi, SnapshotError
+from datetime import datetime
+
+from api_testing.request_calls import (NameResolutionError, ResponseError, ServerApi, SnapshotError,
+                                       snapshot_file_stem, snapshot_reason)
 from processor.input_processing import InternalException, PlayerSnapshotProcessor, ProcessorFactory
 from util.language import LanguageManager
 
@@ -100,6 +103,30 @@ class DownloadSnapshotTest(unittest.TestCase):
 
         self.assertEqual(instance.take_player_snapshot("Lobby"), {"url": "/s.png", "lastTaken": 1})
         self.assertEqual(instance._make_request.call_args.args, ("post", "/snapshot/abc123"))
+
+    def test_a_snapshot_by_id_does_not_look_the_player_up(self):
+        instance = api()
+        instance.get_player_id_by_name = MagicMock()
+        instance._make_request = MagicMock(return_value={"data": {"url": "/s.png"}})
+
+        self.assertEqual(instance.take_snapshot("abc123"), {"url": "/s.png"})
+        self.assertEqual(instance._make_request.call_args.args, ("post", "/snapshot/abc123"))
+        instance.get_player_id_by_name.assert_not_called()
+
+
+class SnapshotHelpersTest(unittest.TestCase):
+    def test_the_reason_of_each_kind_of_failure(self):
+        self.assertEqual(snapshot_reason(SnapshotError("too_large")), "too_large")
+        self.assertEqual(snapshot_reason(ResponseError({"params": {}})), "server")
+        self.assertEqual(snapshot_reason(NameResolutionError("x")), "server")
+        self.assertEqual(snapshot_reason(requests.exceptions.ConnectionError()), "download")
+        self.assertEqual(snapshot_reason(KeyError("url")), "download")
+
+    def test_the_file_name_is_made_of_the_player_and_the_moment(self):
+        moment = datetime(2026, 9, 20, 8, 5, 3)
+        self.assertEqual(snapshot_file_stem("Lobby 1", moment), "Lobby_1_2026-09-20_08-05-03")
+        self.assertEqual(snapshot_file_stem("../../etc/passwd", moment), "etc_passwd_2026-09-20_08-05-03")
+        self.assertEqual(snapshot_file_stem("///", moment), "player_2026-09-20_08-05-03")
 
 
 class PlayerSnapshotProcessorTest(unittest.TestCase):
