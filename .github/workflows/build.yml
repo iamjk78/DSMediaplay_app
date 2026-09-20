@@ -110,29 +110,46 @@ jobs:
           & "$env:ProgramFiles\Git\bin\bash.exe" packaging/smoke_test.sh "$dir\DSMediaplay_app.exe"
           if ($LASTEXITCODE -ne 0) { throw 'The installed application failed the smoke test' }
 
-          # Installing again over the installed version: it has to be uninstalled first, so a file of it that the new
-          # version does not have is gone afterwards, a running instance is closed, and the user data stays
+          Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          # The uninstaller finishes in a temporary copy of itself, so wait for the result
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $dir) -or (Test-Path $uninstallKey) -or (Test-Path $shortcut)) {
+            if ((Get-Date) -gt $deadline) { throw 'The uninstaller left files, the shortcut or the registry entry behind' }
+            Start-Sleep -Seconds 2
+          }
+
+          # Installing a new version over an installed one has to uninstall the old one first. An "old" version is made
+          # here: the same application plus a file of its own, which the new version does not have. Only what the old
+          # installer installed is known to its uninstaller, so this file is what tells an uninstall from an overwrite.
+          $oldDir = Join-Path $env:RUNNER_TEMP 'old-installer'
+          $extra = 'dist\DSMediaplay_app\file_of_the_old_version.txt'
+          Set-Content $extra 'old'
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" '/DAppVersion=0.0.1-old' '/DAppNumericVersion=0.0.1.0' "/O$oldDir" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed for the old version with exit code $LASTEXITCODE" }
+          Remove-Item $extra
+          $old = (Get-ChildItem $oldDir -Filter 'DSMediaplay_app-Setup-*.exe').FullName
           $stale = Join-Path $dir 'file_of_the_old_version.txt'
-          Set-Content $stale 'old'
           $userData = Join-Path $env:APPDATA 'DSM_GUI'
           $marker = Join-Path $userData 'installer_test_marker.txt'
           New-Item -ItemType Directory -Force $userData | Out-Null
           Set-Content $marker 'keep'
-          $running = Start-Process "$dir\DSMediaplay_app.exe" -PassThru
+
+          Start-Process $old -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$dir" -Wait
+          if (-not (Test-Path $stale)) { throw 'The old version did not install its own file, the test proves nothing' }
+          $running = Start-Process "$dir\DSMediaplay_app.exe" -PassThru   # running while the new version comes
           Start-Sleep -Seconds 8
 
           Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$dir" -Wait
           if (Test-Path $stale) { throw 'The old version was not uninstalled first: a file of it is still there' }
-          if (-not (Test-Path "$dir\DSMediaplay_app.exe")) { throw 'The reinstall did not install DSMediaplay_app.exe' }
-          if (-not (Test-Path $uninstallKey)) { throw 'No uninstall entry after the reinstall' }
-          if (-not (Test-Path $shortcut)) { throw 'No Start menu shortcut after the reinstall' }
+          if (-not (Test-Path "$dir\DSMediaplay_app.exe")) { throw 'The new version did not install DSMediaplay_app.exe' }
+          if (-not (Test-Path $uninstallKey)) { throw 'No uninstall entry after installing over the old version' }
+          if (-not (Test-Path $shortcut)) { throw 'No Start menu shortcut after installing over the old version' }
           if (-not $running.HasExited) { throw 'The running instance of the old version was not closed' }
-          if (-not (Test-Path $marker)) { throw 'The reinstall removed the user data' }
+          if (-not (Test-Path $marker)) { throw 'Installing over the old version removed the user data' }
           & "$env:ProgramFiles\Git\bin\bash.exe" packaging/smoke_test.sh "$dir\DSMediaplay_app.exe"
-          if ($LASTEXITCODE -ne 0) { throw 'The reinstalled application failed the smoke test' }
+          if ($LASTEXITCODE -ne 0) { throw 'The application installed over the old version failed the smoke test' }
 
           Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
-          # The uninstaller finishes in a temporary copy of itself, so wait for the result
           $deadline = (Get-Date).AddSeconds(60)
           while ((Test-Path $dir) -or (Test-Path $uninstallKey) -or (Test-Path $shortcut)) {
             if ((Get-Date) -gt $deadline) { throw 'The uninstaller left files, the shortcut or the registry entry behind' }
