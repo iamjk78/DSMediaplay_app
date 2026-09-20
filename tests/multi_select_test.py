@@ -1,6 +1,8 @@
 import time
 import tkinter as tk
 import unittest
+from tkinter import ttk
+from unittest.mock import patch
 
 from gui_app.multi_select import MAX_POPUP_HEIGHT, MIN_POPUP_WIDTH, MultiSelectCombo
 
@@ -28,6 +30,11 @@ class MultiSelectTest(unittest.TestCase):
 
     def changed(self):
         self.changes += 1
+
+    def arrow_click(self):
+        """A click on the arrow part of the combo box, at its right edge."""
+        entry = self.combo.entry
+        entry.event_generate("<ButtonPress-1>", x=entry.winfo_width() - 6, y=entry.winfo_height() // 2)
 
     def visible_labels(self):
         return [button.cget("text") for button in self.combo._buttons.values() if button.winfo_manager()]
@@ -96,7 +103,7 @@ class MultiSelectTest(unittest.TestCase):
     # ---- the list
 
     def test_the_arrow_opens_and_closes_the_list_inside_the_window(self):
-        self.combo.arrow.invoke()
+        self.arrow_click()
         self.window.update()
 
         self.assertTrue(self.combo.is_open)
@@ -107,8 +114,55 @@ class MultiSelectTest(unittest.TestCase):
         self.assertEqual(popup.winfo_rooty(), self.combo.winfo_rooty() + self.combo.winfo_height())
         self.assertGreaterEqual(popup.winfo_width(), MIN_POPUP_WIDTH)
         self.assertEqual(self.visible_labels(), [label for label, _ in OPTIONS])
-        self.combo.arrow.invoke()
+        self.arrow_click()
         self.assertFalse(self.combo.is_open)
+
+    def test_a_click_on_the_text_part_does_not_open_the_list_but_the_arrow_part_does(self):
+        entry = self.combo.entry
+
+        entry.event_generate("<ButtonPress-1>", x=10, y=entry.winfo_height() // 2)
+        self.assertFalse(self.combo.is_open)
+        entry.event_generate("<ButtonPress-1>", x=entry.winfo_width() - 4, y=entry.winfo_height() // 2)
+        self.assertTrue(self.combo.is_open)
+
+    def test_the_windows_name_of_the_arrow_element_works_too(self):
+        entry = self.combo.entry
+        with patch.object(ttk.Combobox, "identify", return_value="Combobox.downarrow"):
+            entry.event_generate("<ButtonPress-1>", x=entry.winfo_width() - 6, y=8)
+            self.assertTrue(self.combo.is_open)
+            self.combo.close()
+            entry.event_generate("<ButtonPress-1>", x=10, y=8)  # the text part is never the arrow
+            self.assertFalse(self.combo.is_open)
+
+    def test_the_border_of_the_field_is_not_the_arrow(self):
+        entry = self.combo.entry
+
+        entry.event_generate("<ButtonPress-1>", x=1, y=1)
+
+        self.assertFalse(self.combo.is_open)
+
+    def test_the_native_list_of_the_combo_box_is_never_posted(self):
+        entry = self.combo.entry
+        self.assertEqual(entry.event_generate("<ButtonPress-1>", x=entry.winfo_width() - 6, y=8), None)
+
+        self.assertEqual(self.combo.entry.tk.call("winfo", "exists", f"{entry}.popdown"), 0)
+
+    def test_the_down_key_opens_the_list(self):
+        self.combo.entry.focus_force()
+        self.window.update()
+
+        self.combo.entry.event_generate("<Key-Down>")
+
+        self.assertTrue(self.combo.is_open)
+
+    def test_it_is_the_same_native_widget_as_the_other_drop_downs(self):
+        self.assertIsInstance(self.combo.entry, ttk.Combobox)
+        readonly = ttk.Combobox(self.window, state="readonly", width=11, font=("Helvetica", 12))
+        readonly.grid(row=2, column=0)
+        self.window.update()
+
+        self.assertEqual(self.combo.entry.winfo_height(), readonly.winfo_height())
+        self.assertEqual(self.combo.entry.winfo_width(), readonly.winfo_width())
 
     def test_the_list_is_above_the_other_widgets(self):
         self.combo.open()

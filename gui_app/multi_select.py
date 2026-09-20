@@ -6,12 +6,14 @@ from util.player_filter import plain_text
 
 MAX_POPUP_HEIGHT = 280
 MIN_POPUP_WIDTH = 220
+ARROW_ZONE = 24  # pixels at the right edge of the combo box that can be the arrow
 
 
 class MultiSelectCombo(tk.Frame):
     """
-    A text field with an arrow. What is typed filters by a part of the value; the arrow opens a list with a
-    check box for every value, and any number of them can be ticked. The typed text also narrows the list.
+    A text field with an arrow, made of the same native combo box as the other drop-downs so that it looks the same.
+    What is typed filters by a part of the value; the arrow (or the Down key) opens a list with a check box for every
+    value, and any number of them can be ticked. The typed text also narrows the list.
 
     The list is a frame placed inside `popup_parent` (the window), not a window of its own: it can never be left
     behind on the screen the way a separate pop-up window can. It closes on a click anywhere else, on Escape,
@@ -31,13 +33,14 @@ class MultiSelectCombo(tk.Frame):
 
         self.text_var = tk.StringVar()
         self.text_var.trace_add("write", lambda *_: self._text_changed())
-        self.entry = tk.Entry(self, textvariable=self.text_var, width=width, font=font)
+        self.entry = ttk.Combobox(self, textvariable=self.text_var, width=width, font=font)
         self.entry.grid(row=0, column=0)
+        # The combo box would post its own (empty) list: ours replaces it
+        self.entry.bind("<ButtonPress-1>", self._on_press)
+        self.entry.bind("<Key-Down>", self._on_down)
         self._badge = tk.Label(self, font=font, foreground="#1565c0")
         self._badge.grid(row=0, column=1, padx=(3, 0))
         self._badge.grid_remove()
-        self.arrow = ttk.Button(self, text="▾", width=2, command=self.toggle)
-        self.arrow.grid(row=0, column=2)
 
         self._popup = tk.Frame(popup_parent, borderwidth=1, relief="solid", background="white")
         self._canvas = tk.Canvas(self._popup, highlightthickness=0, borderwidth=0, background="white", width=1,
@@ -84,6 +87,17 @@ class MultiSelectCombo(tk.Frame):
         self.text_var.set("")
 
     # ---- the list
+
+    def _on_press(self, event):
+        """The arrow is the "button" element on macOS and the "downarrow" element on Windows and elsewhere."""
+        element = str(self.entry.identify(event.x, event.y)).lower()
+        if ("arrow" in element or element.endswith("button")) and event.x >= self.entry.winfo_width() - ARROW_ZONE:
+            self.toggle()
+            return "break"
+
+    def _on_down(self, _event):
+        self.open()
+        return "break"
 
     @property
     def is_open(self) -> bool:
