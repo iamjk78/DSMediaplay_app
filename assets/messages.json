@@ -267,7 +267,8 @@
         "pb_age_gt_12h": "> 12 hodin",
         "pb_age_gt_1d": "> 1 den",
         "pb_age_gt_1w": "> 1 týden",
-        "pb_age_gt_1mo": "> 1 měsíc"
+        "pb_age_gt_1mo": "> 1 měsíc",
+        "pb_columns": "Zobrazení sloupců:"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -537,6 +538,7 @@
         "pb_age_gt_12h": "> 12 hours",
         "pb_age_gt_1d": "> 1 day",
         "pb_age_gt_1w": "> 1 week",
-        "pb_age_gt_1mo": "> 1 month"
+        "pb_age_gt_1mo": "> 1 month",
+        "pb_columns": "Show columns:"
     }
 }

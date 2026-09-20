@@ -3,11 +3,12 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional
 
 import requests
 
 from api_testing.request_calls import LoginError, ServerApi
+from gui_app.color_button import GREEN, RED, make_color_button, set_button_colors
 from gui_app.icons import set_window_icon
 from gui_app.multi_select import MultiSelectCombo
 from gui_app.tooltip import Tooltip
@@ -24,6 +25,7 @@ COLUMNS = (
     ("reported", "pb_col_reported", 17),
     ("note", "pb_col_note", 30),
 )
+TOGGLE_COLUMNS = ("group", "location", "label", "synced", "reported", "note")  # the others are always shown
 MIN_COLUMN_WIDTH = 40  # pixels
 MAX_COLUMN_WIDTH = 1500
 SEPARATOR_WIDTH = 7  # the space between two columns; the line itself is 1 px wide
@@ -54,6 +56,13 @@ def valid_widths(raw) -> Dict[str, int]:
             and MIN_COLUMN_WIDTH <= raw[key] <= MAX_COLUMN_WIDTH}
 
 
+def valid_hidden(raw) -> FrozenSet[str]:
+    """The saved hidden columns that exist and may be hidden; anything else is ignored."""
+    if not isinstance(raw, (list, tuple, set, frozenset)):
+        return frozenset()
+    return frozenset(key for key in raw if key in TOGGLE_COLUMNS)
+
+
 class PlayerBrowser(tk.Toplevel):
     """
     The players of one account in a table that can be filtered by every column but the button.
@@ -66,13 +75,17 @@ class PlayerBrowser(tk.Toplevel):
     def __init__(self, master, *, url: str, login: str, password: str, account_name: str,
                  fetch: Callable[[str, str, str], List[Dict]] = fetch_players_from_server,
                  column_widths: Optional[Dict[str, int]] = None,
-                 save_column_widths: Callable[[Dict[str, int]], None] = lambda widths: None):
+                 save_column_widths: Callable[[Dict[str, int]], None] = lambda widths: None,
+                 hidden_columns: Optional[Iterable[str]] = None,
+                 save_hidden_columns: Callable[[List[str]], None] = lambda hidden: None):
         super().__init__(master)
         self.lang = master.lang
         self.connection = (url, login)
         self._credentials = (url, login, password)
         self._fetch = fetch
         self._save_column_widths = save_column_widths
+        self._hidden = set(valid_hidden(hidden_columns))
+        self._save_hidden_columns = save_hidden_columns
         self._font = master.font
         self._rows: List[PlayerRow] = []
         self._visible: List[PlayerRow] = []
@@ -110,6 +123,16 @@ class PlayerBrowser(tk.Toplevel):
         self.reset_button = self._button(bar, "pb_reset", "pb_tip_reset", self.reset_filters)
         self.default_columns_button = self._button(bar, "pb_default_columns", "pb_tip_default_columns",
                                                    self.reset_columns)
+        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=(8, 12))
+        tk.Label(bar, text=self.lang.get_message("pb_columns"), font=self._font).pack(side="left", padx=(0, 8))
+        header = {key: message for key, message, _ in COLUMNS}
+        self.column_buttons: Dict[str, tk.Widget] = {}
+        for key in TOGGLE_COLUMNS:  # each as wide as its text; green = shown, red = hidden
+            button = make_color_button(bar, self.lang.get_message(header[key]), lambda column=key: self.toggle_column(column),
+                                       self._font, GREEN)
+            button.pack(side="left", padx=(0, 6))
+            self.column_buttons[key] = button
+        self._update_toggle_colors()
 
     def _button(self, bar, message: str, tip: str, command) -> ttk.Button:
         button = ttk.Button(bar, text=self.lang.get_message(message), command=command)
@@ -124,19 +147,20 @@ class PlayerBrowser(tk.Toplevel):
         self._filter_groups: List[tk.Frame] = []
         self.name_var = tk.StringVar()
         self.name_var.trace_add("write", lambda *_: self._schedule_filter())
+        self._filter_column: Dict[tk.Frame, str] = {}  # the optional columns' filters go with their column
         self.name_entry = self._filter("pb_name", lambda parent: tk.Entry(
             parent, textvariable=self.name_var, width=12, font=self._font))
         self.name_entry.focus_set()
         self.status_box = self._filter("pb_status", lambda parent: self._combobox(parent, 8))
-        self.group_box = self._filter("pb_group", self._multi_select)
-        self.location_box = self._filter("pb_location", self._multi_select)
-        self.label_box = self._filter("pb_label", self._multi_select)
-        self.synced_box = self._filter("pb_synced", lambda parent: self._combobox(parent, 10))
-        self.reported_box = self._filter("pb_reported", lambda parent: self._combobox(parent, 10))
+        self.group_box = self._filter("pb_group", self._multi_select, "group")
+        self.location_box = self._filter("pb_location", self._multi_select, "location")
+        self.label_box = self._filter("pb_label", self._multi_select, "label")
+        self.synced_box = self._filter("pb_synced", lambda parent: self._combobox(parent, 10), "synced")
+        self.reported_box = self._filter("pb_reported", lambda parent: self._combobox(parent, 10), "reported")
         self.note_var = tk.StringVar()
         self.note_var.trace_add("write", lambda *_: self._schedule_filter())
         self.note_entry = self._filter("pb_note", lambda parent: tk.Entry(
-            parent, textvariable=self.note_var, width=10, font=self._font))
+            parent, textvariable=self.note_var, width=10, font=self._font), "note")
         all_text = self.lang.get_message("pb_all")
         self._set_choices(self.status_box, {all_text: None, self.lang.get_message("pb_online"): True,
                                             self.lang.get_message("pb_offline"): False})
@@ -144,8 +168,10 @@ class PlayerBrowser(tk.Toplevel):
         self._set_choices(self.synced_box, ages)
         self._set_choices(self.reported_box, ages)
 
-    def _filter(self, message: str, make_widget) -> tk.Widget:
+    def _filter(self, message: str, make_widget, column: Optional[str] = None) -> tk.Widget:
         group = tk.Frame(self._filter_bar)
+        if column:
+            self._filter_column[group] = column
         tk.Label(group, text=self.lang.get_message(message), font=self._font).pack(side="left", padx=(0, 4))
         widget = make_widget(group)
         widget.pack(side="left")
@@ -166,6 +192,9 @@ class PlayerBrowser(tk.Toplevel):
         limit = self.winfo_screenwidth() - 40
         row = column = used = 0
         for group in self._filter_groups:
+            if self._filter_column.get(group) in self._hidden:  # the filter of a hidden column is hidden too
+                group.grid_remove()
+                continue
             width = group.winfo_reqwidth() + FILTER_GAP
             if column and used + width > limit:
                 row, column, used = row + 1, 0, 0
@@ -208,6 +237,7 @@ class PlayerBrowser(tk.Toplevel):
         for widget in (self._body, self._header):
             widget.bind("<Configure>", lambda _: self._update_scroll_regions())
         self._apply_widths()
+        self._apply_visibility()
         self.bind("<MouseWheel>", self._on_mouse_wheel)
         self.bind("<Shift-MouseWheel>", self._on_shift_mouse_wheel)
         # On the window, not on the lines: the events of every widget of the table arrive here, so the whole
@@ -251,12 +281,15 @@ class PlayerBrowser(tk.Toplevel):
         for frame in (self._header, self._body):
             frame.grid_columnconfigure(0, minsize=SNAPSHOT_COLUMN_MINSIZE)
             for index, (key, _, _) in enumerate(COLUMNS):
-                frame.grid_columnconfigure(self._cell_column(index), minsize=self._widths[key])
-                frame.grid_columnconfigure(self._cell_column(index) + 1, minsize=SEPARATOR_WIDTH)
+                hidden = key in self._hidden
+                frame.grid_columnconfigure(self._cell_column(index), minsize=0 if hidden else self._widths[key])
+                frame.grid_columnconfigure(self._cell_column(index) + 1, minsize=0 if hidden else SEPARATOR_WIDTH)
 
     def _edge_at(self, x_root: int) -> Optional[str]:
         """The column whose right-hand line is within EDGE_ZONE pixels of the pointer, if any."""
         for (key, _, _), separator in zip(COLUMNS, self._header_separators):
+            if key in self._hidden:
+                continue
             if abs(x_root - (separator.winfo_rootx() + SEPARATOR_WIDTH // 2)) <= EDGE_ZONE:
                 return key
         return None
@@ -332,6 +365,49 @@ class PlayerBrowser(tk.Toplevel):
 
     def _on_shift_mouse_wheel(self, event):
         self._scroll_x("scroll", self._wheel_step(event), "units")
+
+    # ---- shown and hidden columns
+
+    def hidden_columns(self) -> List[str]:
+        return [key for key in TOGGLE_COLUMNS if key in self._hidden]
+
+    def toggle_column(self, key: str):
+        """Shows or hides an optional column together with its filter; hiding also clears that filter."""
+        if key in self._hidden:
+            self._hidden.discard(key)
+        else:
+            self._hidden.add(key)
+            self._clear_filter(key)
+            if self._sort[0] == key:  # the table is not left sorted by something that cannot be seen
+                self._sort = ("name", False)
+                self._show_sort_arrow()
+        self._update_toggle_colors()
+        self._apply_visibility()
+        self._apply_widths()
+        self._flow_filters()
+        self.apply_filters()
+        self._save_hidden_columns(self.hidden_columns())
+
+    def _update_toggle_colors(self):
+        for key, button in self.column_buttons.items():
+            set_button_colors(button, RED if key in self._hidden else GREEN)
+
+    def _apply_visibility(self):
+        """The header of a hidden column and its line go; the cells of the rows follow in apply_filters."""
+        for index, (key, _, _) in enumerate(COLUMNS):
+            for widget in (self._header_cells[key], self._header_separators[index]):
+                widget.grid_remove() if key in self._hidden else widget.grid()
+
+    def _clear_filter(self, key: str):
+        if key == "note":
+            self.note_var.set("")
+            return
+        box = {"group": self.group_box, "location": self.location_box, "label": self.label_box,
+               "synced": self.synced_box, "reported": self.reported_box}[key]
+        if isinstance(box, MultiSelectCombo):
+            box.clear()
+        else:
+            box.set(next(iter(self._combo_values[box])))
 
     # ---- loading
 
@@ -415,12 +491,20 @@ class PlayerBrowser(tk.Toplevel):
     def _criteria(self) -> PlayerFilter:
         def chosen(box):
             return self._combo_values[box].get(box.get())
-        return PlayerFilter(
-            name=self.name_var.get(), online=chosen(self.status_box),
-            group_text=self.group_box.text(), groups=self.group_box.checked(),
-            location_text=self.location_box.text(), locations=self.location_box.checked(),
-            label_text=self.label_box.text(), labels=self.label_box.checked(),
-            synced=chosen(self.synced_box), reported=chosen(self.reported_box), note=self.note_var.get())
+        criteria = dict(name=self.name_var.get(), online=chosen(self.status_box))
+        if "group" not in self._hidden:
+            criteria.update(group_text=self.group_box.text(), groups=self.group_box.checked())
+        if "location" not in self._hidden:
+            criteria.update(location_text=self.location_box.text(), locations=self.location_box.checked())
+        if "label" not in self._hidden:
+            criteria.update(label_text=self.label_box.text(), labels=self.label_box.checked())
+        if "synced" not in self._hidden:
+            criteria.update(synced=chosen(self.synced_box))
+        if "reported" not in self._hidden:
+            criteria.update(reported=chosen(self.reported_box))
+        if "note" not in self._hidden:
+            criteria.update(note=self.note_var.get())
+        return PlayerFilter(**criteria)
 
     def _schedule_filter(self):
         if self._filter_after_id:
@@ -463,9 +547,15 @@ class PlayerBrowser(tk.Toplevel):
             button, *cells = self._widgets[id(row)]
             button.grid(row=index, column=0, padx=CELL_PADDING, pady=1)
             for column, cell in enumerate(cells):
-                cell.grid(row=index, column=self._cell_column(column), sticky="ew", padx=CELL_PADDING, pady=1)
+                if COLUMNS[column][0] in self._hidden:
+                    cell.grid_remove()
+                else:
+                    cell.grid(row=index, column=self._cell_column(column), sticky="ew", padx=CELL_PADDING, pady=1)
         for column, line in enumerate(self._body_separators):  # the lines run down beside the rows
-            line.grid(row=0, column=self._cell_column(column) + 1, rowspan=max(1, len(visible)), sticky="ns")
+            if COLUMNS[column][0] in self._hidden:
+                line.grid_remove()
+            else:
+                line.grid(row=0, column=self._cell_column(column) + 1, rowspan=max(1, len(visible)), sticky="ns")
         self._canvas.yview_moveto(0)
         self._visible = visible
         if not self._rows:

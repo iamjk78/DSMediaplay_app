@@ -13,9 +13,10 @@ import requests
 
 from api_testing.request_calls import LoginError, ServerApi
 from gui_app import gui
+from gui_app.color_button import GREEN, RED, ColorButton
 from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
-                                    SEPARATOR_COLOR, SNAPSHOT_COLUMN_MINSIZE, SORT_CURSOR, PlayerBrowser,
-                                    valid_widths)
+                                    SEPARATOR_COLOR, SEPARATOR_WIDTH, SNAPSHOT_COLUMN_MINSIZE, SORT_CURSOR, TOGGLE_COLUMNS,
+                                    PlayerBrowser, valid_hidden, valid_widths)
 from util.language import LanguageManager
 
 ACTION = "show_player_snapshots"
@@ -708,6 +709,304 @@ class ResizeZoneTest(BrowserTestCase):
         self.assertIsNone(browser._edge_at(scrolled + 40))
 
 
+class ColumnVisibilityTest(BrowserTestCase):
+    HEADERS = {"group": "Skupina", "location": "Lokace", "label": "Kategorie", "synced": "Synchronizováno",
+               "reported": "Reportováno", "note": "Poznámka"}
+
+    @staticmethod
+    def fill(button):
+        return button._colors.normal if isinstance(button, ColorButton) else str(button.cget("background"))
+
+    def cells(self, browser, key):
+        """The header cell and the cells of all the rows of one column."""
+        index = [k for k, _, _ in COLUMNS].index(key)
+        return [browser._header_cells[key]] + [widgets[index + 1] for widgets in browser._widgets.values()]
+
+    def shown(self, browser, key):
+        self.app.update()
+        return all(widget.winfo_ismapped() for widget in self.cells(browser, key))
+
+    def hidden(self, browser, key):
+        self.app.update()
+        return not any(widget.winfo_ismapped() for widget in self.cells(browser, key))
+
+    def test_the_buttons_are_in_the_top_row_right_of_the_other_buttons(self):
+        browser = self.open()
+        self.app.update()
+
+        buttons = [browser.column_buttons[key] for key in TOGGLE_COLUMNS]
+        self.assertEqual(list(browser.column_buttons), ["group", "location", "label", "synced", "reported", "note"])
+        self.assertEqual([b.cget("text") for b in buttons], [self.HEADERS[k] for k in TOGGLE_COLUMNS])
+        x_positions = [b.winfo_rootx() for b in buttons]
+        self.assertEqual(x_positions, sorted(x_positions))
+        self.assertGreater(min(x_positions), browser.default_columns_button.winfo_rootx()
+                           + browser.default_columns_button.winfo_width())
+        top = browser.refresh_button.winfo_rooty()
+        for button in buttons:  # in the same row (the heights differ a little)
+            self.assertLess(abs(button.winfo_rooty() - top), 12)
+            self.assertLess(button.winfo_rooty() + button.winfo_height(), browser.name_entry.winfo_rooty())
+
+    def test_the_section_is_named_and_the_name_and_state_columns_cannot_be_hidden(self):
+        browser = self.open()
+
+        labels = [w.cget("text") for w in browser._actions_bar.winfo_children() if isinstance(w, tk.Label)]
+        self.assertEqual(labels, ["Zobrazení sloupců:"])
+        self.assertNotIn("name", browser.column_buttons)
+        self.assertNotIn("status", browser.column_buttons)
+
+    def test_every_button_is_only_as_wide_as_its_text(self):
+        browser = self.open()
+        from tkinter import font as tkfont
+        measure = tkfont.Font(root=self.app, font=self.app.font)
+
+        for key, button in browser.column_buttons.items():
+            with self.subTest(column=key):
+                text_width = measure.measure(button.cget("text"))
+                self.assertLess(button.winfo_reqwidth() - text_width, 50)  # a margin, nothing more
+
+    def test_at_first_every_column_is_shown_and_every_button_is_light_green(self):
+        browser = self.open()
+
+        for key, button in browser.column_buttons.items():
+            with self.subTest(column=key):
+                self.assertTrue(self.shown(browser, key))
+                self.assertEqual(self.fill(button), GREEN.normal)
+        self.assertEqual(browser.hidden_columns(), [])
+
+    def test_a_click_hides_the_column_with_its_line_and_filter_and_turns_the_button_light_red(self):
+        browser = self.open()
+
+        browser.column_buttons["group"].event_generate("<ButtonPress-1>", x=5, y=5)
+        browser.column_buttons["group"].event_generate("<ButtonRelease-1>", x=5, y=5)
+        self.app.update()
+
+        self.assertTrue(self.hidden(browser, "group"))
+        self.assertFalse(browser._header_separators[2].winfo_ismapped())
+        self.assertFalse(browser._body_separators[2].winfo_ismapped())
+        self.assertEqual(browser._filter_column and [g.winfo_ismapped() for g, k in browser._filter_column.items()
+                                                     if k == "group"], [False])
+        self.assertEqual(self.fill(browser.column_buttons["group"]), RED.normal)
+        self.assertEqual(self.fill(browser.column_buttons["note"]), GREEN.normal)
+        self.assertTrue(self.shown(browser, "note"))
+
+    def test_the_other_columns_move_left_and_come_back_to_their_places(self):
+        browser = self.open()
+        self.app.update()
+        before = {key: browser._header_cells[key].winfo_x() for key, _, _ in COLUMNS}
+        width = browser.column_widths()["group"]
+
+        browser.toggle_column("group")
+        self.app.update()
+        after = {key: browser._header_cells[key].winfo_x() for key, _, _ in COLUMNS}
+        self.assertEqual((after["name"], after["status"]), (before["name"], before["status"]))
+        self.assertEqual(after["location"], before["group"])  # the next column takes its place
+        self.assertEqual(before["note"] - after["note"], width + SEPARATOR_WIDTH)  # its width and its line
+
+        browser.toggle_column("group")
+        self.app.update()
+        self.assertEqual({key: browser._header_cells[key].winfo_x() for key, _, _ in COLUMNS}, before)
+        self.assertTrue(self.shown(browser, "group"))
+        self.assertEqual(self.fill(browser.column_buttons["group"]), GREEN.normal)
+
+    def test_the_rows_line_up_with_the_header_when_columns_are_hidden(self):
+        browser = self.open()
+        browser.toggle_column("location")
+        browser.toggle_column("synced")
+        self.app.update()
+
+        first_row = browser._widgets[id(browser._visible[0])]
+        for index, (key, _, _) in enumerate(COLUMNS):
+            if key in ("location", "synced"):
+                continue
+            with self.subTest(column=key):
+                self.assertEqual(browser._header_cells[key].winfo_x(), first_row[index + 1].winfo_x())
+
+    def test_the_table_and_the_scroll_region_get_narrower(self):
+        browser = self.open()
+        self.app.update()
+        full = browser._body.winfo_reqwidth()
+
+        for key in TOGGLE_COLUMNS:
+            browser.toggle_column(key)
+        self.app.update()
+
+        narrow = browser._body.winfo_reqwidth()
+        self.assertLess(narrow, full - 800)
+        self.assertEqual(int(browser._canvas.cget("scrollregion").split()[2]), narrow)
+
+    def test_the_first_row_still_shows_when_everything_optional_is_hidden(self):
+        browser = self.open()
+
+        for key in TOGGLE_COLUMNS:
+            browser.toggle_column(key)
+
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 1", "Prerov 2", "Sklad"])
+        self.assertTrue(self.shown(browser, "name"))
+        self.assertTrue(self.shown(browser, "status"))
+
+    def test_hiding_a_column_clears_its_filter_and_it_is_not_taken_into_account(self):
+        browser = self.open()
+        self.tick(browser, browser.group_box, "Obchod")
+        self.type_into(browser, browser.note_var, "vchod")
+        self.choose(browser.reported_box, "> 1 den")
+        self.choose(browser.synced_box, "< 1 minuta")
+        self.tick(browser, browser.label_box, "test")
+        self.tick(browser, browser.location_box, "Praha")
+        self.assertEqual(browser.visible_names(), [])
+
+        for key in ("group", "note", "reported", "synced", "label", "location"):
+            browser.toggle_column(key)
+
+        self.assertEqual(len(browser.visible_names()), 4)
+        self.assertEqual(browser.status_var.get(), "Zobrazeno 4 z 4")
+        for key in ("group", "note", "reported", "synced", "label", "location"):
+            browser.toggle_column(key)  # shown again: the filters are empty, not remembered
+        self.assertEqual(browser.group_box.checked(), frozenset())
+        self.assertEqual(browser.note_var.get(), "")
+        self.assertEqual((browser.reported_box.get(), browser.synced_box.get()), ("(vše)", "(vše)"))
+        self.assertEqual(len(browser.visible_names()), 4)
+
+    def test_only_the_shown_columns_filter(self):
+        browser = self.open()
+        self.tick(browser, browser.group_box, "Obchod")
+        self.type_into(browser, browser.note_var, "rezerva")
+        self.assertEqual(browser.visible_names(), [])
+
+        browser.toggle_column("group")  # the group filter goes, the note filter stays
+
+        self.assertEqual(browser.visible_names(), ["Sklad"])
+
+    def test_a_value_forced_into_a_hidden_filter_is_ignored(self):
+        browser = self.open()
+        browser.toggle_column("note")
+
+        browser.note_var.set("does not exist")
+        browser.apply_filters()
+
+        self.assertEqual(len(browser.visible_names()), 4)
+        self.assertEqual(browser._criteria().note, "")
+
+    def test_the_filters_of_hidden_columns_leave_the_bar_and_the_rest_stays(self):
+        browser = self.open()
+        self.app.update()
+
+        browser.toggle_column("label")
+        browser.toggle_column("note")
+        self.app.update()
+
+        mapped = {group: group.winfo_ismapped() for group in browser._filter_groups}
+        hidden_groups = [g for g, k in browser._filter_column.items() if k in ("label", "note")]
+        self.assertTrue(all(not mapped[g] for g in hidden_groups))
+        self.assertTrue(all(mapped[g] for g in browser._filter_groups if g not in hidden_groups))
+        for widget in (browser.name_entry, browser.status_box, browser.group_box, browser.location_box,
+                       browser.synced_box, browser.reported_box):
+            self.assertTrue(widget.winfo_ismapped())
+
+    def test_the_sort_goes_back_to_the_name_when_the_sorted_column_is_hidden(self):
+        browser = self.open()
+        browser._header_cells["note"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
+        self.assertEqual(browser._sort, ("note", False))
+
+        browser.toggle_column("note")
+
+        self.assertEqual(browser._sort, ("name", False))
+        self.assertTrue(browser._header_cells["name"].cget("text").endswith("▲"))
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 1", "Prerov 2", "Sklad"])
+
+    def test_hiding_another_column_keeps_the_sort(self):
+        browser = self.open()
+        browser._header_cells["reported"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
+
+        browser.toggle_column("note")
+
+        self.assertEqual(browser._sort, ("reported", False))
+
+    def test_reset_does_not_touch_the_shown_columns(self):
+        saved = []
+        browser = self.open(save_hidden_columns=saved.append)
+        browser.toggle_column("group")
+        browser.toggle_column("note")
+        saved.clear()
+
+        browser.reset_button.invoke()
+
+        self.assertEqual(browser.hidden_columns(), ["group", "note"])
+        self.assertTrue(self.hidden(browser, "group"))
+        self.assertEqual(self.fill(browser.column_buttons["group"]), RED.normal)
+        self.assertEqual(saved, [])
+
+    def test_default_columns_changes_the_widths_and_not_the_shown_columns(self):
+        browser = self.open(column_widths={"name": 333})
+        browser.toggle_column("location")
+
+        browser.default_columns_button.invoke()
+
+        self.assertEqual(browser.hidden_columns(), ["location"])
+        self.assertNotEqual(browser.column_widths()["name"], 333)
+
+    def test_the_hidden_columns_are_reported_in_the_order_of_the_columns_each_time(self):
+        saved = []
+        browser = self.open(save_hidden_columns=saved.append)
+
+        browser.toggle_column("note")
+        browser.toggle_column("group")
+        browser.toggle_column("note")
+
+        self.assertEqual(saved, [["note"], ["group", "note"], ["group"]])
+
+    def test_the_hidden_columns_saved_for_the_account_are_hidden_when_the_window_opens(self):
+        browser = self.open(hidden_columns=["label", "note"])
+        self.app.update()
+
+        self.assertEqual(browser.hidden_columns(), ["label", "note"])
+        self.assertTrue(self.hidden(browser, "label"))
+        self.assertTrue(self.hidden(browser, "note"))
+        self.assertTrue(self.shown(browser, "group"))
+        self.assertEqual(self.fill(browser.column_buttons["label"]), RED.normal)
+        self.assertEqual(self.fill(browser.column_buttons["group"]), GREEN.normal)
+        self.assertEqual(len(browser.visible_names()), 4)
+        self.assertTrue(browser.name_entry.winfo_ismapped())
+
+    def test_nonsense_in_the_saved_hidden_columns_is_ignored(self):
+        for raw in (None, "note", 5, {"note": 1}, ["name"], ["status", "snapshot"], [None, 3], ["nope"]):
+            with self.subTest(raw=raw):
+                self.assertEqual(valid_hidden(raw), frozenset())
+        self.assertEqual(valid_hidden(["note", "name", "group", "x"]), frozenset({"note", "group"}))
+        self.assertEqual(self.open(hidden_columns=["name", "note"]).hidden_columns(), ["note"])
+
+    def test_a_hidden_column_has_no_resize_zone_and_its_neighbour_still_has_one(self):
+        browser = self.open(hidden_columns=["location"])
+        self.app.update()
+        location_line = browser._header_separators[3].winfo_rootx() + 3
+        group_line = browser._header_separators[2].winfo_rootx() + 3
+
+        self.assertEqual(browser._edge_at(group_line), "group")
+        self.assertNotEqual(browser._edge_at(location_line + 30), "location")
+        for x in range(location_line - 8, location_line + 9):
+            self.assertNotEqual(browser._edge_at(x), "location")
+
+    def test_widths_are_kept_while_a_column_is_hidden(self):
+        browser = self.open(column_widths={"group": 250})
+
+        browser.toggle_column("group")
+        browser.toggle_column("group")
+
+        self.assertEqual(browser.column_widths()["group"], 250)
+        self.app.update()
+        self.assertEqual(browser._header_cells["group"].winfo_width() + 8, 250)
+
+    def test_the_toggle_buttons_have_no_tooltip_trouble_and_survive_a_refresh(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch, hidden_columns=["synced"])
+
+        browser.refresh()
+        self.wait_for(lambda: not browser._loading)
+
+        self.assertEqual(browser.hidden_columns(), ["synced"])
+        self.assertTrue(self.hidden(browser, "synced"))
+        self.assertTrue(self.shown(browser, "reported"))
+
+
 class ResetFiltersTest(BrowserTestCase):
     def test_reset_clears_every_filter_and_shows_all_the_players_again(self):
         browser = self.open()
@@ -907,6 +1206,48 @@ class MainWindowTest(BrowserTestCase):
             browser_class.call_args.kwargs["save_column_widths"]({})
         with open(self.app.config_file, encoding="utf-8") as file:
             self.assertNotIn("player_columns", json.load(file)["logins"]["Demo"])
+
+    def test_the_hidden_columns_are_remembered_per_account(self):
+        self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {"jane": {"login": "jane"}},
+                                               "player_hidden": ["note"]}
+        self.app.all_data["logins"]["Other"] = {"url": "https://y", "names": {}}
+        self.app.account_data = self.app.all_data["logins"]
+        self.app.save_account_configs()
+        self.app.option_choose_administration.set("Demo")
+        with patch("gui_app.gui.PlayerBrowser") as browser_class:
+            self.app.open_player_browser("https://x", "jane", "pw")
+            options = browser_class.call_args.kwargs
+            self.assertEqual(options["hidden_columns"], ["note"])
+
+            options["save_hidden_columns"](["group", "note"])
+
+        with open(self.app.config_file, encoding="utf-8") as file:
+            saved = json.load(file)["logins"]
+        self.assertEqual(saved["Demo"]["player_hidden"], ["group", "note"])
+        self.assertNotIn("player_hidden", saved["Other"])
+        options["save_hidden_columns"]([])  # everything shown again
+        with open(self.app.config_file, encoding="utf-8") as file:
+            self.assertNotIn("player_hidden", json.load(file)["logins"]["Demo"])
+
+    def test_the_hidden_columns_and_the_widths_are_stored_side_by_side(self):
+        self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {}}
+        self.app.account_data = self.app.all_data["logins"]
+        self.app.save_account_configs()
+
+        self.app.save_player_columns("Demo", {"name": 300})
+        self.app.save_hidden_player_columns("Demo", ["label"])
+        self.app.save_player_columns("Demo", {})
+
+        with open(self.app.config_file, encoding="utf-8") as file:
+            entry = json.load(file)["logins"]["Demo"]
+        self.assertEqual(entry["player_hidden"], ["label"])
+        self.assertNotIn("player_columns", entry)
+
+    def test_saving_hidden_columns_for_a_removed_account_writes_nothing(self):
+        self.app.save_hidden_player_columns("Gone", ["note"])
+
+        with open(self.app.config_file, encoding="utf-8") as file:
+            self.assertEqual(json.load(file)["logins"], {})
 
     def test_saving_widths_for_a_removed_account_writes_nothing(self):
         self.app.save_player_columns("Gone", {"name": 300})

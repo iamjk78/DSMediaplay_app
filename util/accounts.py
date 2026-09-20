@@ -100,3 +100,17 @@ def set_player_columns(data: dict, account: str, widths: dict) -> None:
         entry["player_columns"] = dict(widths)
     else:
         entry.pop("player_columns", None)
+
+
+def hidden_player_columns(data: dict, account: str) -> list:
+    """The optional columns of the player table the user switched off for this account."""
+    return list(data["logins"].get(account, {}).get("player_hidden", []))
+
+
+def set_hidden_player_columns(data: dict, account: str, hidden: list) -> None:
+    """Stores the hidden columns of the account; an empty list (all shown) stores nothing."""
+    entry = data["logins"][account]
+    if hidden:
+        entry["player_hidden"] = list(hidden)
+    else:
+        entry.pop("player_hidden", None)

@@ -504,7 +504,16 @@ class DSMediaplayApp(tk.Tk):
         self._player_browser = PlayerBrowser(
             self, url=url, login=login, password=password, account_name=account,
             column_widths=accounts.player_columns(self.all_data, account),
-            save_column_widths=lambda widths: self.save_player_columns(account, widths))
+            save_column_widths=lambda widths: self.save_player_columns(account, widths),
+            hidden_columns=accounts.hidden_player_columns(self.all_data, account),
+            save_hidden_columns=lambda hidden: self.save_hidden_player_columns(account, hidden))
+
+    def save_hidden_player_columns(self, account, hidden):
+        """Which optional columns of the player table are switched off is remembered per account too."""
+        self.sync_from_disk()
+        if account in self.account_data:
+            accounts.set_hidden_player_columns(self.all_data, account, hidden)
+            self.save_account_configs()
 
     def save_player_columns(self, account, widths):
         """The column widths the user set in the player table are remembered per account."""

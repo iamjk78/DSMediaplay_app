@@ -1,7 +1,8 @@
 import unittest
 
-from util.accounts import (AccountError, add_account, add_login, normalize_url, player_columns, remember_selection,
-                           remove_account, remove_login, set_player_columns)
+from util.accounts import (AccountError, add_account, add_login, hidden_player_columns, normalize_url, player_columns,
+                           remember_selection, remove_account, remove_login, set_hidden_player_columns,
+                           set_player_columns)
 
 
 def empty_config() -> dict:
@@ -210,6 +211,35 @@ class PlayerColumnsTest(unittest.TestCase):
         player_columns(data, "A")["name"] = 1
 
         self.assertEqual(player_columns(data, "A"), {"name": 300})
+
+
+class HiddenPlayerColumnsTest(unittest.TestCase):
+    def config(self):
+        data = empty_config()
+        add_account(data, "A", "https://a.example.com")
+        add_account(data, "B", "https://b.example.com")
+        return data
+
+    def test_kept_per_account_and_an_empty_list_stores_nothing(self):
+        data = self.config()
+
+        set_hidden_player_columns(data, "A", ["group", "note"])
+
+        self.assertEqual(hidden_player_columns(data, "A"), ["group", "note"])
+        self.assertEqual(hidden_player_columns(data, "B"), [])
+        self.assertEqual(hidden_player_columns(data, "nope"), [])
+        set_hidden_player_columns(data, "A", [])
+        self.assertNotIn("player_hidden", data["logins"]["A"])
+
+    def test_independent_of_the_widths_and_a_copy(self):
+        data = self.config()
+        set_player_columns(data, "A", {"name": 300})
+        set_hidden_player_columns(data, "A", ["note"])
+
+        hidden_player_columns(data, "A").append("group")
+        set_player_columns(data, "A", {})
+
+        self.assertEqual(hidden_player_columns(data, "A"), ["note"])
 
 
 if __name__ == "__main__":
