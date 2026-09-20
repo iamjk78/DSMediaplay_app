@@ -23,10 +23,16 @@ from util.language import LanguageManager
 ACTION = "show_player_snapshots"
 
 
-def player(name, connected=True, group="Obchod", location="Praha", labels=(), uploaded=0, reported=0, notes=""):
-    return {"name": name, "isConnected": connected, "group": {"name": group} if group else None,
-            "configLocation": location, "labels": list(labels), "lastUpload": uploaded, "lastReported": reported,
-            "notes": notes}
+def player(name, connected=True, group="Obchod", location="Praha", labels=(), uploaded=0, reported=0, notes="",
+           temperature=None, version=""):
+    result = {"name": name, "isConnected": connected, "group": {"name": group} if group else None,
+              "configLocation": location, "labels": list(labels), "lastUpload": uploaded, "lastReported": reported,
+              "notes": notes}
+    if temperature is not None:
+        result["piTemperature"] = temperature
+    if version:
+        result["version"] = version
+    return result
 
 
 def ago(**delta):
@@ -36,10 +42,10 @@ def ago(**delta):
 def make_players():
     return [
         player("Lobby", True, "Kancelar", "Praha", ["vstup"], uploaded=ago(seconds=30), reported=ago(seconds=20),
-               notes="hlavní vchod"),
+               notes="hlavní vchod", temperature="47.2", version="5.3.1"),
         player("Prerov 1", False, "Obchod", "Prerov", ["vstup", "test"], uploaded=ago(days=40),
-               reported=ago(days=2), notes="rozbitá\nobrazovka"),
-        player("Prerov 2", True, "Obchod", "Prerov", reported=ago(minutes=3)),
+               reported=ago(days=2), notes="rozbitá\nobrazovka", temperature="63", version="5.10.2"),
+        player("Prerov 2", True, "Obchod", "Prerov", reported=ago(minutes=3), temperature="81", version="5.3.1"),
         player("Sklad", True, None, "", notes="rezerva"),
     ]
 
@@ -67,6 +73,7 @@ class BrowserTestCase(unittest.TestCase):
         self.app.update()
 
     def open(self, fetch=None, players=PLAYERS, **options):
+        options.setdefault("hidden_columns", [])  # every column shown, unless a test asks for something else
         fetch = fetch or MagicMock(return_value=players)
         browser = PlayerBrowser(self.app, url="https://demo.example.com", login="jane", password="pw",
                                 account_name="Demo", fetch=fetch, **options)
@@ -264,7 +271,7 @@ class PlayerBrowserTest(BrowserTestCase):
                 self.assertEqual(browser._header_cells[key].winfo_x(), first_row[index + 1].winfo_x())
 
     def test_the_window_is_wide_enough_for_the_table(self):
-        browser = self.open()
+        browser = self.open(hidden_columns=["temperature", "version"])
         self.app.update()
 
         self.assertGreaterEqual(browser.winfo_width(), browser._header.winfo_reqwidth())
@@ -465,10 +472,11 @@ class LayoutTest(BrowserTestCase):
         self.app.update()
 
         keys = [key for key, _, _ in COLUMNS]
-        self.assertEqual(keys, ["name", "status", "group", "location", "label", "synced", "reported", "note"])
+        self.assertEqual(keys, ["name", "status", "group", "location", "label", "synced", "reported", "note",
+                                "temperature", "version"])
         self.assertEqual([browser._header_cells[k].cget("text").rstrip(" ▲▼") for k in keys],
                          ["Název", "Stav", "Skupina", "Lokace", "Kategorie", "Synchronizováno", "Reportováno",
-                          "Poznámka"])
+                          "Poznámka", "Teplota", "Verze"])
         positions = [browser._header_cells[k].winfo_x() for k in keys]
         self.assertEqual(positions, sorted(positions))
         row = browser._widgets[id(browser._visible[0])]
@@ -501,7 +509,7 @@ class LayoutTest(BrowserTestCase):
         saved = []
         browser = self.open(save_column_widths=saved.append)
         self.app.update()
-        separator = browser._header_separators[-1]  # the line after "Poznámka"
+        separator = browser._header_separators[[k for k, _, _ in COLUMNS].index("note")]  # the line after "Poznámka"
         x = separator.winfo_rootx() + 3
         before = browser.column_widths()["note"]
 
@@ -679,7 +687,7 @@ class ColumnWidthTest(BrowserTestCase):
         self.assertEqual(header_x, row_x)  # still lined up after scrolling
 
     def test_the_horizontal_scroll_bar_is_hidden_while_everything_fits(self):
-        browser = self.open()
+        browser = self.open(hidden_columns=["temperature", "version"])
         self.app.update()
 
         self.assertFalse(browser._x_scrollbar.winfo_ismapped())
@@ -823,7 +831,7 @@ class ResizeZoneTest(BrowserTestCase):
 
 class ColumnVisibilityTest(BrowserTestCase):
     HEADERS = {"group": "Skupina", "location": "Lokace", "label": "Kategorie", "synced": "Synchronizováno",
-               "reported": "Reportováno", "note": "Poznámka"}
+               "reported": "Reportováno", "note": "Poznámka", "temperature": "Teplota", "version": "Verze"}
 
     @staticmethod
     def fill(button):
@@ -847,7 +855,8 @@ class ColumnVisibilityTest(BrowserTestCase):
         self.app.update()
 
         buttons = [browser.column_buttons[key] for key in TOGGLE_COLUMNS]
-        self.assertEqual(list(browser.column_buttons), ["group", "location", "label", "synced", "reported", "note"])
+        self.assertEqual(list(browser.column_buttons), ["group", "location", "label", "synced", "reported", "note",
+                                                        "temperature", "version"])
         self.assertEqual([b.cget("text") for b in buttons], [self.HEADERS[k] for k in TOGGLE_COLUMNS])
         x_positions = [b.winfo_rootx() for b in buttons]
         self.assertEqual(x_positions, sorted(x_positions))
@@ -861,7 +870,7 @@ class ColumnVisibilityTest(BrowserTestCase):
     def test_the_section_is_named_and_the_name_and_state_columns_cannot_be_hidden(self):
         browser = self.open()
 
-        labels = [w.cget("text") for w in browser._actions_bar.winfo_children() if isinstance(w, tk.Label)]
+        labels = [w.cget("text") for w in browser._toggle_group.winfo_children() if isinstance(w, tk.Label)]
         self.assertEqual(labels, ["Zobrazení sloupců:"])
         self.assertNotIn("name", browser.column_buttons)
         self.assertNotIn("status", browser.column_buttons)
@@ -1267,6 +1276,176 @@ class ScrollLimitsTest(BrowserTestCase):
                     self.assertEqual(widget.winfo_rootx(), browser._header_cells[key].winfo_rootx())
             first_row = browser._widgets[id(browser._visible[0])]
             self.assertEqual(first_row[2].winfo_rootx(), browser._header_cells["status"].winfo_rootx())
+
+
+class TemperatureAndVersionTest(BrowserTestCase):
+    def cell(self, browser, name, key):
+        row = next(r for r in browser._rows if r.name == name)
+        return browser._widgets[id(row)][1 + [k for k, _, _ in COLUMNS].index(key)].cget("text")
+
+    def test_they_are_the_last_two_columns_and_have_switches_at_the_end_of_the_row(self):
+        browser = self.open()
+
+        self.assertEqual([k for k, _, _ in COLUMNS][-2:], ["temperature", "version"])
+        self.assertEqual(list(browser.column_buttons)[-2:], ["temperature", "version"])
+        self.assertEqual([browser.column_buttons[k].cget("text") for k in ("temperature", "version")], ["Teplota", "Verze"])
+        self.app.update()
+        self.assertLess(browser.column_buttons["note"].winfo_rootx(), browser.column_buttons["temperature"].winfo_rootx())
+        self.assertLess(browser.column_buttons["temperature"].winfo_rootx(), browser.column_buttons["version"].winfo_rootx())
+
+    def test_both_are_off_by_default_and_their_switches_are_red(self):
+        browser = self.open(hidden_columns=None)
+        self.app.update()
+
+        self.assertEqual(browser.hidden_columns(), ["temperature", "version"])
+        for key in ("temperature", "version"):
+            self.assertFalse(browser._header_cells[key].winfo_ismapped())
+            self.assertFalse(browser._filter_widgets[key].winfo_ismapped())
+            self.assertEqual(browser.column_buttons[key]._colors.normal if False else browser.column_buttons[key]._colors, RED)
+        for key in ("group", "location", "label", "synced", "reported", "note"):
+            self.assertTrue(browser._header_cells[key].winfo_ismapped())
+
+    def test_switching_them_on_shows_the_columns_and_the_filters_at_the_end(self):
+        browser = self.open(hidden_columns=None)
+
+        browser.toggle_column("temperature")
+        browser.toggle_column("version")
+        self.app.update()
+
+        self.assertEqual(browser.hidden_columns(), [])
+        note, temperature, version = (browser._header_cells[k].winfo_x() for k in ("note", "temperature", "version"))
+        self.assertLess(note, temperature)
+        self.assertLess(temperature, version)
+        for key in ("temperature", "version"):
+            widget, header = browser._filter_widgets[key], browser._header_cells[key]
+            self.assertEqual((widget.winfo_rootx(), widget.winfo_width()), (header.winfo_rootx(), header.winfo_width()))
+
+    def test_the_temperature_is_shown_in_degrees_and_the_version_as_it_is(self):
+        browser = self.open()
+
+        self.assertEqual(self.cell(browser, "Lobby", "temperature"), "47.2 °C")
+        self.assertEqual(self.cell(browser, "Prerov 1", "temperature"), "63 °C")
+        self.assertEqual(self.cell(browser, "Sklad", "temperature"), "")  # the player does not say
+        self.assertEqual(self.cell(browser, "Lobby", "version"), "5.3.1")
+        self.assertEqual(self.cell(browser, "Sklad", "version"), "")
+
+    def test_the_temperature_filter_offers_hotter_than_and_no_data(self):
+        browser = self.open()
+
+        self.assertEqual(list(browser.temperature_box["values"]),
+                         ["(vše)", "> 50 °C", "> 60 °C", "> 70 °C", "> 80 °C", "bez údaje"])
+
+    def test_the_temperature_filter(self):
+        browser = self.open()
+
+        self.choose(browser.temperature_box, "> 50 °C")
+        self.assertEqual(browser.visible_names(), ["Prerov 1", "Prerov 2"])
+        self.choose(browser.temperature_box, "> 80 °C")
+        self.assertEqual(browser.visible_names(), ["Prerov 2"])
+        self.choose(browser.temperature_box, "> 60 °C")
+        self.assertEqual(browser.visible_names(), ["Prerov 1", "Prerov 2"])
+        self.choose(browser.temperature_box, "bez údaje")
+        self.assertEqual(browser.visible_names(), ["Sklad"])
+        self.choose(browser.temperature_box, "(vše)")
+        self.assertEqual(len(browser.visible_names()), 4)
+
+    def test_the_version_filter_takes_ticks_and_text_and_offers_the_versions_the_account_has(self):
+        browser = self.open()
+
+        self.assertEqual([label for label, _ in browser.version_box._choices], ["5.3.1", "5.10.2"])  # 5.10 is after 5.3
+        self.tick(browser, browser.version_box, "5.3.1")
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 2"])
+        self.tick(browser, browser.version_box, "5.10.2")
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 1", "Prerov 2"])
+        self.tick(browser, browser.version_box, "5.3.1", "5.10.2", on=False)
+        self.type_into(browser, browser.version_box.text_var, "5.10")
+        self.assertEqual(browser.visible_names(), ["Prerov 1"])
+
+    def test_they_sort_by_the_number_and_by_the_version_numbers(self):
+        browser = self.open()
+
+        browser._header_cells["temperature"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 1", "Prerov 2", "Sklad"])  # 47.2, 63, 81, none
+        browser._header_cells["temperature"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
+        self.assertEqual(browser.visible_names()[0], "Sklad")
+        browser._header_cells["version"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 2", "Prerov 1", "Sklad"])  # 5.3.1, 5.3.1, 5.10.2, none
+
+    def test_hiding_them_clears_their_filters_and_they_stop_counting(self):
+        browser = self.open()
+        self.choose(browser.temperature_box, "> 80 °C")
+        self.tick(browser, browser.version_box, "5.3.1")
+        self.assertEqual(browser.visible_names(), ["Prerov 2"])
+
+        browser.toggle_column("temperature")
+        browser.toggle_column("version")
+
+        self.assertEqual(len(browser.visible_names()), 4)
+        browser.toggle_column("temperature")
+        browser.toggle_column("version")
+        self.assertEqual((browser.temperature_box.get(), browser.version_box.checked(), browser.version_box.text()),
+                         ("(vše)", frozenset(), ""))
+
+    def test_reset_clears_their_filters_too_and_leaves_the_switches(self):
+        browser = self.open()
+        self.choose(browser.temperature_box, "> 50 °C")
+        self.tick(browser, browser.version_box, "5.3.1")
+        self.type_into(browser, browser.version_box.text_var, "5")
+
+        browser.reset_button.invoke()
+
+        self.assertEqual((browser.temperature_box.get(), browser.version_box.checked(), browser.version_box.text()),
+                         ("(vše)", frozenset(), ""))
+        self.assertEqual(browser.hidden_columns(), [])
+        self.assertEqual(len(browser.visible_names()), 4)
+
+    def test_the_filters_combine_with_the_others(self):
+        browser = self.open()
+        self.choose(browser.temperature_box, "> 50 °C")
+        self.tick(browser, browser.group_box, "Obchod")
+        self.choose(browser.status_box, "Online")
+
+        self.assertEqual(browser.visible_names(), ["Prerov 2"])
+
+    def test_their_widths_can_be_set_and_are_kept(self):
+        saved = []
+        browser = self.open(column_widths={"temperature": 150, "version": 200}, save_column_widths=saved.append)
+
+        self.assertEqual((browser.column_widths()["temperature"], browser.column_widths()["version"]), (150, 200))
+        browser.set_font_size(18)
+        self.assertEqual((browser.column_widths()["temperature"], browser.column_widths()["version"]), (225, 300))
+
+    def test_the_switches_go_below_the_buttons_on_a_screen_too_narrow_for_one_row(self):
+        with patch.object(tk.Misc, "winfo_screenwidth", return_value=900):
+            browser = self.open()
+            self.app.update()
+
+            self.assertGreater(browser._toggle_group.winfo_rooty(), browser.refresh_button.winfo_rooty())
+            self.assertFalse(browser._toggle_separator.winfo_ismapped())
+            for button in browser.column_buttons.values():
+                self.assertLessEqual(button.winfo_rootx() + button.winfo_width(),
+                                     browser._actions_bar.winfo_rootx() + browser._actions_bar.winfo_width() + 1)
+
+    def test_the_switches_stand_right_of_the_buttons_on_a_wide_screen(self):
+        with patch.object(tk.Misc, "winfo_screenwidth", return_value=3000):
+            browser = self.open()
+            self.app.update()
+
+            self.assertLess(abs(browser._toggle_group.winfo_rooty() - browser._actions_left.winfo_rooty()), 12)
+            self.assertTrue(browser._toggle_separator.winfo_ismapped())
+
+    def test_the_layout_of_the_buttons_follows_the_font(self):
+        with patch.object(tk.Misc, "winfo_screenwidth", return_value=1500):
+            browser = self.open()
+            browser.set_font_size(8)
+            self.app.update()
+            one_row = browser._toggle_separator.winfo_ismapped()
+
+            browser.set_font_size(20)
+            self.app.update()
+
+            self.assertTrue(one_row)
+            self.assertFalse(browser._toggle_separator.winfo_ismapped())  # too wide for one row at the large size
 
 
 class ResetFiltersTest(BrowserTestCase):
@@ -1800,17 +1979,31 @@ class MainWindowTest(BrowserTestCase):
         with patch("gui_app.gui.PlayerBrowser") as browser_class:
             self.app.open_player_browser("https://x", "jane", "pw")
             options = browser_class.call_args.kwargs
-            self.assertEqual(options["hidden_columns"], ["note"])
+            # saved before the temperature and the version existed: they are off, as they are by default
+            self.assertEqual(options["hidden_columns"], ["note", "temperature", "version"])
 
-            options["save_hidden_columns"](["group", "note"])
+            options["save_hidden_columns"](["group", "note", "temperature"])  # the version was switched on
 
         with open(self.app.config_file, encoding="utf-8") as file:
             saved = json.load(file)["logins"]
         self.assertEqual(saved["Demo"]["player_hidden"], ["group", "note"])
+        self.assertEqual(saved["Demo"]["player_shown"], ["version"])
         self.assertNotIn("player_hidden", saved["Other"])
-        options["save_hidden_columns"]([])  # everything shown again
+        options["save_hidden_columns"](["temperature", "version"])  # back to the defaults
         with open(self.app.config_file, encoding="utf-8") as file:
-            self.assertNotIn("player_hidden", json.load(file)["logins"]["Demo"])
+            entry = json.load(file)["logins"]["Demo"]
+        self.assertNotIn("player_hidden", entry)
+        self.assertNotIn("player_shown", entry)
+
+    def test_an_account_that_never_chose_has_the_temperature_and_the_version_off(self):
+        self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {}}
+        self.app.account_data = self.app.all_data["logins"]
+        self.app.save_account_configs()
+        self.app.option_choose_administration.set("Demo")
+        with patch("gui_app.gui.PlayerBrowser") as browser_class:
+            self.app.open_player_browser("https://x", "jane", "pw")
+
+        self.assertEqual(browser_class.call_args.kwargs["hidden_columns"], ["temperature", "version"])
 
     def test_the_hidden_columns_and_the_widths_are_stored_side_by_side(self):
         self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {}}
@@ -1818,7 +2011,7 @@ class MainWindowTest(BrowserTestCase):
         self.app.save_account_configs()
 
         self.app.save_player_columns("Demo", {"name": 300})
-        self.app.save_hidden_player_columns("Demo", ["label"])
+        self.app.save_hidden_player_columns("Demo", ["label", "temperature", "version"])
         self.app.save_player_columns("Demo", {})
 
         with open(self.app.config_file, encoding="utf-8") as file:

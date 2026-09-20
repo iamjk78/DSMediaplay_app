@@ -24,10 +24,11 @@ class MultiSelectCombo(tk.Frame):
     """
 
     def __init__(self, master, popup_parent: tk.Misc, *, font, width: int = 12,
-                 on_change: Callable[[], None] = lambda: None):
+                 on_change: Callable[[], None] = lambda: None, check_style: str = "TCheckbutton"):
         super().__init__(master)
         self._parent = popup_parent
         self._font = font
+        self._check_style = check_style
         self._on_change = on_change
         self._choices: List[Tuple[str, str]] = []
         self._vars: Dict[str, tk.BooleanVar] = {}
@@ -61,6 +62,11 @@ class MultiSelectCombo(tk.Frame):
             widget.bind("<MouseWheel>", self._on_wheel)
         self.bind("<Destroy>", lambda event: self.close() if event.widget is self else None, add="+")
 
+    def set_font(self, font) -> None:
+        self._font = font
+        self.entry.configure(font=font)
+        self._badge.configure(font=font)
+
     def minimum_width(self) -> int:
         """The narrowest the widget can be: the combo box with a little room to type, and the count of ticks beside it."""
         self.update_idletasks()
@@ -85,7 +91,7 @@ class MultiSelectCombo(tk.Frame):
         for label, value in self._choices:
             var = tk.BooleanVar(value=value in previous)
             var.trace_add("write", lambda *_: self._ticks_changed())
-            button = ttk.Checkbutton(self._list, text=label, variable=var)
+            button = ttk.Checkbutton(self._list, text=label, variable=var, style=self._check_style)
             button.bind("<MouseWheel>", self._on_wheel)
             self._vars[value], self._buttons[value] = var, button
         self._update_badge()

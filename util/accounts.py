@@ -102,15 +102,43 @@ def set_player_columns(data: dict, account: str, widths: dict) -> None:
         entry.pop("player_columns", None)
 
 
+# Optional columns of the player table that are switched off until the user switches them on. An account that has
+# never made a choice about them (also one saved before they existed) has them off.
+DEFAULT_HIDDEN_COLUMNS = ("temperature", "version")
+
+
 def hidden_player_columns(data: dict, account: str) -> list:
-    """The optional columns of the player table the user switched off for this account."""
-    return list(data["logins"].get(account, {}).get("player_hidden", []))
+    """The optional columns of the player table that are off for this account, the defaults included."""
+    entry = data["logins"].get(account, {})
+    hidden = set(entry.get("player_hidden", []))
+    hidden |= set(DEFAULT_HIDDEN_COLUMNS) - set(entry.get("player_shown", []))
+    return sorted(hidden)
 
 
 def set_hidden_player_columns(data: dict, account: str, hidden: list) -> None:
-    """Stores the hidden columns of the account; an empty list (all shown) stores nothing."""
+    """
+    Stores which columns are off. What is remembered is the difference from the defaults: the columns that are off
+    although they are on by default, and the ones that are on although they are off by default.
+    """
     entry = data["logins"][account]
-    if hidden:
-        entry["player_hidden"] = list(hidden)
+    off = [column for column in hidden if column not in DEFAULT_HIDDEN_COLUMNS]
+    on = [column for column in DEFAULT_HIDDEN_COLUMNS if column not in hidden]
+    for key, value in (("player_hidden", off), ("player_shown", on)):
+        if value:
+            entry[key] = list(value)
+        else:
+            entry.pop(key, None)
+
+
+def player_font_size(data: dict, account: str):
+    """The font size the user chose for the player table of this account, or None."""
+    return data["logins"].get(account, {}).get("player_font")
+
+
+def set_player_font_size(data: dict, account: str, size) -> None:
+    """Stores the font size of the account's player table; None goes back to the default."""
+    entry = data["logins"][account]
+    if size is None:
+        entry.pop("player_font", None)
     else:
-        entry.pop("player_hidden", None)
+        entry["player_font"] = int(size)

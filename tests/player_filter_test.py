@@ -2,8 +2,8 @@ import unittest
 from datetime import datetime, timedelta
 
 from util.actions import action_needs_input
-from util.player_filter import (AGE_OPTIONS, AgeFilter, PlayerFilter, apply_filter, parse_timestamp, player_row,
-                                sort_rows)
+from util.player_filter import (AGE_OPTIONS, TEMPERATURE_OPTIONS, AgeFilter, PlayerFilter, TemperatureFilter, apply_filter,
+                                parse_temperature, parse_timestamp, player_row, sort_rows, version_key)
 
 NOW = datetime(2026, 9, 20, 12, 0, 0)
 
@@ -13,19 +13,25 @@ def epoch_ms(moment):
 
 
 def player(name, connected=True, group="G1", location="L1", labels=(), uploaded=0, licensed=True, reported=0,
-           notes=""):
-    return {"name": name, "isConnected": connected, "licensed": licensed, "group": {"name": group} if group else None,
-            "configLocation": location, "labels": list(labels), "lastUpload": uploaded, "lastReported": reported,
-            "notes": notes}
+           notes="", temperature=None, version=None):
+    result = {"name": name, "isConnected": connected, "licensed": licensed, "group": {"name": group} if group else None,
+              "configLocation": location, "labels": list(labels), "lastUpload": uploaded, "lastReported": reported,
+              "notes": notes}
+    if temperature is not None:
+        result["piTemperature"] = temperature
+    if version is not None:
+        result["version"] = version
+    return result
 
 
 ROWS = [player_row(p) for p in (
     player("Lobby Praha", True, "Kancelar", "Praha", ["vstup", "test"], uploaded=epoch_ms(NOW - timedelta(seconds=30)),
-           reported=epoch_ms(NOW - timedelta(seconds=20)), notes="hlavní vchod"),
+           reported=epoch_ms(NOW - timedelta(seconds=20)), notes="hlavní vchod", temperature="47.2", version="5.3.1"),
     player("Přerov 1", False, "Obchod", "Přerov", ["vstup"], uploaded=epoch_ms(NOW - timedelta(hours=5)),
-           reported=epoch_ms(NOW - timedelta(days=2)), notes="rozbitá obrazovka\nvyměnit"),
+           reported=epoch_ms(NOW - timedelta(days=2)), notes="rozbitá obrazovka\nvyměnit", temperature="63",
+           version="5.10.2"),
     player("Přerov 2", True, "Obchod", "Přerov", [], uploaded=epoch_ms(NOW - timedelta(minutes=10)),
-           reported=epoch_ms(NOW - timedelta(minutes=3))),
+           reported=epoch_ms(NOW - timedelta(minutes=3)), temperature="81", version="5.3.1"),
     player("Sklad", True, None, "", ["test"], notes="rezerva"),
 )]
 
@@ -230,9 +236,72 @@ class SortTest(unittest.TestCase):
         self.assertEqual(self.sorted_names("reported")[:3], ["Přerov 1", "Přerov 2", "Lobby Praha"])
 
     def test_every_column_can_be_sorted(self):
-        for column in ("name", "status", "group", "location", "label", "synced", "reported", "note"):
+        for column in ("name", "status", "group", "location", "label", "synced", "reported", "note", "temperature", "version"):
             with self.subTest(column=column):
                 self.assertEqual(len(sort_rows(ROWS, column)), 4)
+
+
+class TemperatureAndVersionTest(unittest.TestCase):
+    def test_the_temperature_is_read_from_the_texts_the_server_sends(self):
+        cases = {"47": 47.0, "47.2": 47.2, "47,5": 47.5, "temp=47.2'C": 47.2, "-5": -5.0, " 60 ": 60.0, 52: 52.0,
+                 52.5: 52.5, 0: 0.0}
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_temperature(raw), expected)
+
+    def test_nothing_or_nonsense_is_no_temperature(self):
+        for raw in (None, "", "n/a", "hot", True, False, [], {}):
+            with self.subTest(raw=raw):
+                self.assertIsNone(parse_temperature(raw))
+
+    def test_the_row_carries_the_temperature_and_the_version(self):
+        row = player_row(player("a", temperature="52.3", version=" 5.3.1 "))
+
+        self.assertEqual((row.temperature, row.version), (52.3, "5.3.1"))
+        self.assertEqual((player_row({"name": "a"}).temperature, player_row({"name": "a"}).version), (None, ""))
+        self.assertEqual(player_row({"name": "a", "version": None}).version, "")
+
+    def test_the_choices_are_the_ones_asked_for(self):
+        self.assertEqual([(key, f.op, f.value) for key, f in TEMPERATURE_OPTIONS], [
+            ("gt_50", ">", 50), ("gt_60", ">", 60), ("gt_70", ">", 70), ("gt_80", ">", 80), ("none", "none", 0)])
+
+    def test_hotter_than_means_more_and_a_player_without_a_temperature_is_never_hot(self):
+        def hotter(degrees):
+            return names(PlayerFilter(temperature=TemperatureFilter(">", degrees)))
+        self.assertEqual(hotter(50), ["Přerov 1", "Přerov 2"])
+        self.assertEqual(hotter(63), ["Přerov 2"])  # exclusive
+        self.assertEqual(hotter(80), ["Přerov 2"])
+        self.assertEqual(hotter(81), [])
+        self.assertEqual(hotter(0), ["Lobby Praha", "Přerov 1", "Přerov 2"])  # not Sklad, which does not say
+
+    def test_the_players_that_do_not_report_a_temperature_can_be_found(self):
+        self.assertEqual(names(PlayerFilter(temperature=TemperatureFilter("none"))), ["Sklad"])
+
+    def test_the_version_is_a_part_of_the_text_or_one_of_the_chosen_versions(self):
+        self.assertEqual(names(PlayerFilter(version_text="5.1")), ["Přerov 1"])
+        self.assertEqual(names(PlayerFilter(version_text="5.")), ["Lobby Praha", "Přerov 1", "Přerov 2"])
+        self.assertEqual(names(PlayerFilter(versions=frozenset({"5.3.1"}))), ["Lobby Praha", "Přerov 2"])
+        self.assertEqual(names(PlayerFilter(versions=frozenset({"5.3.1", "5.10.2"}))),
+                         ["Lobby Praha", "Přerov 1", "Přerov 2"])
+        self.assertEqual(names(PlayerFilter(versions=frozenset({"9.9"}))), [])
+        self.assertEqual(names(PlayerFilter(version_text="5", versions=frozenset({"5.10.2"}))), ["Přerov 1"])
+
+    def test_the_new_criteria_combine_with_the_others_by_and(self):
+        criteria = PlayerFilter(temperature=TemperatureFilter(">", 50), versions=frozenset({"5.3.1"}), online=True)
+
+        self.assertEqual(names(criteria), ["Přerov 2"])
+
+    def test_the_version_numbers_are_compared_as_numbers(self):
+        versions = ["5.10.2", "5.9.7", "5.9", "4.0.1", "5.9.10", "v3", "5.9-beta"]
+
+        # the numbers first; a part that is text (beta, v3) comes after the numbers at its place
+        self.assertEqual(sorted(versions, key=version_key), ["4.0.1", "5.9", "5.9.7", "5.9.10", "5.9-beta", "5.10.2", "v3"])
+        self.assertEqual(version_key(""), ())
+
+    def test_they_sort_and_what_is_missing_comes_last(self):
+        self.assertEqual([r.name for r in sort_rows(ROWS, "temperature")], ["Lobby Praha", "Přerov 1", "Přerov 2", "Sklad"])
+        self.assertEqual([r.name for r in sort_rows(ROWS, "temperature", True)][0], "Sklad")
+        self.assertEqual([r.name for r in sort_rows(ROWS, "version")], ["Lobby Praha", "Přerov 2", "Přerov 1", "Sklad"])
 
 
 class ActionRuleTest(unittest.TestCase):

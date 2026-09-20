@@ -276,7 +276,18 @@
         "tip_deploy_all": "Spustit Deploy na všechny přehrávače vybraného účtu (bez dalšího potvrzení)",
         "live_view": "Live-view",
         "tip_live_view": "Otevřít přehled přehrávačů se snímky obrazovky (Players - Snímek obrazovky - zobrazit)",
-        "tip_login_required": "Nejdřív vyberte zákaznický účet a login a zadejte heslo"
+        "tip_login_required": "Nejdřív vyberte zákaznický účet a login a zadejte heslo",
+        "pb_font_smaller": "Zmenšit písmo v tomto okně (nyní {size} b.)",
+        "pb_font_larger": "Zvětšit písmo v tomto okně (nyní {size} b.)",
+        "pb_col_temperature": "Teplota",
+        "pb_col_version": "Verze",
+        "pb_temperature": "Teplota:",
+        "pb_version": "Verze:",
+        "pb_temp_gt_50": "> 50 °C",
+        "pb_temp_gt_60": "> 60 °C",
+        "pb_temp_gt_70": "> 70 °C",
+        "pb_temp_gt_80": "> 80 °C",
+        "pb_temp_none": "bez údaje"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -555,6 +566,17 @@
         "tip_deploy_all": "Start the deploy to all players of the selected account (no further confirmation)",
         "live_view": "Live-view",
         "tip_live_view": "Open the players overview with screenshots (Players - Screenshot - view)",
-        "tip_login_required": "First select a customer account and a login and enter the password"
+        "tip_login_required": "First select a customer account and a login and enter the password",
+        "pb_font_smaller": "Smaller text in this window (now {size} pt)",
+        "pb_font_larger": "Larger text in this window (now {size} pt)",
+        "pb_col_temperature": "Temperature",
+        "pb_col_version": "Version",
+        "pb_temperature": "Temperature:",
+        "pb_version": "Version:",
+        "pb_temp_gt_50": "> 50 °C",
+        "pb_temp_gt_60": "> 60 °C",
+        "pb_temp_gt_70": "> 70 °C",
+        "pb_temp_gt_80": "> 80 °C",
+        "pb_temp_none": "no data"
     }
 }

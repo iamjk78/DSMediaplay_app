@@ -15,7 +15,9 @@ from gui_app.color_button import GREEN, RED, make_color_button, set_button_color
 from gui_app.icons import set_window_icon
 from gui_app.multi_select import MultiSelectCombo
 from gui_app.tooltip import Tooltip
-from util.player_filter import AGE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row, sort_rows
+from util.accounts import DEFAULT_HIDDEN_COLUMNS
+from util.player_filter import (AGE_OPTIONS, TEMPERATURE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row,
+                                sort_rows, version_key)
 
 # key, header message, default width in characters
 COLUMNS = (
@@ -27,8 +29,10 @@ COLUMNS = (
     ("synced", "pb_col_synced", 17),
     ("reported", "pb_col_reported", 17),
     ("note", "pb_col_note", 30),
+    ("temperature", "pb_col_temperature", 12),
+    ("version", "pb_col_version", 14),
 )
-TOGGLE_COLUMNS = ("group", "location", "label", "synced", "reported", "note")  # the others are always shown
+TOGGLE_COLUMNS = ("group", "location", "label", "synced", "reported", "note", "temperature", "version")  # the others are always shown
 MIN_COLUMN_WIDTH = 56  # pixels; a column is never narrower than its filter needs either
 MAX_COLUMN_WIDTH = 1500
 SEPARATOR_WIDTH = 7  # the space between two columns; the line itself is 1 px wide
@@ -36,7 +40,12 @@ EDGE_ZONE = 10  # pixels to each side of a line where the pointer changes and th
 RESIZE_CURSOR = "sb_h_double_arrow"
 SORT_CURSOR = "hand2"
 SEPARATOR_COLOR = "black"
-SNAPSHOT_COLUMN_MINSIZE = 110  # the first column, with the button; its width is fixed
+SNAPSHOT_COLUMN_MINSIZE = 110  # the first column, with the button; as wide as this at least
+MIN_FONT_SIZE, MAX_FONT_SIZE = 8, 20
+BUTTON_STYLE = "PlayerBrowser.TButton"
+CHECK_STYLE = "PlayerBrowser.TCheckbutton"
+SMALL_A_STYLE = "PlayerBrowserSmallA.TButton"
+LARGE_A_STYLE = "PlayerBrowserLargeA.TButton"
 ONLINE_COLOR = "#2e7d32"
 OFFLINE_COLOR = "#c62828"
 NAME_FILTER_DELAY_MS = 150
@@ -74,6 +83,13 @@ def valid_hidden(raw) -> FrozenSet[str]:
     return frozenset(key for key in raw if key in TOGGLE_COLUMNS)
 
 
+def valid_font_size(raw) -> Optional[int]:
+    """A saved font size that makes sense, or None."""
+    if isinstance(raw, int) and not isinstance(raw, bool) and MIN_FONT_SIZE <= raw <= MAX_FONT_SIZE:
+        return raw
+    return None
+
+
 class PlayerBrowser(tk.Toplevel):
     """
     The players of one account in a table that can be filtered by every column but the button.
@@ -88,16 +104,23 @@ class PlayerBrowser(tk.Toplevel):
                  column_widths: Optional[Dict[str, int]] = None,
                  save_column_widths: Callable[[Dict[str, int]], None] = lambda widths: None,
                  hidden_columns: Optional[Iterable[str]] = None,
-                 save_hidden_columns: Callable[[List[str]], None] = lambda hidden: None):
+                 save_hidden_columns: Callable[[List[str]], None] = lambda hidden: None,
+                 font_size: Optional[int] = None,
+                 save_font_size: Callable[[int], None] = lambda size: None):
         super().__init__(master)
         self.lang = master.lang
         self.connection = (url, login)
         self._credentials = (url, login, password)
         self._fetch = fetch
         self._save_column_widths = save_column_widths
-        self._hidden = set(valid_hidden(hidden_columns))
+        self._hidden = set(DEFAULT_HIDDEN_COLUMNS) if hidden_columns is None else set(valid_hidden(hidden_columns))
         self._save_hidden_columns = save_hidden_columns
-        self._font = master.font
+        self._family = master.font[0]
+        self._font_size = valid_font_size(font_size) or min(max(master.font[1], MIN_FONT_SIZE), MAX_FONT_SIZE)
+        self._font = (self._family, self._font_size)
+        self._save_font_size = save_font_size
+        self._first_width = SNAPSHOT_COLUMN_MINSIZE
+        self._configure_styles()
         self._rows: List[PlayerRow] = []
         self._visible: List[PlayerRow] = []
         self._widgets: Dict[int, List[tk.Widget]] = {}
@@ -116,6 +139,7 @@ class PlayerBrowser(tk.Toplevel):
         self._combo_values: Dict[ttk.Combobox, Dict[str, Optional[str]]] = {}
         zero = tkfont.Font(root=self, font=self._font).measure("0")
         self._default_widths = {key: chars * zero + 2 * CELL_PADDING for key, _, chars in COLUMNS}
+        self._customized = bool(valid_widths(column_widths))  # the user has set widths: they follow the font by ratio
         self._widths = {**self._default_widths, **valid_widths(column_widths)}
 
         self.title(self.lang.get_message("pb_title", account=account_name))
@@ -130,7 +154,8 @@ class PlayerBrowser(tk.Toplevel):
         self._status_label = tk.Label(bottom, textvariable=self.status_var, font=self._font, anchor="w")
         self._status_label.grid(row=0, column=0, sticky="ew")
         self._default_status_color = str(self._status_label.cget("foreground"))
-        tk.Label(bottom, textvariable=self.updated_var, font=self._font, anchor="e").grid(row=0, column=1, sticky="e")
+        self._updated_label = tk.Label(bottom, textvariable=self.updated_var, font=self._font, anchor="e")
+        self._updated_label.grid(row=0, column=1, sticky="e")
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
         self._fit_window()
@@ -141,23 +166,40 @@ class PlayerBrowser(tk.Toplevel):
     def _build_actions(self):
         bar = self._actions_bar = tk.Frame(self)
         bar.grid(row=0, column=0, sticky="w", padx=10, pady=(8, 0))
-        self.refresh_button = self._button(bar, "pb_refresh", "pb_tip_refresh", self.refresh)
-        self.reset_button = self._button(bar, "pb_reset", "pb_tip_reset", self.reset_filters)
-        self.default_columns_button = self._button(bar, "pb_default_columns", "pb_tip_default_columns",
+        left = self._actions_left = tk.Frame(bar)
+        left.grid(row=0, column=0, sticky="w")
+        self.refresh_button = self._button(left, "pb_refresh", "pb_tip_refresh", self.refresh)
+        self.reset_button = self._button(left, "pb_reset", "pb_tip_reset", self.reset_filters)
+        self.default_columns_button = self._button(left, "pb_default_columns", "pb_tip_default_columns",
                                                    self.reset_columns)
-        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=(8, 12))
-        tk.Label(bar, text=self.lang.get_message("pb_columns"), font=self._font).pack(side="left", padx=(0, 8))
+        self._toggle_separator = ttk.Separator(bar, orient="vertical")
+        group = self._toggle_group = tk.Frame(bar)
+        self._columns_label = tk.Label(group, text=self.lang.get_message("pb_columns"), font=self._font)
+        self._columns_label.pack(side="left", padx=(0, 8))
         header = {key: message for key, message, _ in COLUMNS}
         self.column_buttons: Dict[str, tk.Widget] = {}
         for key in TOGGLE_COLUMNS:  # each as wide as its text; green = shown, red = hidden
-            button = make_color_button(bar, self.lang.get_message(header[key]), lambda column=key: self.toggle_column(column),
-                                       self._font, GREEN)
+            button = make_color_button(group, self.lang.get_message(header[key]),
+                                       lambda column=key: self.toggle_column(column), self._font, GREEN)
             button.pack(side="left", padx=(0, 6))
             self.column_buttons[key] = button
+        self._layout_actions()
         self._update_toggle_colors()
 
+    def _layout_actions(self):
+        """The column switches stand right of the buttons; on a screen too narrow for that they go below them."""
+        self.update_idletasks()
+        fits = (self._actions_left.winfo_reqwidth() + self._toggle_group.winfo_reqwidth() + 60
+                <= self.winfo_screenwidth() - 40)
+        if fits:
+            self._toggle_separator.grid(row=0, column=1, sticky="ns", padx=(8, 12))
+            self._toggle_group.grid(row=0, column=2, sticky="w", pady=0)
+        else:
+            self._toggle_separator.grid_remove()
+            self._toggle_group.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
     def _button(self, bar, message: str, tip: str, command) -> ttk.Button:
-        button = ttk.Button(bar, text=self.lang.get_message(message), command=command)
+        button = ttk.Button(bar, text=self.lang.get_message(message), command=command, style=BUTTON_STYLE)
         button.pack(side="left", padx=(0, 6))
         Tooltip(button, lambda: self.lang.get_message(tip))
         return button
@@ -181,18 +223,37 @@ class PlayerBrowser(tk.Toplevel):
         self.synced_box = self._combobox()
         self.reported_box = self._combobox()
         self.note_entry = tk.Entry(self._filters, textvariable=self.note_var, width=1, font=self._font)
+        self.temperature_box = self._combobox()
+        self.version_box = self._multi_select()
         for index, (key, widget) in enumerate(zip(
                 (key for key, _, _ in COLUMNS),
                 (self.name_entry, self.status_box, self.group_box, self.location_box, self.label_box,
-                 self.synced_box, self.reported_box, self.note_entry))):
+                 self.synced_box, self.reported_box, self.note_entry, self.temperature_box, self.version_box))):
             widget.grid(row=0, column=self._cell_column(index), sticky="ew", padx=CELL_PADDING, pady=2)
             self._filter_widgets[key] = widget
+        self._build_font_buttons()
         all_text = self.lang.get_message("pb_all")
         self._set_choices(self.status_box, {all_text: None, self.lang.get_message("pb_online"): True,
                                             self.lang.get_message("pb_offline"): False})
         ages = {all_text: None} | {self.lang.get_message(f"pb_age_{key}"): criterion for key, criterion in AGE_OPTIONS}
         self._set_choices(self.synced_box, ages)
         self._set_choices(self.reported_box, ages)
+        self._set_choices(self.temperature_box, {all_text: None} | {
+            self.lang.get_message(f"pb_temp_{key}"): criterion for key, criterion in TEMPERATURE_OPTIONS})
+
+    def _build_font_buttons(self):
+        """A small and a large "A" in the free place above the screenshot buttons: smaller and larger text."""
+        holder = self._font_holder = tk.Frame(self._filters)
+        holder.grid(row=0, column=0, sticky="w", padx=CELL_PADDING, pady=2)
+        self.smaller_font_button = ttk.Button(holder, text="A", style=SMALL_A_STYLE, width=1,
+                                              command=lambda: self.change_font_size(-1))
+        self.smaller_font_button.pack(side="left", padx=(0, 3))
+        self.larger_font_button = ttk.Button(holder, text="A", style=LARGE_A_STYLE, width=1,
+                                             command=lambda: self.change_font_size(1))
+        self.larger_font_button.pack(side="left")
+        Tooltip(self.smaller_font_button, lambda: self.lang.get_message("pb_font_smaller", size=self._font_size))
+        Tooltip(self.larger_font_button, lambda: self.lang.get_message("pb_font_larger", size=self._font_size))
+        self._update_font_buttons()
 
     def _combobox(self) -> ttk.Combobox:
         box = ttk.Combobox(self._filters, state="readonly", width=1, font=self._font)
@@ -200,7 +261,8 @@ class PlayerBrowser(tk.Toplevel):
         return box
 
     def _multi_select(self) -> MultiSelectCombo:
-        return MultiSelectCombo(self._filters, self, font=self._font, width=1, on_change=self._schedule_filter)
+        return MultiSelectCombo(self._filters, self, font=self._font, width=1, on_change=self._schedule_filter,
+                                check_style=CHECK_STYLE)
 
     def _compute_minimum_widths(self):
         """A column cannot be narrower than what its filter needs, so a filter is never squeezed out of sight."""
@@ -211,6 +273,15 @@ class PlayerBrowser(tk.Toplevel):
             self._min_widths[key] = max(MIN_COLUMN_WIDTH, needed + 2 * CELL_PADDING)
         self._default_widths = {key: max(width, self._min_widths[key]) for key, width in self._default_widths.items()}
         self._widths = {key: max(width, self._min_widths[key]) for key, width in self._widths.items()}
+        self._measure_first_column()
+
+    def _measure_first_column(self):
+        """The first column holds the screenshot buttons and the font buttons: never narrower than they need."""
+        probe = ttk.Button(self, text=self.lang.get_message("pb_snapshot"), style=BUTTON_STYLE)
+        self.update_idletasks()
+        needed = max(probe.winfo_reqwidth(), self._font_holder.winfo_reqwidth())
+        probe.destroy()
+        self._first_width = max(SNAPSHOT_COLUMN_MINSIZE, needed + 2 * CELL_PADDING)
 
     def _build_table(self):
         frame = self._table = tk.Frame(self)
@@ -281,6 +352,7 @@ class PlayerBrowser(tk.Toplevel):
 
     def _fit_window(self):
         """Opens wide enough for the buttons and, as far as the screen allows, for the whole table."""
+        self._layout_actions()
         self.update_idletasks()
         self._header_canvas.configure(height=self._header.winfo_reqheight())
         self._filter_canvas.configure(height=self._filters.winfo_reqheight())
@@ -288,6 +360,69 @@ class PlayerBrowser(tk.Toplevel):
         table = self._header.winfo_reqwidth() + self._scrollbar.winfo_reqwidth() + 30
         self.minsize(buttons, 300)
         self.geometry(f"{min(max(buttons, table), self.winfo_screenwidth() - 20)}x600")
+
+    # ---- font size
+
+    @property
+    def font_size(self) -> int:
+        return self._font_size
+
+    def _configure_styles(self):
+        """The ttk buttons and check boxes take their font from styles; the two "A" buttons keep theirs."""
+        style = ttk.Style(self)
+        style.configure(BUTTON_STYLE, font=self._font)
+        style.configure(CHECK_STYLE, font=self._font)
+        style.configure(SMALL_A_STYLE, font=(self._family, 9))
+        style.configure(LARGE_A_STYLE, font=(self._family, 15, "bold"))
+
+    def change_font_size(self, step: int):
+        self.set_font_size(self._font_size + step)
+
+    def set_font_size(self, size: int):
+        """
+        Sets the size of the text in this window: the table, the header, the filters and the buttons. The widths the
+        user set follow it by ratio (the widths that were never set follow it by themselves).
+        """
+        size = min(max(size, MIN_FONT_SIZE), MAX_FONT_SIZE)
+        if size == self._font_size:
+            return
+        ratio = size / self._font_size
+        self._font_size, self._font = size, (self._family, size)
+        self._apply_font(ratio)
+        self._save_font_size(size)
+        if self._customized:
+            self._save_column_widths(self.column_widths())
+
+    def _apply_font(self, ratio: float):
+        self._configure_styles()
+        bold = (self._family, self._font_size, "bold")
+        for widget in (self.name_entry, self.note_entry, self.status_box, self.synced_box, self.reported_box,
+                       self._status_label, self._updated_label, self._columns_label, *self.column_buttons.values()):
+            widget.configure(font=self._font)
+        for box in (self.group_box, self.location_box, self.label_box):
+            box.set_font(self._font)
+        for cell in self._header_cells.values():
+            cell.configure(font=bold)
+        for widgets in self._widgets.values():
+            for cell in widgets[1:]:
+                cell.configure(font=self._font)
+        zero = tkfont.Font(root=self, font=self._font).measure("0")
+        self._default_widths = {key: chars * zero + 2 * CELL_PADDING for key, _, chars in COLUMNS}
+        self._widths = ({key: round(width * ratio) for key, width in self._widths.items()} if self._customized
+                        else dict(self._default_widths))
+        self._compute_minimum_widths()
+        self._apply_widths()
+        self._layout_actions()
+        self.update_idletasks()
+        self._header_canvas.configure(height=self._header.winfo_reqheight())
+        self._filter_canvas.configure(height=self._filters.winfo_reqheight())
+        self.minsize(self._actions_bar.winfo_reqwidth() + 30, 300)
+        self._update_font_buttons()
+        self._schedule_scroll_update()
+
+    def _update_font_buttons(self):
+        self.smaller_font_button.state(["disabled"] if self._font_size <= MIN_FONT_SIZE else ["!disabled"])
+        self.larger_font_button.state(["disabled"] if self._font_size >= MAX_FONT_SIZE else ["!disabled"])
 
     # ---- column widths
 
@@ -297,7 +432,7 @@ class PlayerBrowser(tk.Toplevel):
     def _apply_widths(self):
         """Every column is exactly as wide as set; the text that does not fit is cut off."""
         for frame in (self._filters, self._header, self._body):
-            frame.grid_columnconfigure(0, minsize=SNAPSHOT_COLUMN_MINSIZE)
+            frame.grid_columnconfigure(0, minsize=self._first_width)
             for index, (key, _, _) in enumerate(COLUMNS):
                 hidden = key in self._hidden
                 frame.grid_columnconfigure(self._cell_column(index), minsize=0 if hidden else self._widths[key])
@@ -354,9 +489,11 @@ class PlayerBrowser(tk.Toplevel):
     def _end_drag(self, _event):
         if self._drag:
             self._drag = None
+            self._customized = True
             self._save_column_widths(self.column_widths())
 
     def reset_columns(self):
+        self._customized = False
         self._widths = dict(self._default_widths)
         self._apply_widths()
         self._save_column_widths({})
@@ -465,7 +602,8 @@ class PlayerBrowser(tk.Toplevel):
             self.note_var.set("")
             return
         box = {"group": self.group_box, "location": self.location_box, "label": self.label_box,
-               "synced": self.synced_box, "reported": self.reported_box}[key]
+               "synced": self.synced_box, "reported": self.reported_box, "temperature": self.temperature_box,
+               "version": self.version_box}[key]
         if isinstance(box, MultiSelectCombo):
             box.clear()
         else:
@@ -571,6 +709,8 @@ class PlayerBrowser(tk.Toplevel):
             {row.group for row in rows if row.group}, key=str.casefold)])
         self.label_box.set_options([(label, label) for label in sorted(
             {label for row in rows for label in row.labels}, key=str.casefold)])
+        self.version_box.set_options([(version, version) for version in sorted(
+            {row.version for row in rows if row.version}, key=version_key)])
         self.location_box.set_options([(location, location) for location in sorted(
             {row.location for row in rows if row.location}, key=str.casefold)])
         self.apply_filters()
@@ -581,11 +721,12 @@ class PlayerBrowser(tk.Toplevel):
     def _row_widgets(self, row: PlayerRow) -> List[tk.Widget]:
         """The button first, then one cell for each column."""
         texts = (row.name, self.lang.get_message("pb_online" if row.online else "pb_offline"), row.group,
-                 row.location, ", ".join(row.labels), self._moment(row.synced), self._moment(row.reported), row.note)
+                 row.location, ", ".join(row.labels), self._moment(row.synced), self._moment(row.reported), row.note,
+                 f"{row.temperature:g} °C" if row.temperature is not None else "", row.version)
         cells: List[tk.Widget] = [tk.Label(self._body, text=text, font=self._font, width=1, anchor="w")
                                   for text in texts]
         cells[1].configure(foreground=ONLINE_COLOR if row.online else OFFLINE_COLOR)
-        button = ttk.Button(self._body, text=self.lang.get_message("pb_snapshot"))
+        button = ttk.Button(self._body, text=self.lang.get_message("pb_snapshot"), style=BUTTON_STYLE)
         button.state(["disabled"])  # its function is defined later
         return [button] + cells
 
@@ -614,6 +755,10 @@ class PlayerBrowser(tk.Toplevel):
             criteria.update(reported=chosen(self.reported_box))
         if "note" not in self._hidden:
             criteria.update(note=self.note_var.get())
+        if "temperature" not in self._hidden:
+            criteria.update(temperature=chosen(self.temperature_box))
+        if "version" not in self._hidden:
+            criteria.update(version_text=self.version_box.text(), versions=self.version_box.checked())
         return PlayerFilter(**criteria)
 
     def _schedule_filter(self):
@@ -625,9 +770,9 @@ class PlayerBrowser(tk.Toplevel):
         """Clears the texts and the ticks and puts every drop-down back on "(all)"."""
         self.name_var.set("")
         self.note_var.set("")
-        for box in (self.status_box, self.synced_box, self.reported_box):
+        for box in (self.status_box, self.synced_box, self.reported_box, self.temperature_box):
             box.set(next(iter(self._combo_values[box])))
-        for box in (self.group_box, self.location_box, self.label_box):
+        for box in (self.group_box, self.location_box, self.label_box, self.version_box):
             box.clear()
         self.apply_filters()
         self.name_entry.focus_set()

@@ -1,3 +1,4 @@
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -16,6 +17,8 @@ class PlayerRow:
     synced: Optional[datetime]  # when the content was last uploaded to the player; None = never
     reported: Optional[datetime]  # when the player last reported to the server; None = never
     note: str
+    temperature: Optional[float]  # of the processor in degrees Celsius; None = the player does not say
+    version: str  # of the player software
 
 
 @dataclass(frozen=True)
@@ -43,6 +46,23 @@ AGE_OPTIONS: Tuple[Tuple[str, AgeFilter], ...] = (
 
 
 @dataclass(frozen=True)
+class TemperatureFilter:
+    """`op` ">": hotter than `value` degrees; "none": the player does not report a temperature."""
+    op: str
+    value: float = 0
+
+
+# The choices of the temperature filter: the key of the text in messages.json ("pb_temp_<key>") and the criterion
+TEMPERATURE_OPTIONS: Tuple[Tuple[str, TemperatureFilter], ...] = (
+    ("gt_50", TemperatureFilter(">", 50)),
+    ("gt_60", TemperatureFilter(">", 60)),
+    ("gt_70", TemperatureFilter(">", 70)),
+    ("gt_80", TemperatureFilter(">", 80)),
+    ("none", TemperatureFilter("none")),
+)
+
+
+@dataclass(frozen=True)
 class PlayerFilter:
     """
     A criterion left at its default does not filter. The criteria are combined with AND. For group, location and
@@ -60,6 +80,9 @@ class PlayerFilter:
     synced: Optional[AgeFilter] = None
     reported: Optional[AgeFilter] = None
     note: str = ""
+    temperature: Optional[TemperatureFilter] = None
+    version_text: str = ""
+    versions: FrozenSet[str] = field(default_factory=frozenset)
 
 
 def parse_timestamp(value: Any) -> Optional[datetime]:
@@ -78,6 +101,22 @@ def parse_timestamp(value: Any) -> Optional[datetime]:
         return None
 
 
+def parse_temperature(value: Any) -> Optional[float]:
+    """The server sends the temperature as text ("47", "47.2", "temp=47.2'C"); no number in it means no temperature."""
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    found = re.search(r"-?\d+(?:[.,]\d+)?", str(value))
+    return float(found.group().replace(",", ".")) if found else None
+
+
+def version_key(version: str) -> Tuple:
+    """5.10.2 comes after 5.9.7: the numbers of a version are compared as numbers."""
+    return tuple((0, int(part)) if part.isdigit() else (1, part.casefold()) for part in re.split(r"[.\-_/ ]+", version)
+                 if part)
+
+
 def player_row(player: Dict[str, Any]) -> PlayerRow:
     """The row of one player object as the server returns it."""
     group = player.get("group") or {}
@@ -90,6 +129,8 @@ def player_row(player: Dict[str, Any]) -> PlayerRow:
         synced=parse_timestamp(player.get("lastUpload")),
         reported=parse_timestamp(player.get("lastReported")),
         note=" ".join(str(player.get("notes") or "").split()),  # one line: a note can contain line breaks
+        temperature=parse_temperature(player.get("piTemperature")),
+        version=str(player.get("version") or "").strip(),
     )
 
 
@@ -112,6 +153,14 @@ def _age_matches(moment: Optional[datetime], criterion: Optional[AgeFilter], now
     return age < criterion.seconds if criterion.op == "<" else age > criterion.seconds
 
 
+def _temperature_matches(temperature: Optional[float], criterion: Optional[TemperatureFilter]) -> bool:
+    if criterion is None:
+        return True
+    if criterion.op == "none":
+        return temperature is None
+    return temperature is not None and temperature > criterion.value
+
+
 def matches(row: PlayerRow, criteria: PlayerFilter, now: datetime) -> bool:
     return (_contains(criteria.name, row.name)
             and (criteria.online is None or row.online == criteria.online)
@@ -123,7 +172,10 @@ def matches(row: PlayerRow, criteria: PlayerFilter, now: datetime) -> bool:
             and (not criteria.labels or bool(criteria.labels.intersection(row.labels)))
             and _age_matches(row.synced, criteria.synced, now)
             and _age_matches(row.reported, criteria.reported, now)
-            and _contains(criteria.note, row.note))
+            and _contains(criteria.note, row.note)
+            and _temperature_matches(row.temperature, criteria.temperature)
+            and _contains(criteria.version_text, row.version)
+            and (not criteria.versions or row.version in criteria.versions))
 
 
 def apply_filter(rows: Iterable[PlayerRow], criteria: PlayerFilter, now: Optional[datetime] = None) -> List[PlayerRow]:
@@ -140,6 +192,8 @@ SORT_KEYS: Dict[str, Callable[[PlayerRow], Any]] = {
     "synced": lambda row: (row.synced is None, row.synced or datetime.min, plain_text(row.name)),
     "reported": lambda row: (row.reported is None, row.reported or datetime.min, plain_text(row.name)),
     "note": lambda row: (plain_text(row.note), plain_text(row.name)),
+    "temperature": lambda row: (row.temperature is None, row.temperature or 0.0, plain_text(row.name)),
+    "version": lambda row: (not row.version, version_key(row.version), plain_text(row.name)),
 }
 
 

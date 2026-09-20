@@ -1,8 +1,8 @@
 import unittest
 
 from util.accounts import (AccountError, add_account, add_login, hidden_player_columns, normalize_url, player_columns,
-                           remember_selection, remove_account, remove_login, set_hidden_player_columns,
-                           set_player_columns)
+                           player_font_size, remember_selection, remove_account, remove_login,
+                           set_hidden_player_columns, set_player_columns, set_player_font_size)
 
 
 def empty_config() -> dict:
@@ -214,32 +214,101 @@ class PlayerColumnsTest(unittest.TestCase):
 
 
 class HiddenPlayerColumnsTest(unittest.TestCase):
+    DEFAULT = ["temperature", "version"]
+
     def config(self):
         data = empty_config()
         add_account(data, "A", "https://a.example.com")
         add_account(data, "B", "https://b.example.com")
         return data
 
-    def test_kept_per_account_and_an_empty_list_stores_nothing(self):
+    def test_an_account_that_never_chose_has_the_default_columns_off(self):
         data = self.config()
 
-        set_hidden_player_columns(data, "A", ["group", "note"])
+        self.assertEqual(hidden_player_columns(data, "A"), self.DEFAULT)
+        self.assertEqual(hidden_player_columns(data, "nope"), self.DEFAULT)
 
-        self.assertEqual(hidden_player_columns(data, "A"), ["group", "note"])
-        self.assertEqual(hidden_player_columns(data, "B"), [])
-        self.assertEqual(hidden_player_columns(data, "nope"), [])
-        set_hidden_player_columns(data, "A", [])
+    def test_kept_per_account_and_the_defaults_again_store_nothing(self):
+        data = self.config()
+
+        set_hidden_player_columns(data, "A", ["group", "note", "temperature", "version"])
+
+        self.assertEqual(hidden_player_columns(data, "A"), ["group", "note", "temperature", "version"])
+        self.assertEqual(hidden_player_columns(data, "B"), self.DEFAULT)
+        set_hidden_player_columns(data, "A", self.DEFAULT)
         self.assertNotIn("player_hidden", data["logins"]["A"])
+        self.assertNotIn("player_shown", data["logins"]["A"])
+        self.assertEqual(hidden_player_columns(data, "A"), self.DEFAULT)
+
+    def test_only_the_difference_from_the_defaults_is_stored(self):
+        data = self.config()
+
+        set_hidden_player_columns(data, "A", ["synced", "version"])  # the temperature is on, the synced is off
+
+        self.assertEqual(data["logins"]["A"]["player_hidden"], ["synced"])
+        self.assertEqual(data["logins"]["A"]["player_shown"], ["temperature"])
+        self.assertEqual(hidden_player_columns(data, "A"), ["synced", "version"])
+
+    def test_everything_shown_is_kept_too(self):
+        data = self.config()
+
+        set_hidden_player_columns(data, "A", [])
+
+        self.assertEqual(hidden_player_columns(data, "A"), [])
+        self.assertEqual(data["logins"]["A"]["player_shown"], ["temperature", "version"])
+
+    def test_an_account_saved_before_the_new_columns_existed_has_them_off(self):
+        data = self.config()
+        data["logins"]["A"]["player_hidden"] = ["synced", "note"]
+
+        self.assertEqual(hidden_player_columns(data, "A"), ["note", "synced", "temperature", "version"])
 
     def test_independent_of_the_widths_and_a_copy(self):
         data = self.config()
         set_player_columns(data, "A", {"name": 300})
-        set_hidden_player_columns(data, "A", ["note"])
+        set_hidden_player_columns(data, "A", ["note", "temperature", "version"])
 
         hidden_player_columns(data, "A").append("group")
         set_player_columns(data, "A", {})
 
-        self.assertEqual(hidden_player_columns(data, "A"), ["note"])
+        self.assertEqual(hidden_player_columns(data, "A"), ["note", "temperature", "version"])
+
+
+class PlayerFontSizeTest(unittest.TestCase):
+    def config(self):
+        data = empty_config()
+        add_account(data, "A", "https://a.example.com")
+        add_account(data, "B", "https://b.example.com")
+        return data
+
+    def test_kept_per_account_and_none_forgets_it(self):
+        data = self.config()
+
+        set_player_font_size(data, "A", 15)
+
+        self.assertEqual(player_font_size(data, "A"), 15)
+        self.assertIsNone(player_font_size(data, "B"))
+        self.assertIsNone(player_font_size(data, "nope"))
+        set_player_font_size(data, "A", None)
+        self.assertNotIn("player_font", data["logins"]["A"])
+
+    def test_independent_of_the_widths_and_the_hidden_columns(self):
+        data = self.config()
+        set_player_columns(data, "A", {"name": 300})
+        set_hidden_player_columns(data, "A", ["note"])
+
+        set_player_font_size(data, "A", 9)
+        set_player_columns(data, "A", {})
+
+        self.assertEqual((player_font_size(data, "A"), hidden_player_columns(data, "A")), (9, ["note"]))
+
+    def test_it_goes_away_with_the_account(self):
+        data = self.config()
+        set_player_font_size(data, "A", 12)
+
+        remove_account(data, "A")
+
+        self.assertIsNone(player_font_size(data, "A"))
 
 
 if __name__ == "__main__":
