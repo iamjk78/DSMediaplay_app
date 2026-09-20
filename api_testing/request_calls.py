@@ -1630,6 +1630,15 @@ class ServerApi:
             })
         return player_details
 
+    def get_player_objects(self) -> List[Dict[str, Any]]:
+        """All players of the account exactly as the server returns them, following its pages if there are several."""
+        data = self._make_request("get", "/players").get("data", {})
+        players = list(data.get("objects", []))
+        for page in range(2, int(data.get("pages") or 1) + 1):
+            data = self._make_request("get", "/players", params={"page": page}).get("data", {})
+            players += data.get("objects", [])
+        return players
+
     def get_all_players(self) -> Dict[str, Dict[str, Union[str, bool, List[str], Dict[str, str]]]]:
         """
         Retrieves all players and returns their details in a dictionary keyed by player name.

@@ -14,6 +14,7 @@ from processor.input_processing import try_login
 from datetime import datetime
 from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
+from gui_app.player_browser import PlayerBrowser
 from util import accounts, credentials, input_templates
 from util.actions import action_needs_input
 from util.paths import resource_path
@@ -96,6 +97,7 @@ class DSMediaplayApp(tk.Tk):
         self._blink_id = None
         self._blink_dark = False
         self._input_window_open = False
+        self._player_browser = None
 
         self._admin_row = 0
         self._profile_row = 1
@@ -161,6 +163,7 @@ class DSMediaplayApp(tk.Tk):
                 actions["Players"]["get_player_details"]: "get_player_details",
                 actions["Players"]["set_player_rename"]: "set_player_rename",
                 actions["Players"]["set_player_snapshot"]: "set_player_snapshot",
+                actions["Players"]["show_player_snapshots"]: "show_player_snapshots",
                 # actions["Players"]["create_player"]: "create_player",
                 actions["Players"]["get_player_versions"]: "get_player_versions",
                 actions["Players"]["create_label"]: "create_label",
@@ -364,6 +367,7 @@ class DSMediaplayApp(tk.Tk):
     def refresh_ui(self):
         """Refreshes the entire UI to reflect changes in language or other settings."""
         self.lang = LanguageManager(language=self.lang.language, config_path=self.lang.config_path)
+        self.close_player_browser()  # its texts are in the old language
         self.reload_account_configs()
         self.entity_actions = self.load_actions()
 
@@ -461,6 +465,7 @@ class DSMediaplayApp(tk.Tk):
                 "set_": self.perform_set_action,
                 "remove_": self.perform_remove_action,
                 "create_": self.perform_create_action,
+                "show_": self.perform_show_action,
             }
             for prefix, method in action_map.items():
                 if action.startswith(prefix):
@@ -477,6 +482,30 @@ class DSMediaplayApp(tk.Tk):
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
             return
         self.generate_csv(action[4:], url, login, password)
+
+    def perform_show_action(self, action, url, login, password, _):
+        if "" in [login, password]:
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
+            return
+        self.open_player_browser(url, login, password)
+
+    def open_player_browser(self, url, login, password):
+        """One window at a time: the same account and login brings the open one to the front."""
+        browser = self._player_browser
+        if browser is not None and browser.winfo_exists():
+            if browser.connection == (url, login):
+                browser.deiconify()
+                browser.lift()
+                browser.focus_force()
+                return
+            browser.destroy()
+        self._player_browser = PlayerBrowser(self, url=url, login=login, password=password,
+                                             account_name=self.option_choose_administration.get())
+
+    def close_player_browser(self):
+        if self._player_browser is not None and self._player_browser.winfo_exists():
+            self._player_browser.destroy()
+        self._player_browser = None
 
     def perform_set_action(self, action, url, login, password, data):
         if not action_needs_input(action):
