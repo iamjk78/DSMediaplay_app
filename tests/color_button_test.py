@@ -1,7 +1,8 @@
 import tkinter as tk
 import unittest
 
-from gui_app.color_button import GREEN, GREEN_DARK, RED, ColorButton, make_color_button, set_button_colors
+from gui_app.color_button import (DISABLED, GREEN, GREEN_DARK, RED, ColorButton, button_enabled, make_color_button,
+                                  set_button_colors, set_button_enabled)
 
 
 class ColorButtonTest(unittest.TestCase):
@@ -120,6 +121,87 @@ class SetColorsTest(unittest.TestCase):
             self.assertEqual(button.itemcget(button.find_withtag("all")[1], "fill"), "#ffffff")
         else:
             self.assertEqual((button.cget("background"), button.cget("foreground")), (GREEN_DARK.normal, "#ffffff"))
+
+
+
+class DisabledButtonTest(unittest.TestCase):
+    def setUp(self):
+        try:
+            self.root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("no display available")
+        self.addCleanup(self.root.destroy)
+        self.clicks = []
+        self.button = ColorButton(self.root, "Start", lambda: self.clicks.append(1), ("Helvetica", 12, "bold"), GREEN)
+        self.button.pack()
+        self.root.update()
+
+    def fill(self):
+        return self.button.itemcget(self.button.find_withtag("all")[0], "fill")
+
+    def click(self):
+        self.button.event_generate("<ButtonPress-1>", x=5, y=5)
+        self.button.event_generate("<ButtonRelease-1>", x=5, y=5)
+
+    def test_it_is_enabled_at_first(self):
+        self.assertTrue(self.button.enabled)
+        self.assertEqual(self.fill(), GREEN.normal)
+
+    def test_disabled_it_is_grey_and_keeps_its_size_and_text(self):
+        size = (self.button.winfo_reqwidth(), self.button.winfo_reqheight())
+
+        self.button.set_enabled(False)
+        self.root.update()
+
+        self.assertEqual(self.fill(), DISABLED.normal)
+        self.assertEqual((self.button.winfo_reqwidth(), self.button.winfo_reqheight()), size)
+        self.assertEqual(self.button.cget("text"), "Start")
+
+    def test_disabled_it_ignores_the_pointer_and_clicks(self):
+        self.button.set_enabled(False)
+
+        self.button.event_generate("<Enter>")
+        self.assertEqual(self.fill(), DISABLED.normal)
+        self.click()
+
+        self.assertEqual(self.clicks, [])
+        self.assertEqual(self.fill(), DISABLED.normal)
+
+    def test_enabled_again_it_has_its_colour_and_works(self):
+        self.button.set_enabled(False)
+        self.button.set_enabled(True)
+
+        self.assertEqual(self.fill(), GREEN.normal)
+        self.click()
+        self.assertEqual(self.clicks, [1])
+
+    def test_a_press_that_started_before_it_was_disabled_does_not_run_it(self):
+        self.button.event_generate("<ButtonPress-1>", x=5, y=5)
+        self.button.set_enabled(False)
+        self.button.event_generate("<ButtonRelease-1>", x=5, y=5)
+
+        self.assertEqual(self.clicks, [])
+
+    def test_the_helpers_work_for_the_canvas_button(self):
+        set_button_enabled(self.button, False, GREEN)
+        self.assertFalse(button_enabled(self.button))
+        set_button_enabled(self.button, True, GREEN)
+        self.assertTrue(button_enabled(self.button))
+
+    def test_the_helpers_work_for_a_native_button_too(self):
+        native = tk.Button(self.root, text="Native", command=lambda: self.clicks.append(1), background=GREEN.normal)
+        native.pack()
+
+        set_button_enabled(native, False, GREEN)
+        self.assertFalse(button_enabled(native))
+        self.assertEqual(str(native.cget("background")), DISABLED.normal)
+        native.invoke()
+        self.assertEqual(self.clicks, [])
+        set_button_enabled(native, True, GREEN)
+        self.assertTrue(button_enabled(native))
+        self.assertEqual(str(native.cget("background")), GREEN.normal)
+        native.invoke()
+        self.assertEqual(self.clicks, [1])
 
 
 if __name__ == "__main__":

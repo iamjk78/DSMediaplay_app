@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from gui_app.color_button import GREEN, GREEN_DARK, RED, make_color_button, set_button_colors
+from gui_app.color_button import (BLUE, GREEN, GREEN_DARK, RED, YELLOW, button_enabled, equalize_widths,
+                                  make_color_button, set_button_colors, set_button_enabled)
 from gui_app.icons import set_window_icon
 from gui_app.tooltip import Tooltip
 import json
@@ -20,6 +21,10 @@ from util.actions import action_needs_input
 from util.paths import resource_path
 import requests
 import webbrowser
+
+
+# The same for Start and Deploy all: narrow enough for the free space right of the action drop-down
+DEPLOY_PADDING_X = 12
 
 
 def get_download_path():
@@ -83,6 +88,8 @@ class DSMediaplayApp(tk.Tk):
         self.settings_button = None
         self.help_button = None
         self.start_button = None
+        self.deploy_all_button = None
+        self.live_view_button = None
         self.quit_button = None
         self.select_entity_type_label = None
         self.select_action_label = None
@@ -111,6 +118,7 @@ class DSMediaplayApp(tk.Tk):
 
         self.setup_ui()
         self.fill_default_login_details()
+        self.update_action_buttons()
         self.bind("<FocusIn>", self.on_focus_in)
         self.resizable(False, False)
 
@@ -198,12 +206,16 @@ class DSMediaplayApp(tk.Tk):
         set_window_icon(self)
 
     def setup_ui(self):
+        # The values of these three decide whether the buttons that start something can be used
+        self.account_var, self.login_var, self.password_var = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        for variable in (self.account_var, self.login_var, self.password_var):
+            variable.trace_add("write", lambda *_: self.update_action_buttons())
         self.create_combobox(self, "customer_account", self._admin_row,
-                             "option_choose_administration", self.on_account_selected, columnspan=3)
+                             "option_choose_administration", self.on_account_selected, self.account_var, columnspan=3)
         self.create_combobox(self, "name", self._profile_row,
-                             "option_choose_name", self.on_login_selected, columnspan=3)
+                             "option_choose_name", self.on_login_selected, self.login_var, columnspan=3)
         self.create_label_and_entry(self, "password", self._password_row,
-                                    "input_for_password", show="*")
+                                    "input_for_password", textvariable=self.password_var, show="*")
         self.create_button(self, "save_login_details", self._save_button_row,
                            self.save_login_details, columnspan=3)
         self.create_combobox(self, "select_entity_type", self._entity_type_row,
@@ -288,16 +300,27 @@ class DSMediaplayApp(tk.Tk):
         right_buttons.grid(row=self._action_buttons_row, column=1, columnspan=4, sticky="e")
         self.create_button(right_buttons, "settings", 0, self.open_settings_window, column=0)
         self.start_button = self.create_emphasised_button("start", self.execute_action, GREEN, size_offset=2,
-                                                          parent=right_buttons)
+                                                          parent=right_buttons, padding_x=DEPLOY_PADDING_X)
         self.start_button.grid(row=0, column=1, padx=pad_x, pady=pad_y, sticky="w")
-        self.add_tooltip(self.start_button, "tip_start")
+        self.add_action_tooltip(self.start_button, "tip_start")
+        # Right of the drop-downs, in line with the right edge of "Start"; same font and size as it
+        self.live_view_button = self.create_emphasised_button("live_view", self.live_view, BLUE, size_offset=2,
+                                                              padding_x=DEPLOY_PADDING_X)
+        self.live_view_button.grid(row=self._entity_type_row, column=1, columnspan=4, padx=pad_x, sticky="e")
+        self.add_action_tooltip(self.live_view_button, "tip_live_view")
+        self.deploy_all_button = self.create_emphasised_button("deploy_all", self.deploy_all, YELLOW, size_offset=2,
+                                                               padding_x=DEPLOY_PADDING_X)
+        self.deploy_all_button.grid(row=self._action_row, column=1, columnspan=4, padx=pad_x, pady=(3, 0), sticky="e")
+        self.add_action_tooltip(self.deploy_all_button, "tip_deploy_all")
+        self._equalize_action_buttons()
+        self.update_action_buttons()
 
     def emphasised_font(self, size_offset):
         return (self.font[0], self.font[1] + size_offset, "bold")
 
-    def create_emphasised_button(self, label_key, command, colors, size_offset, parent=None):
+    def create_emphasised_button(self, label_key, command, colors, size_offset, parent=None, **options):
         button = make_color_button(parent or self, self.lang.get_message(label_key), command,
-                                   self.emphasised_font(size_offset), colors)
+                                   self.emphasised_font(size_offset), colors, **options)
         self._emphasis[button] = size_offset
         return button
 
@@ -380,6 +403,7 @@ class DSMediaplayApp(tk.Tk):
         self.refresh_dropdowns()
 
         self.fill_default_login_details()
+        self.update_action_buttons()
 
     def refresh_all_widgets_text(self):
         """Refreshes the text of all labels, buttons, and other UI elements."""
@@ -414,6 +438,11 @@ class DSMediaplayApp(tk.Tk):
             self.save_login_details_button.config(text=self.lang.get_message("save_login_details"))
         if self.input_prompt_button:
             self.input_prompt_button.config(text=self.lang.get_message("input_prompt"))
+        if self.deploy_all_button:
+            self.deploy_all_button.config(text=self.lang.get_message("deploy_all"))
+        if self.live_view_button:
+            self.live_view_button.config(text=self.lang.get_message("live_view"))
+        self._equalize_action_buttons()
 
     def update_all_widgets_font(self):
         """Updates the font for all widgets to the current font settings."""
@@ -421,6 +450,7 @@ class DSMediaplayApp(tk.Tk):
             self._update_widget_font(widget)
             for child in widget.winfo_children():
                 self._update_widget_font(child)
+        self._equalize_action_buttons()  # the size follows the font
 
     def _update_widget_font(self, widget):
         """Applies the current font to a given widget, if applicable."""
@@ -482,6 +512,51 @@ class DSMediaplayApp(tk.Tk):
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
             return
         self.generate_csv(action[4:], url, login, password)
+
+    def add_action_tooltip(self, button, key):
+        """While the button cannot be used its tooltip says what is missing."""
+        Tooltip(button, lambda: self.lang.get_message(key if self.can_start_actions() else "tip_login_required"))
+
+    def can_start_actions(self) -> bool:
+        """An account, one of its logins and a password are there: what every action needs."""
+        names = self.account_data.get(self.account_var.get(), {}).get("names", {})
+        return self.login_var.get() in names and bool(self.password_var.get())
+
+    def update_action_buttons(self):
+        """Start, Live-view and Deploy all are grey until an account, a login and a password are there."""
+        enabled = self.can_start_actions()
+        for button, colors in ((self.start_button, GREEN), (self.deploy_all_button, YELLOW),
+                               (self.live_view_button, BLUE)):
+            if button is not None:
+                set_button_enabled(button, enabled, colors)
+
+    def _equalize_action_buttons(self):
+        buttons = [self.start_button, self.deploy_all_button, self.live_view_button]
+        if all(buttons):
+            equalize_widths(*buttons)
+
+    def _selected_connection(self):
+        """(url, login, password) of the selected account and login, or None with a hint when no login is selected."""
+        administration = self.option_choose_administration.get()
+        names = self.account_data.get(administration, {}).get("names", {})
+        account_name = self.option_choose_name.get()
+        if account_name not in names:
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
+            return None
+        return (self.account_data[administration].get("url", ""), names[account_name]["login"],
+                self.input_for_password.get())
+
+    def deploy_all(self):
+        """The action "Deploy - all players" on one button: no selection and no confirmation, only the login."""
+        connection = self._selected_connection()
+        if connection:
+            self.perform_set_action("set_deploy_all_players", *connection, None)
+
+    def live_view(self):
+        """The action "Players - Screenshot - view" on one button."""
+        connection = self._selected_connection()
+        if connection:
+            self.perform_show_action("show_player_snapshots", *connection, None)
 
     def perform_show_action(self, action, url, login, password, _):
         if "" in [login, password]:
@@ -651,6 +726,7 @@ class DSMediaplayApp(tk.Tk):
         if login not in names:
             self.option_choose_name.set("")
         self.fill_password_details()
+        self.update_action_buttons()  # the data may have changed without any of the fields changing
 
     def on_focus_in(self, event):
         if event.widget is self:  # the window itself came to the front, e.g. after Edit JSON or a text editor

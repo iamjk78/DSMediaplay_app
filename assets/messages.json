@@ -271,7 +271,12 @@
         "pb_columns": "Zobrazení sloupců:",
         "pb_updated": "Aktualizováno {time}",
         "pb_data_from": "Zobrazená data jsou z {time}",
-        "pb_next_update": "aktualizace za {seconds} s"
+        "pb_next_update": "aktualizace za {seconds} s",
+        "deploy_all": "DEPLOY ALL",
+        "tip_deploy_all": "Spustit Deploy na všechny přehrávače vybraného účtu (bez dalšího potvrzení)",
+        "live_view": "Live-view",
+        "tip_live_view": "Otevřít přehled přehrávačů se snímky obrazovky (Players - Snímek obrazovky - zobrazit)",
+        "tip_login_required": "Nejdřív vyberte zákaznický účet a login a zadejte heslo"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -545,6 +550,11 @@
         "pb_columns": "Show columns:",
         "pb_updated": "Updated {time}",
         "pb_data_from": "The data shown is from {time}",
-        "pb_next_update": "update in {seconds} s"
+        "pb_next_update": "update in {seconds} s",
+        "deploy_all": "DEPLOY ALL",
+        "tip_deploy_all": "Start the deploy to all players of the selected account (no further confirmation)",
+        "live_view": "Live-view",
+        "tip_live_view": "Open the players overview with screenshots (Players - Screenshot - view)",
+        "tip_login_required": "First select a customer account and a login and enter the password"
     }
 }

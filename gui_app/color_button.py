@@ -23,6 +23,12 @@ RED = ButtonColors(normal="#ffc7ce", hover="#ffb5be", pressed="#f79ea9", border=
 GREEN_DARK = ButtonColors(normal="#2e7d32", hover="#276b2b", pressed="#205a24", border="#1b4d1f", text="#ffffff")
 
 
+YELLOW = ButtonColors(normal="#fff2b3", hover="#ffea8a", pressed="#ffe066", border="#d1b640")
+# A button that cannot be used: grey, dark enough text to read but clearly not the coloured one
+DISABLED = ButtonColors(normal="#e6e6e6", hover="#e6e6e6", pressed="#e6e6e6", border="#c4c4c4", text="#8a8a8a")
+BLUE = ButtonColors(normal="#c7dcf7", hover="#b4d0f3", pressed="#9ec2ec", border="#7f9fcc")
+
+
 def _rounded_rectangle(x1: float, y1: float, x2: float, y2: float, radius: float) -> List[float]:
     """Polygon points that Tk smooths into a rounded rectangle."""
     return [x1 + radius, y1, x2 - radius, y1, x2, y1, x2, y1 + radius, x2, y2 - radius, x2, y2,
@@ -37,10 +43,12 @@ class ColorButton(tk.Canvas):
     """
 
     def __init__(self, master: tk.Misc, text: str, command: Callable[[], None], font: FontSpec,
-                 colors: ButtonColors) -> None:
+                 colors: ButtonColors, min_width: int = 0, padding_x: int = PADDING_X) -> None:
         super().__init__(master, background=master.cget("background"), highlightthickness=0, borderwidth=0,
                          takefocus=0)
         self._text, self._command, self._font, self._colors = text, command, font, colors
+        self._min_width, self._padding_x = min_width, padding_x
+        self._enabled = True
         self._state = "normal"
         self._draw()
         self.bind("<Enter>", lambda _: self._set_state("hover"))
@@ -48,26 +56,49 @@ class ColorButton(tk.Canvas):
         self.bind("<ButtonPress-1>", lambda _: self._set_state("pressed"))
         self.bind("<ButtonRelease-1>", self._release)
 
+    def natural_width(self) -> int:
+        """The width the text needs, whatever the minimum width is."""
+        return tkfont.Font(root=self, font=self._font).measure(self._text) + 2 * self._padding_x
+
+    def set_min_width(self, width: int) -> None:
+        self._min_width = width
+        self._draw()
+
     def _draw(self) -> None:
         measure = tkfont.Font(root=self, font=self._font)
-        width = measure.measure(self._text) + 2 * PADDING_X
+        width = max(self.natural_width(), self._min_width)
         height = measure.metrics("linespace") + 2 * PADDING_Y
         tk.Canvas.configure(self, width=width, height=height)
         self.delete("all")
-        fill = {"normal": self._colors.normal, "hover": self._colors.hover, "pressed": self._colors.pressed}
+        colors = self._colors if self._enabled else DISABLED
+        fill = {"normal": colors.normal, "hover": colors.hover, "pressed": colors.pressed}
         self.create_polygon(_rounded_rectangle(1, 1, width - 1, height - 1, RADIUS), smooth=True,
-                            fill=fill[self._state], outline=self._colors.border)
-        self.create_text(width / 2, height / 2, text=self._text, font=self._font, fill=self._colors.text)
+                            fill=fill[self._state], outline=colors.border)
+        self.create_text(width / 2, height / 2, text=self._text, font=self._font, fill=colors.text)
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    def set_enabled(self, enabled: bool) -> None:
+        """A disabled button is grey, does not react to the pointer and does not run its command."""
+        self._enabled = enabled
+        self._state = "normal"
+        self._draw()
 
     def set_colors(self, colors: ButtonColors) -> None:
         self._colors = colors
         self._draw()
 
     def _set_state(self, state: str) -> None:
+        if not self._enabled:
+            return
         self._state = state
         self._draw()
 
     def _release(self, event: tk.Event) -> None:
+        if not self._enabled:
+            return
         inside = 0 <= event.x < self.winfo_width() and 0 <= event.y < self.winfo_height()
         self._set_state("hover" if inside else "normal")
         if inside and self._command:
@@ -103,9 +134,40 @@ def set_button_colors(button: tk.Widget, colors: ButtonColors) -> None:
 
 
 def make_color_button(master: tk.Misc, text: str, command: Callable[[], None], font: FontSpec,
-                      colors: ButtonColors) -> tk.Widget:
+                      colors: ButtonColors, padding_x: int = PADDING_X) -> tk.Widget:
     """A coloured button: canvas-drawn on macOS (native buttons cannot be coloured), a plain tk.Button elsewhere."""
     if master.tk.call("tk", "windowingsystem") == "aqua":
-        return ColorButton(master, text, command, font, colors)
+        return ColorButton(master, text, command, font, colors, padding_x=padding_x)
     return tk.Button(master, text=text, command=command, font=font, background=colors.normal,
                      activebackground=colors.pressed, foreground=colors.text, activeforeground=colors.text)
+
+
+def equalize_widths(*buttons: tk.Widget) -> None:
+    """Gives buttons made by make_color_button the same width: the widest one's (canvas), or the same number of
+    characters (native buttons, which are sized in characters of their font)."""
+    canvas_buttons = [button for button in buttons if isinstance(button, ColorButton)]
+    if canvas_buttons:
+        for button in canvas_buttons:
+            button.set_min_width(0)
+        widest = max(button.natural_width() for button in canvas_buttons)
+        for button in canvas_buttons:
+            button.set_min_width(widest)
+    else:
+        characters = max(len(str(button.cget("text"))) for button in buttons)
+        for button in buttons:
+            button.configure(width=characters)
+
+
+def set_button_enabled(button: tk.Widget, enabled: bool, colors: ButtonColors) -> None:
+    """Switches a button made by make_color_button on (in `colors`) or off (grey)."""
+    if isinstance(button, ColorButton):
+        button.set_enabled(enabled)
+    else:
+        shown = colors if enabled else DISABLED
+        button.configure(state="normal" if enabled else "disabled", background=shown.normal,
+                         activebackground=shown.pressed, foreground=shown.text, activeforeground=shown.text,
+                         disabledforeground=DISABLED.text)
+
+
+def button_enabled(button: tk.Widget) -> bool:
+    return button.enabled if isinstance(button, ColorButton) else str(button.cget("state")) != "disabled"
