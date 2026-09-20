@@ -3,7 +3,11 @@ import tkinter as tk
 from tkinter import ttk
 import unittest
 
-from gui_app.tooltip import GAP_LEFT_OF_POINTER, GAP_RIGHT_OF_POINTER, TOOLTIP_DELAY_MS, Tooltip
+from unittest.mock import patch
+
+from gui_app.color_button import GREEN, ColorButton
+from gui_app.tooltip import (GAP_LEFT_OF_POINTER, GAP_RIGHT_OF_POINTER, TOOLTIP_DELAY_MS, WATCH_INTERVAL_MS,
+                             Tooltip)
 
 
 class TooltipTest(unittest.TestCase):
@@ -12,6 +16,11 @@ class TooltipTest(unittest.TestCase):
             self.root = tk.Tk()
         except tk.TclError:
             self.skipTest("no display available")
+        # The synthetic events below do not move the real pointer, so it is taken to be on the widget
+        self.over = True
+        patcher = patch.object(Tooltip, "_pointer_over_widget", lambda tooltip: self.over)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.button = tk.Button(self.root, text="button")
         self.button.pack()
         self.text = "first"
@@ -155,6 +164,153 @@ class TooltipTest(unittest.TestCase):
         self.wait(150)
 
         self.assertEqual(themed.tooltip._label.cget("text"), "help")
+
+
+
+class StuckTooltipTest(unittest.TestCase):
+    """A tooltip must not stay on the screen when the pointer is gone, whatever the reason."""
+
+    def setUp(self):
+        try:
+            self.root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("no display available")
+        self.over = True
+        patcher = patch.object(Tooltip, "_pointer_over_widget", lambda tooltip: self.over)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.root.destroy)
+        self.clicked = []
+        self.button = ColorButton(self.root, "Start", lambda: self.clicked.append(1), ("Helvetica", 12), GREEN)
+        self.button.pack()
+        self.tooltip = Tooltip(self.button, lambda: "help", delay_ms=30)
+        self.root.update()
+
+    def wait(self, milliseconds):
+        end = time.monotonic() + milliseconds / 1000
+        while time.monotonic() < end:
+            self.root.update()
+            time.sleep(0.005)
+
+    def visible(self):
+        window = self.tooltip._window
+        return window is not None and window.state() == "normal"
+
+    def show(self):
+        self.button.event_generate("<Enter>", x=5, y=5, rootx=300, rooty=300)
+        self.wait(120)
+        self.assertTrue(self.visible())
+
+    def test_a_left_click_on_a_canvas_drawn_button_hides_the_tooltip_and_still_runs_the_button(self):
+        self.show()
+
+        self.button.event_generate("<ButtonPress-1>", x=5, y=5)
+        self.assertFalse(self.visible())
+        self.button.event_generate("<ButtonRelease-1>", x=5, y=5)
+        self.assertEqual(self.clicked, [1])
+
+    def test_it_goes_away_when_the_pointer_left_without_a_leave_event(self):
+        self.show()
+
+        self.over = False  # e.g. a window opened over the button, or a modal window holds the grab
+        self.wait(WATCH_INTERVAL_MS * 2 + 100)
+
+        self.assertFalse(self.visible())
+
+    def test_it_stays_while_the_pointer_is_on_the_widget(self):
+        self.show()
+
+        self.wait(WATCH_INTERVAL_MS * 3)
+
+        self.assertTrue(self.visible())
+
+    def test_it_does_not_appear_when_the_pointer_is_no_longer_on_the_widget(self):
+        self.over = False
+        self.button.event_generate("<Enter>", x=5, y=5, rootx=300, rooty=300)
+
+        self.wait(150)
+
+        self.assertFalse(self.visible())
+
+    def test_it_goes_away_when_the_window_holding_the_button_is_hidden(self):
+        self.show()
+
+        self.root.withdraw()
+        self.over = False  # nothing of a hidden window is under the pointer
+        self.wait(WATCH_INTERVAL_MS * 2 + 100)
+
+        self.assertFalse(self.visible())
+
+    def test_the_pointer_coming_onto_the_tooltip_dismisses_it(self):
+        self.show()
+
+        self.tooltip._label.event_generate("<Enter>")
+
+        self.assertFalse(self.visible())
+
+    def test_a_click_on_the_tooltip_dismisses_it(self):
+        self.show()
+
+        self.tooltip._window.event_generate("<ButtonPress-1>")
+
+        self.assertFalse(self.visible())
+
+    def test_the_watch_stops_when_it_is_hidden_and_starts_again_with_the_next_tooltip(self):
+        self.show()
+        self.button.event_generate("<Leave>")
+        self.assertIsNone(self.tooltip._watch_id)
+
+        self.show()
+
+        self.assertIsNotNone(self.tooltip._watch_id)
+
+    def test_destroying_the_button_with_a_visible_tooltip_raises_nothing(self):
+        self.show()
+
+        self.button.destroy()
+        self.wait(WATCH_INTERVAL_MS * 2)
+
+
+class PointerOverWidgetTest(unittest.TestCase):
+    """The real check, without the patch: what the pointer is on, as Tk sees it."""
+
+    def setUp(self):
+        try:
+            self.root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("no display available")
+        self.addCleanup(self.root.destroy)
+        self.button = tk.Button(self.root, text="button")
+        self.button.pack(padx=40, pady=40)
+        self.tooltip = Tooltip(self.button, lambda: "help")
+        self.root.update()
+
+    def pointer_at(self, x, y):
+        self.button.winfo_pointerxy = lambda: (x, y)
+
+    def test_true_on_the_widget_false_beside_it(self):
+        self.pointer_at(self.button.winfo_rootx() + 5, self.button.winfo_rooty() + 5)
+        self.assertTrue(self.tooltip._pointer_over_widget())
+
+        self.pointer_at(self.button.winfo_rootx() - 30, self.button.winfo_rooty() - 30)
+        self.assertFalse(self.tooltip._pointer_over_widget())
+
+    def test_false_when_another_window_of_the_application_is_over_the_widget(self):
+        x, y = self.button.winfo_rootx() + 5, self.button.winfo_rooty() + 5
+        cover = tk.Toplevel(self.root)
+        cover.geometry(f"200x100+{x - 20}+{y - 20}")
+        tk.Label(cover, text="covering").pack(expand=True, fill="both")
+        cover.update()
+        self.root.update()
+        self.pointer_at(x, y)
+
+        self.assertFalse(self.tooltip._pointer_over_widget())
+
+    def test_false_when_the_widget_is_destroyed(self):
+        self.pointer_at(self.button.winfo_rootx() + 5, self.button.winfo_rooty() + 5)
+        self.button.destroy()
+
+        self.assertFalse(self.tooltip._pointer_over_widget())
 
 
 if __name__ == "__main__":
