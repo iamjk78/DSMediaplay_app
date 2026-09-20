@@ -312,41 +312,142 @@ class LayoutTest(BrowserTestCase):
         return [browser.name_entry, browser.status_box, browser.group_box, browser.location_box, browser.label_box,
                 browser.synced_box, browser.reported_box, browser.note_entry]
 
-    @staticmethod
-    def filter_rows(browser):
-        return {group.grid_info()["row"] for group in browser._filter_groups}
-
-    def test_the_filters_stand_in_the_order_of_the_columns_in_one_row(self):
+    def test_every_filter_starts_at_the_left_edge_of_its_column_and_is_as_wide_as_it(self):
         browser = self.open()
         self.app.update()
 
-        filters = self.all_filters(browser)
-        positions = [widget.winfo_rootx() for widget in filters]
-        self.assertEqual(positions, sorted(positions))
-        self.assertEqual(len(set(positions)), len(filters))
-        if self.app.winfo_screenwidth() >= 1500:  # narrower screens wrap them (tested separately)
-            self.assertEqual(self.filter_rows(browser), {0}, "one row on this screen")
-        self.assertLessEqual(max(widget.winfo_rootx() + widget.winfo_width() for widget in filters),
-                             browser.winfo_rootx() + browser.winfo_width())
+        for key, widget in zip((k for k, _, _ in COLUMNS), self.all_filters(browser)):
+            header = browser._header_cells[key]
+            with self.subTest(column=key):
+                self.assertEqual(widget.winfo_rootx(), header.winfo_rootx())
+                self.assertEqual(widget.winfo_width(), header.winfo_width())
 
-    def test_the_filters_are_in_one_row_when_the_screen_is_wide_enough(self):
-        with patch.object(self.app, "winfo_screenwidth", return_value=4000), \
-                patch.object(tk.Misc, "winfo_screenwidth", return_value=4000):
-            browser = self.open()
+    def test_the_filters_are_a_row_between_the_buttons_and_the_header_and_the_button_column_has_none(self):
+        browser = self.open()
+        self.app.update()
+
+        header_top = browser._header_cells["name"].winfo_rooty()
+        for widget in self.all_filters(browser):
+            self.assertLess(widget.winfo_rooty() + widget.winfo_height(), header_top)
+            self.assertGreater(widget.winfo_rooty(), browser.refresh_button.winfo_rooty()
+                               + browser.refresh_button.winfo_height())
+            self.assertGreater(widget.winfo_rootx(), browser._widgets[id(browser._visible[0])][0].winfo_rootx()
+                               + browser._widgets[id(browser._visible[0])][0].winfo_width() - 1)
+        heights = {widget.winfo_rooty() for widget in self.all_filters(browser)}
+        self.assertLess(max(heights) - min(heights), 6)  # one row (the field types differ a little in height)
+
+    def test_the_filters_have_no_labels_the_header_below_names_them(self):
+        browser = self.open()
+
+        labels = [w for w in browser._filters.winfo_children() if isinstance(w, tk.Label)]
+        self.assertEqual(labels, [])
+
+    def test_the_filters_stay_above_their_columns_when_a_column_is_widened_or_narrowed(self):
+        browser = self.open()
+        self.app.update()
+        separator = browser._header_separators[2]  # the line after the group column
+        x = separator.winfo_rootx() + 3
+
+        for distance in (60, -30):
+            with self.subTest(distance=distance):
+                separator.event_generate("<ButtonPress-1>", x=3, y=5, rootx=x, rooty=100)
+                separator.event_generate("<B1-Motion>", x=3, y=5, rootx=x + distance, rooty=100, state=0x100)
+                separator.event_generate("<ButtonRelease-1>", x=3, y=5, rootx=x + distance, rooty=100)
+                self.app.update()
+                for key, widget in zip((k for k, _, _ in COLUMNS), self.all_filters(browser)):
+                    header = browser._header_cells[key]
+                    self.assertEqual((widget.winfo_rootx(), widget.winfo_width()),
+                                     (header.winfo_rootx(), header.winfo_width()))
+                x = separator.winfo_rootx() + 3
+
+    def test_a_narrow_column_makes_its_filter_narrower_not_wider_than_the_column(self):
+        browser = self.open(column_widths={"group": 90})
+        self.app.update()
+
+        widget, header = browser.group_box, browser._header_cells["group"]
+        self.assertEqual(widget.winfo_width(), header.winfo_width())
+        self.assertLessEqual(widget.winfo_rootx() + widget.winfo_width(), header.winfo_rootx() + header.winfo_width())
+        wide = self.open(column_widths={"group": 400})
+        self.app.update()
+        self.assertLess(widget.winfo_width(), wide.group_box.winfo_width())
+
+    def test_a_column_cannot_be_made_so_narrow_that_its_filter_disappears(self):
+        browser = self.open()
+        self.app.update()
+        for index, (key, _, _) in enumerate(COLUMNS):
+            separator = browser._header_separators[index]
+            x = separator.winfo_rootx() + 3
+            separator.event_generate("<ButtonPress-1>", x=3, y=5, rootx=x, rooty=100)
+            separator.event_generate("<B1-Motion>", x=3, y=5, rootx=x - 3000, rooty=100, state=0x100)
+            separator.event_generate("<ButtonRelease-1>", x=3, y=5, rootx=x - 3000, rooty=100)
             self.app.update()
 
-            self.assertEqual(self.filter_rows(browser), {0})
+        for key, widget in zip((k for k, _, _ in COLUMNS), self.all_filters(browser)):
+            header = browser._header_cells[key]
+            with self.subTest(column=key):
+                self.assertEqual(browser.column_widths()[key], browser._min_widths[key])
+                self.assertGreaterEqual(browser._min_widths[key], MIN_COLUMN_WIDTH)
+                self.assertTrue(widget.winfo_ismapped())
+                self.assertGreaterEqual(widget.winfo_width(), 30)
+                self.assertEqual((widget.winfo_rootx(), widget.winfo_width()),
+                                 (header.winfo_rootx(), header.winfo_width()))
+                self.assertLessEqual(widget.winfo_rootx() + widget.winfo_width(),
+                                     header.winfo_rootx() + header.winfo_width())
 
-    def test_on_a_narrow_screen_the_filters_wrap_and_none_is_cut_off(self):
-        with patch.object(tk.Misc, "winfo_screenwidth", return_value=900):
-            browser = self.open()
-            self.app.update()
+    def test_saved_widths_below_the_minimum_are_raised_when_the_window_opens(self):
+        browser = self.open(column_widths={"group": 60, "name": 60, "note": 60})
+        self.app.update()
 
-            self.assertGreater(len(self.filter_rows(browser)), 1)
-            positions = [widget.winfo_rootx() for widget in self.all_filters(browser)]
-            self.assertEqual(len(set(positions)), len(positions))
-            for widget in self.all_filters(browser):
-                self.assertLessEqual(widget.winfo_x() + widget.winfo_width(), browser._filter_bar.winfo_width() + 2)
+        for key in ("group", "name", "note"):
+            self.assertGreaterEqual(browser.column_widths()[key], browser._min_widths[key])
+            self.assertTrue(self._filter(browser, key).winfo_width() >= 30)
+
+    @staticmethod
+    def _filter(browser, key):
+        return browser._filter_widgets[key]
+
+    def test_the_multi_choice_filters_need_room_for_the_count_of_ticks(self):
+        browser = self.open()
+        self.assertGreater(browser._min_widths["group"], browser._min_widths["synced"])
+        for key in ("group", "location", "label"):
+            self.assertEqual(browser._min_widths[key], max(MIN_COLUMN_WIDTH, browser._filter_widgets[key].minimum_width() + 8))
+
+    def test_ticking_values_in_a_filter_at_its_minimum_does_not_widen_the_column(self):
+        browser = self.open(column_widths={"group": 1})
+        self.app.update()
+        width = browser._header_cells["group"].winfo_width()
+
+        browser.group_box._vars["Kancelar"].set(True)
+        browser.group_box._vars["Obchod"].set(True)
+        self.app.update()
+
+        self.assertEqual(browser._header_cells["group"].winfo_width(), width)
+        self.assertLessEqual(browser.group_box.winfo_reqwidth(), browser._header_cells["group"].winfo_width())
+        self.assertTrue(browser.group_box._badge.winfo_ismapped())
+
+    def test_the_filters_scroll_sideways_with_the_table(self):
+        browser = self.open(column_widths={"name": 1400, "group": 1400})
+        self.app.update()
+
+        browser._scroll_x("moveto", 0.5)
+        self.app.update()
+
+        for key, widget in zip((k for k, _, _ in COLUMNS), self.all_filters(browser)):
+            if widget.winfo_ismapped():
+                self.assertEqual(widget.winfo_rootx(), browser._header_cells[key].winfo_rootx())
+
+    def test_the_filter_row_does_not_start_a_resize_and_its_pointer_is_left_alone(self):
+        browser = self.open()
+        self.app.update()
+        line = browser._header_separators[1].winfo_rootx() + 3  # a zone reaching over the group filter's left edge
+        widget = browser.group_box.entry
+        cursor = str(widget.cget("cursor"))
+
+        widget.event_generate("<Motion>", x=2, y=2, rootx=line + 5, rooty=widget.winfo_rooty() + 2)
+        widget.event_generate("<ButtonPress-1>", x=2, y=2, rootx=line + 5, rooty=widget.winfo_rooty() + 2)
+
+        self.assertEqual(str(widget.cget("cursor")), cursor)
+        self.assertIsNone(browser._drag)
 
     def test_the_columns_are_in_the_agreed_order_with_the_button_first(self):
         browser = self.open()
@@ -493,7 +594,7 @@ class ColumnWidthTest(BrowserTestCase):
         self.drag(browser, "group", -30)
         self.assertEqual(browser.column_widths()["group"], before - 30)
         self.drag(browser, "group", -5000)
-        self.assertEqual(browser.column_widths()["group"], MIN_COLUMN_WIDTH)
+        self.assertEqual(browser.column_widths()["group"], browser._min_widths["group"])
 
     def test_the_width_has_an_upper_limit_too(self):
         browser = self.open()
@@ -650,14 +751,14 @@ class ResizeZoneTest(BrowserTestCase):
         self.assertEqual(browser.column_widths()["status"], before + 15)  # follows the pointer while held
         at(40, "<B1-Motion>", state=0x100)
         self.assertEqual(browser.column_widths()["status"], before + 40)
-        at(-20, "<B1-Motion>", state=0x100)
-        self.assertEqual(browser.column_widths()["status"], before - 20)  # and back again
+        at(-10, "<B1-Motion>", state=0x100)
+        self.assertEqual(browser.column_widths()["status"], before - 10)  # and back again
         self.assertEqual(saved, [])
-        at(-20, "<ButtonRelease-1>")
+        at(-10, "<ButtonRelease-1>")
 
         self.assertEqual(saved, [browser.column_widths()])
         at(60, "<B1-Motion>", state=0x100)  # moving without the button changes nothing any more
-        self.assertEqual(browser.column_widths()["status"], before - 20)
+        self.assertEqual(browser.column_widths()["status"], before - 10)
 
     def test_the_resize_pointer_stays_during_the_drag_wherever_the_pointer_is(self):
         self.event(self.body_cell, "<ButtonPress-1>", 0)
@@ -783,8 +884,8 @@ class ColumnVisibilityTest(BrowserTestCase):
         self.assertTrue(self.hidden(browser, "group"))
         self.assertFalse(browser._header_separators[2].winfo_ismapped())
         self.assertFalse(browser._body_separators[2].winfo_ismapped())
-        self.assertEqual(browser._filter_column and [g.winfo_ismapped() for g, k in browser._filter_column.items()
-                                                     if k == "group"], [False])
+        self.assertFalse(browser.group_box.winfo_ismapped())
+        self.assertTrue(browser.location_box.winfo_ismapped())
         self.assertEqual(self.fill(browser.column_buttons["group"]), RED.normal)
         self.assertEqual(self.fill(browser.column_buttons["note"]), GREEN.normal)
         self.assertTrue(self.shown(browser, "note"))
@@ -886,7 +987,7 @@ class ColumnVisibilityTest(BrowserTestCase):
         self.assertEqual(len(browser.visible_names()), 4)
         self.assertEqual(browser._criteria().note, "")
 
-    def test_the_filters_of_hidden_columns_leave_the_bar_and_the_rest_stays(self):
+    def test_the_filters_of_hidden_columns_leave_the_row_and_the_rest_stay_above_their_columns(self):
         browser = self.open()
         self.app.update()
 
@@ -894,13 +995,14 @@ class ColumnVisibilityTest(BrowserTestCase):
         browser.toggle_column("note")
         self.app.update()
 
-        mapped = {group: group.winfo_ismapped() for group in browser._filter_groups}
-        hidden_groups = [g for g, k in browser._filter_column.items() if k in ("label", "note")]
-        self.assertTrue(all(not mapped[g] for g in hidden_groups))
-        self.assertTrue(all(mapped[g] for g in browser._filter_groups if g not in hidden_groups))
-        for widget in (browser.name_entry, browser.status_box, browser.group_box, browser.location_box,
-                       browser.synced_box, browser.reported_box):
-            self.assertTrue(widget.winfo_ismapped())
+        self.assertFalse(browser.label_box.winfo_ismapped())
+        self.assertFalse(browser.note_entry.winfo_ismapped())
+        for key in ("name", "status", "group", "location", "synced", "reported"):
+            widget, header = browser._filter_widgets[key], browser._header_cells[key]
+            with self.subTest(column=key):
+                self.assertTrue(widget.winfo_ismapped())
+                self.assertEqual((widget.winfo_rootx(), widget.winfo_width()),
+                                 (header.winfo_rootx(), header.winfo_width()))
 
     def test_the_sort_goes_back_to_the_name_when_the_sorted_column_is_hidden(self):
         browser = self.open()

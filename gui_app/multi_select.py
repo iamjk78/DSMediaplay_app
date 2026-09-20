@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk
 from typing import Callable, Dict, FrozenSet, List, Tuple
 
@@ -7,6 +8,8 @@ from util.player_filter import plain_text
 MAX_POPUP_HEIGHT = 280
 MIN_POPUP_WIDTH = 220
 ARROW_ZONE = 24  # pixels at the right edge of the combo box that can be the arrow
+BADGE_GAP = 3
+MIN_TEXT_AREA = 24  # pixels of the field left for typing at the narrowest
 
 
 class MultiSelectCombo(tk.Frame):
@@ -34,12 +37,13 @@ class MultiSelectCombo(tk.Frame):
         self.text_var = tk.StringVar()
         self.text_var.trace_add("write", lambda *_: self._text_changed())
         self.entry = ttk.Combobox(self, textvariable=self.text_var, width=width, font=font)
-        self.entry.grid(row=0, column=0)
+        self.entry.grid(row=0, column=0, sticky="ew")
+        self.grid_columnconfigure(0, weight=1)  # the combo box takes all the width there is
         # The combo box would post its own (empty) list: ours replaces it
         self.entry.bind("<ButtonPress-1>", self._on_press)
         self.entry.bind("<Key-Down>", self._on_down)
         self._badge = tk.Label(self, font=font, foreground="#1565c0")
-        self._badge.grid(row=0, column=1, padx=(3, 0))
+        self._badge.grid(row=0, column=1, padx=(BADGE_GAP, 0))
         self._badge.grid_remove()
 
         self._popup = tk.Frame(popup_parent, borderwidth=1, relief="solid", background="white")
@@ -56,6 +60,12 @@ class MultiSelectCombo(tk.Frame):
         for widget in (self._canvas, self._list):
             widget.bind("<MouseWheel>", self._on_wheel)
         self.bind("<Destroy>", lambda event: self.close() if event.widget is self else None, add="+")
+
+    def minimum_width(self) -> int:
+        """The narrowest the widget can be: the combo box with a little room to type, and the count of ticks beside it."""
+        self.update_idletasks()
+        count = tkfont.Font(root=self, font=self._font).measure("99✓")
+        return self.entry.winfo_reqwidth() + MIN_TEXT_AREA + count + BADGE_GAP
 
     # ---- what the user chose
 

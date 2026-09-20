@@ -26,7 +26,7 @@ COLUMNS = (
     ("note", "pb_col_note", 30),
 )
 TOGGLE_COLUMNS = ("group", "location", "label", "synced", "reported", "note")  # the others are always shown
-MIN_COLUMN_WIDTH = 40  # pixels
+MIN_COLUMN_WIDTH = 56  # pixels; a column is never narrower than its filter needs either
 MAX_COLUMN_WIDTH = 1500
 SEPARATOR_WIDTH = 7  # the space between two columns; the line itself is 1 px wide
 EDGE_ZONE = 10  # pixels to each side of a line where the pointer changes and the column can be resized
@@ -34,7 +34,6 @@ RESIZE_CURSOR = "sb_h_double_arrow"
 SORT_CURSOR = "hand2"
 SEPARATOR_COLOR = "black"
 SNAPSHOT_COLUMN_MINSIZE = 110  # the first column, with the button; its width is fixed
-FILTER_GAP = 10
 ONLINE_COLOR = "#2e7d32"
 OFFLINE_COLOR = "#c62828"
 NAME_FILTER_DELAY_MS = 150
@@ -104,12 +103,11 @@ class PlayerBrowser(tk.Toplevel):
         self.title(self.lang.get_message("pb_title", account=account_name))
         set_window_icon(self)
         self._build_actions()
-        self._build_filters()
         self._build_table()
         self.status_var = tk.StringVar()
         tk.Label(self, textvariable=self.status_var, font=self._font, anchor="w").grid(
-            row=3, column=0, sticky="ew", padx=10, pady=(0, 8))
-        self.grid_rowconfigure(2, weight=1)
+            row=2, column=0, sticky="ew", padx=10, pady=(0, 8))
+        self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
         self._fit_window()
         self.refresh()
@@ -141,26 +139,30 @@ class PlayerBrowser(tk.Toplevel):
         return button
 
     def _build_filters(self):
-        """One filter per column, in the order of the columns; they stand in one row if the screen is wide enough."""
-        bar = self._filter_bar = tk.Frame(self)
-        bar.grid(row=1, column=0, sticky="ew", padx=10, pady=8)
-        self._filter_groups: List[tk.Frame] = []
+        """
+        One filter per column, standing in the column it filters: the left edge of a filter is the left edge of its
+        column and it is as wide as the column (the widgets ask for next to no width, so the column decides).
+        """
+        self._filter_widgets: Dict[str, tk.Widget] = {}
         self.name_var = tk.StringVar()
         self.name_var.trace_add("write", lambda *_: self._schedule_filter())
-        self._filter_column: Dict[tk.Frame, str] = {}  # the optional columns' filters go with their column
-        self.name_entry = self._filter("pb_name", lambda parent: tk.Entry(
-            parent, textvariable=self.name_var, width=12, font=self._font))
-        self.name_entry.focus_set()
-        self.status_box = self._filter("pb_status", lambda parent: self._combobox(parent, 8))
-        self.group_box = self._filter("pb_group", self._multi_select, "group")
-        self.location_box = self._filter("pb_location", self._multi_select, "location")
-        self.label_box = self._filter("pb_label", self._multi_select, "label")
-        self.synced_box = self._filter("pb_synced", lambda parent: self._combobox(parent, 10), "synced")
-        self.reported_box = self._filter("pb_reported", lambda parent: self._combobox(parent, 10), "reported")
         self.note_var = tk.StringVar()
         self.note_var.trace_add("write", lambda *_: self._schedule_filter())
-        self.note_entry = self._filter("pb_note", lambda parent: tk.Entry(
-            parent, textvariable=self.note_var, width=10, font=self._font), "note")
+        self.name_entry = tk.Entry(self._filters, textvariable=self.name_var, width=1, font=self._font)
+        self.name_entry.focus_set()
+        self.status_box = self._combobox()
+        self.group_box = self._multi_select()
+        self.location_box = self._multi_select()
+        self.label_box = self._multi_select()
+        self.synced_box = self._combobox()
+        self.reported_box = self._combobox()
+        self.note_entry = tk.Entry(self._filters, textvariable=self.note_var, width=1, font=self._font)
+        for index, (key, widget) in enumerate(zip(
+                (key for key, _, _ in COLUMNS),
+                (self.name_entry, self.status_box, self.group_box, self.location_box, self.label_box,
+                 self.synced_box, self.reported_box, self.note_entry))):
+            widget.grid(row=0, column=self._cell_column(index), sticky="ew", padx=CELL_PADDING, pady=2)
+            self._filter_widgets[key] = widget
         all_text = self.lang.get_message("pb_all")
         self._set_choices(self.status_box, {all_text: None, self.lang.get_message("pb_online"): True,
                                             self.lang.get_message("pb_offline"): False})
@@ -168,50 +170,39 @@ class PlayerBrowser(tk.Toplevel):
         self._set_choices(self.synced_box, ages)
         self._set_choices(self.reported_box, ages)
 
-    def _filter(self, message: str, make_widget, column: Optional[str] = None) -> tk.Widget:
-        group = tk.Frame(self._filter_bar)
-        if column:
-            self._filter_column[group] = column
-        tk.Label(group, text=self.lang.get_message(message), font=self._font).pack(side="left", padx=(0, 4))
-        widget = make_widget(group)
-        widget.pack(side="left")
-        self._filter_groups.append(group)
-        return widget
-
-    def _combobox(self, parent, width: int) -> ttk.Combobox:
-        box = ttk.Combobox(parent, state="readonly", width=width, font=self._font)
+    def _combobox(self) -> ttk.Combobox:
+        box = ttk.Combobox(self._filters, state="readonly", width=1, font=self._font)
         box.bind("<<ComboboxSelected>>", lambda _: self.apply_filters())
         return box
 
-    def _multi_select(self, parent) -> MultiSelectCombo:
-        return MultiSelectCombo(parent, self, font=self._font, width=9, on_change=self._schedule_filter)
+    def _multi_select(self) -> MultiSelectCombo:
+        return MultiSelectCombo(self._filters, self, font=self._font, width=1, on_change=self._schedule_filter)
 
-    def _flow_filters(self):
-        """All the filters in one row; on a screen too narrow for that, the rest goes to the next row."""
+    def _compute_minimum_widths(self):
+        """A column cannot be narrower than what its filter needs, so a filter is never squeezed out of sight."""
         self.update_idletasks()
-        limit = self.winfo_screenwidth() - 40
-        row = column = used = 0
-        for group in self._filter_groups:
-            if self._filter_column.get(group) in self._hidden:  # the filter of a hidden column is hidden too
-                group.grid_remove()
-                continue
-            width = group.winfo_reqwidth() + FILTER_GAP
-            if column and used + width > limit:
-                row, column, used = row + 1, 0, 0
-            group.grid(row=row, column=column, sticky="w", padx=(0, FILTER_GAP), pady=2)
-            used += width
-            column += 1
+        self._min_widths = {}
+        for key, widget in self._filter_widgets.items():
+            needed = widget.minimum_width() if isinstance(widget, MultiSelectCombo) else widget.winfo_reqwidth()
+            self._min_widths[key] = max(MIN_COLUMN_WIDTH, needed + 2 * CELL_PADDING)
+        self._default_widths = {key: max(width, self._min_widths[key]) for key, width in self._default_widths.items()}
+        self._widths = {key: max(width, self._min_widths[key]) for key, width in self._widths.items()}
 
     def _build_table(self):
         frame = self._table = tk.Frame(self)
-        frame.grid(row=2, column=0, sticky="nsew", padx=10)
-        frame.grid_rowconfigure(1, weight=1)
+        frame.grid(row=1, column=0, sticky="nsew", padx=10)
+        frame.grid_rowconfigure(2, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         bold = (self._font[0], self._font[1], "bold")
 
-        # The header and the rows are two grids with the same column widths; both scroll sideways together
+        # The filters, the header and the rows are three grids with the same column widths; all scroll sideways together
+        self._filter_canvas = tk.Canvas(frame, height=1, width=1, highlightthickness=0, borderwidth=0)
+        self._filter_canvas.grid(row=0, column=0, sticky="ew", pady=(8, 0))
+        self._filters = tk.Frame(self._filter_canvas)
+        self._filter_canvas.create_window((0, 0), window=self._filters, anchor="nw")
+        self._build_filters()
         self._header_canvas = tk.Canvas(frame, height=1, width=1, highlightthickness=0, borderwidth=0)
-        self._header_canvas.grid(row=0, column=0, sticky="ew")
+        self._header_canvas.grid(row=1, column=0, sticky="ew")
         self._header = tk.Frame(self._header_canvas)
         self._header_canvas.create_window((0, 0), window=self._header, anchor="nw")
         self._header_cells: Dict[str, tk.Label] = {}
@@ -228,20 +219,22 @@ class PlayerBrowser(tk.Toplevel):
         self._scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self._canvas.yview)
         self._x_scrollbar = ttk.Scrollbar(frame, orient="horizontal", command=self._scroll_x)
         self._canvas.configure(yscrollcommand=self._scrollbar.set, xscrollcommand=self._on_x_scrolled)
-        self._canvas.grid(row=1, column=0, sticky="nsew")
-        self._scrollbar.grid(row=1, column=1, sticky="ns")
-        self._x_scrollbar.grid(row=2, column=0, sticky="ew")
+        self._canvas.grid(row=2, column=0, sticky="nsew")
+        self._scrollbar.grid(row=2, column=1, sticky="ns")
+        self._x_scrollbar.grid(row=3, column=0, sticky="ew")
         self._body = tk.Frame(self._canvas)
         self._body_separators = [tk.Frame(self._body, width=1, background=SEPARATOR_COLOR) for _ in COLUMNS]
         self._canvas.create_window((0, 0), window=self._body, anchor="nw")
-        for widget in (self._body, self._header):
+        for widget in (self._body, self._header, self._filters):
             widget.bind("<Configure>", lambda _: self._update_scroll_regions())
+        self._compute_minimum_widths()
         self._apply_widths()
         self._apply_visibility()
         self.bind("<MouseWheel>", self._on_mouse_wheel)
         self.bind("<Shift-MouseWheel>", self._on_shift_mouse_wheel)
         # On the window, not on the lines: the events of every widget of the table arrive here, so the whole
-        # length of a line (header and rows) can be grabbed, and the zone reaches over the text beside it
+        # length of a line (header and rows) can be grabbed, and the zone reaches over the text beside it.
+        # The filters above are left out: a filter is used, not resized
         self.bind("<Motion>", self._on_pointer_move, add="+")
         self.bind("<Leave>", self._on_pointer_leave, add="+")
         self.bind("<ButtonPress-1>", self._start_drag, add="+")
@@ -262,14 +255,14 @@ class PlayerBrowser(tk.Toplevel):
         return 1 + 2 * index
 
     def _fit_window(self):
-        """Opens wide enough for the filters and, as far as the screen allows, for the whole table."""
-        self._flow_filters()
+        """Opens wide enough for the buttons and, as far as the screen allows, for the whole table."""
         self.update_idletasks()
         self._header_canvas.configure(height=self._header.winfo_reqheight())
-        filters = max(self._filter_bar.winfo_reqwidth(), self._actions_bar.winfo_reqwidth()) + 30
+        self._filter_canvas.configure(height=self._filters.winfo_reqheight())
+        buttons = self._actions_bar.winfo_reqwidth() + 30
         table = self._header.winfo_reqwidth() + self._scrollbar.winfo_reqwidth() + 30
-        self.minsize(filters, 300)
-        self.geometry(f"{min(max(filters, table), self.winfo_screenwidth() - 20)}x600")
+        self.minsize(buttons, 300)
+        self.geometry(f"{min(max(buttons, table), self.winfo_screenwidth() - 20)}x600")
 
     # ---- column widths
 
@@ -278,7 +271,7 @@ class PlayerBrowser(tk.Toplevel):
 
     def _apply_widths(self):
         """Every column is exactly as wide as set; the text that does not fit is cut off."""
-        for frame in (self._header, self._body):
+        for frame in (self._filters, self._header, self._body):
             frame.grid_columnconfigure(0, minsize=SNAPSHOT_COLUMN_MINSIZE)
             for index, (key, _, _) in enumerate(COLUMNS):
                 hidden = key in self._hidden
@@ -295,7 +288,9 @@ class PlayerBrowser(tk.Toplevel):
         return None
 
     def _in_table(self, widget) -> bool:
-        return str(widget) == str(self._table) or str(widget).startswith(str(self._table) + ".")
+        """The header and the rows, where the lines are; not the filters above them."""
+        path = str(widget)
+        return any(path == str(part) or path.startswith(str(part) + ".") for part in (self._header_canvas, self._canvas))
 
     def _on_pointer_move(self, event):
         if not self._in_table(event.widget):
@@ -327,7 +322,7 @@ class PlayerBrowser(tk.Toplevel):
     def _drag_to(self, event):
         if self._drag:
             key, start, width = self._drag
-            self._widths[key] = min(max(width + event.x_root - start, MIN_COLUMN_WIDTH), MAX_COLUMN_WIDTH)
+            self._widths[key] = min(max(width + event.x_root - start, self._min_widths[key]), MAX_COLUMN_WIDTH)
             self._apply_widths()
 
     def _end_drag(self, _event):
@@ -344,10 +339,11 @@ class PlayerBrowser(tk.Toplevel):
         width = self._body.winfo_reqwidth()
         self._canvas.configure(scrollregion=(0, 0, width, self._body.winfo_reqheight()))
         self._header_canvas.configure(scrollregion=(0, 0, width, self._header.winfo_reqheight()))
+        self._filter_canvas.configure(scrollregion=(0, 0, width, self._filters.winfo_reqheight()))
 
     def _scroll_x(self, *args):
-        self._canvas.xview(*args)
-        self._header_canvas.xview(*args)
+        for canvas in (self._canvas, self._header_canvas, self._filter_canvas):
+            canvas.xview(*args)
 
     def _on_x_scrolled(self, first, last):
         """The scroll bar shows only while the table is wider than the window."""
@@ -384,7 +380,6 @@ class PlayerBrowser(tk.Toplevel):
         self._update_toggle_colors()
         self._apply_visibility()
         self._apply_widths()
-        self._flow_filters()
         self.apply_filters()
         self._save_hidden_columns(self.hidden_columns())
 
@@ -395,7 +390,7 @@ class PlayerBrowser(tk.Toplevel):
     def _apply_visibility(self):
         """The header of a hidden column and its line go; the cells of the rows follow in apply_filters."""
         for index, (key, _, _) in enumerate(COLUMNS):
-            for widget in (self._header_cells[key], self._header_separators[index]):
+            for widget in (self._header_cells[key], self._header_separators[index], self._filter_widgets[key]):
                 widget.grid_remove() if key in self._hidden else widget.grid()
 
     def _clear_filter(self, key: str):

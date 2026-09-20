@@ -4,7 +4,7 @@ import unittest
 from tkinter import ttk
 from unittest.mock import patch
 
-from gui_app.multi_select import MAX_POPUP_HEIGHT, MIN_POPUP_WIDTH, MultiSelectCombo
+from gui_app.multi_select import MAX_POPUP_HEIGHT, MIN_POPUP_WIDTH, MIN_TEXT_AREA, MultiSelectCombo
 
 OPTIONS = [("(bez skupiny)", ""), ("Kancelář", "Kancelář"), ("Obchod Praha", "Obchod Praha"),
            ("Obchod Přerov", "Obchod Přerov"), ("Sklad", "Sklad")]
@@ -301,6 +301,52 @@ class MultiSelectTest(unittest.TestCase):
         self.assertEqual(self.combo.checked(), frozenset({"Sklad", "Kancelář"}))
         self.combo._buttons["Sklad"].invoke()
         self.assertEqual(self.combo.checked(), frozenset({"Kancelář"}))
+
+
+class MultiSelectSizeTest(unittest.TestCase):
+    def setUp(self):
+        try:
+            self.root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("no display available")
+        self.addCleanup(self.root.destroy)
+        self.combo = MultiSelectCombo(self.root, self.root, font=("Helvetica", 12), width=1)
+        self.combo.set_options(OPTIONS)
+        self.root.update()
+
+    def test_it_asks_for_next_to_no_width_and_takes_the_width_it_is_given(self):
+        self.combo.grid(row=0, column=0, sticky="ew")
+        self.root.grid_columnconfigure(0, minsize=300)
+        self.root.update()
+
+        self.assertLess(self.combo.winfo_reqwidth(), 80)
+        self.assertEqual(self.combo.winfo_width(), 300)
+        self.assertEqual(self.combo.entry.winfo_width(), 300)  # the combo box fills it (no ticks: no count beside it)
+
+    def test_the_count_of_ticks_takes_its_room_from_the_combo_box_not_from_the_column(self):
+        self.combo.grid(row=0, column=0, sticky="ew")
+        self.root.grid_columnconfigure(0, minsize=200)
+        self.root.update()
+        before = self.combo.entry.winfo_width()
+
+        self.combo._vars["Sklad"].set(True)
+        self.root.update()
+
+        self.assertEqual(self.combo.winfo_width(), 200)
+        self.assertLess(self.combo.entry.winfo_width(), before)
+        self.assertTrue(self.combo._badge.winfo_ismapped())
+
+    def test_the_minimum_width_leaves_room_for_the_combo_box_to_type_and_for_the_count(self):
+        minimum = self.combo.minimum_width()
+
+        self.assertGreaterEqual(minimum, self.combo.entry.winfo_reqwidth() + MIN_TEXT_AREA)
+        self.combo.grid(row=0, column=0, sticky="ew")
+        self.root.grid_columnconfigure(0, minsize=minimum)
+        self.combo._vars["Sklad"].set(True)
+        self.root.update()
+
+        self.assertEqual(self.combo.winfo_width(), minimum)  # with the count shown, still exactly the minimum
+        self.assertGreaterEqual(self.combo.entry.winfo_width(), self.combo.entry.winfo_reqwidth() + MIN_TEXT_AREA - 2)
 
 
 if __name__ == "__main__":
