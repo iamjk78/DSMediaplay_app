@@ -1020,6 +1020,9 @@ class ServerApi:
         """
         Creates the toggle rows for the request body based on the time dictionary.
 
+        Days with the same ON/OFF times share one row (as when the schedule is set in the web UI); the rows
+        follow the order in which their first day appears.
+
         Parameters
         ----------
         times : dict
@@ -1030,19 +1033,18 @@ class ServerApi:
         list
             A list of toggle rows for the request body.
         """
-        toggle_rows = []
+        rows_by_times: Dict[tuple, Dict] = {}
         for i, day in enumerate(WEEK_DAYS):
             on_time = times[day]["on"]
             off_time = times[day]["off"]
             if on_time or off_time:
-                week_days = [False] * 7
-                week_days[i] = True
-                toggle_rows.append({
+                row = rows_by_times.setdefault((on_time, off_time), {
                     "turnOn": on_time,
                     "turnOff": off_time,
-                    "weekDays": week_days
+                    "weekDays": [False] * 7
                 })
-        return toggle_rows
+                row["weekDays"][i] = True
+        return list(rows_by_times.values())
 
     def rename_group(self, old_name: str, new_name: str) -> json:
         """

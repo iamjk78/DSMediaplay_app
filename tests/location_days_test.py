@@ -56,6 +56,31 @@ class LocationDayOrderTest(unittest.TestCase):
                 self.assertEqual(rows[0]["weekDays"], [i == index for i in range(7)])
                 self.assertEqual(read_with(rows)[day], {"on": "08:00", "off": "18:00"})
 
+    def test_days_with_the_same_times_share_one_row_like_in_the_web_ui(self):
+        times = {day: {"on": "", "off": ""} for day in WEEK_DAYS}
+        for day in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"):
+            times[day] = {"on": "06:00", "off": "22:00"}
+        for day in ("Sunday", "Saturday"):
+            times[day] = {"on": "08:00", "off": "22:00"}
+
+        rows = ServerApi._create_toggle_rows(times)
+
+        self.assertEqual(rows, [
+            {"turnOn": "08:00", "turnOff": "22:00", "weekDays": [True, False, False, False, False, False, True]},
+            {"turnOn": "06:00", "turnOff": "22:00", "weekDays": [False, True, True, True, True, True, False]},
+        ])
+        self.assertEqual(read_with(rows), times)
+
+    def test_the_same_on_time_with_a_different_off_time_stays_in_separate_rows(self):
+        times = {day: {"on": "", "off": ""} for day in WEEK_DAYS}
+        times["Monday"] = {"on": "08:00", "off": "18:00"}
+        times["Tuesday"] = {"on": "08:00", "off": "20:00"}
+
+        self.assertEqual(len(ServerApi._create_toggle_rows(times)), 2)
+
+    def test_days_without_times_get_no_row(self):
+        self.assertEqual(ServerApi._create_toggle_rows({day: {"on": "", "off": ""} for day in WEEK_DAYS}), [])
+
     def test_a_single_column_pair_lands_on_the_matching_day_of_the_input(self):
         for index, day in enumerate(WEEK_DAYS):
             cells = [""] * 14
