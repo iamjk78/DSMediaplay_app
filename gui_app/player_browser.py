@@ -9,8 +9,9 @@ import requests
 
 from api_testing.request_calls import LoginError, ServerApi
 from gui_app.icons import set_window_icon
+from gui_app.multi_select import MultiSelectCombo
 from gui_app.tooltip import Tooltip
-from util.player_filter import PlayerFilter, PlayerRow, apply_filter, player_row, sort_rows
+from util.player_filter import AGE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row, sort_rows
 
 # key, header message, default width in characters
 COLUMNS = (
@@ -18,7 +19,10 @@ COLUMNS = (
     ("status", "pb_col_status", 9),
     ("group", "pb_col_group", 20),
     ("location", "pb_col_location", 22),
+    ("label", "pb_col_label", 22),
     ("synced", "pb_col_synced", 17),
+    ("reported", "pb_col_reported", 17),
+    ("note", "pb_col_note", 30),
 )
 MIN_COLUMN_WIDTH = 40  # pixels
 MAX_COLUMN_WIDTH = 1500
@@ -27,7 +31,8 @@ EDGE_ZONE = 10  # pixels to each side of a line where the pointer changes and th
 RESIZE_CURSOR = "sb_h_double_arrow"
 SORT_CURSOR = "hand2"
 SEPARATOR_COLOR = "black"
-SNAPSHOT_COLUMN_MINSIZE = 110
+SNAPSHOT_COLUMN_MINSIZE = 110  # the first column, with the button; its width is fixed
+FILTER_GAP = 10
 ONLINE_COLOR = "#2e7d32"
 OFFLINE_COLOR = "#c62828"
 NAME_FILTER_DELAY_MS = 150
@@ -51,7 +56,7 @@ def valid_widths(raw) -> Dict[str, int]:
 
 class PlayerBrowser(tk.Toplevel):
     """
-    The players of one account in a table that can be filtered by name, state, group, location and category.
+    The players of one account in a table that can be filtered by every column but the button.
     The data is fetched once (and again on "Refresh"); the filters work on it locally. The columns can be resized by
     dragging the black lines between them (anywhere along a line, EDGE_ZONE pixels to each side of it);
     `save_column_widths` is called with the widths when the user lets go
@@ -113,32 +118,60 @@ class PlayerBrowser(tk.Toplevel):
         return button
 
     def _build_filters(self):
-        """The filters stand in the order of the columns they belong to; the category has no column, so it is last."""
+        """One filter per column, in the order of the columns; they stand in one row if the screen is wide enough."""
         bar = self._filter_bar = tk.Frame(self)
         bar.grid(row=1, column=0, sticky="ew", padx=10, pady=8)
+        self._filter_groups: List[tk.Frame] = []
         self.name_var = tk.StringVar()
         self.name_var.trace_add("write", lambda *_: self._schedule_filter())
-        self._label(bar, "pb_name", 0)
-        self.name_entry = tk.Entry(bar, textvariable=self.name_var, width=20, font=self._font)
-        self.name_entry.grid(row=0, column=1, padx=(0, 12))
+        self.name_entry = self._filter("pb_name", lambda parent: tk.Entry(
+            parent, textvariable=self.name_var, width=12, font=self._font))
         self.name_entry.focus_set()
-        self.status_box = self._combobox(bar, "pb_status", 2, width=9)
-        self.group_box = self._combobox(bar, "pb_group", 4)
-        self.location_box = self._combobox(bar, "pb_location", 6)
-        self.label_box = self._combobox(bar, "pb_label", 8)
-        self._set_choices(self.status_box, {self.lang.get_message("pb_all"): None,
-                                            self.lang.get_message("pb_online"): True,
+        self.status_box = self._filter("pb_status", lambda parent: self._combobox(parent, 8))
+        self.group_box = self._filter("pb_group", self._multi_select)
+        self.location_box = self._filter("pb_location", self._multi_select)
+        self.label_box = self._filter("pb_label", self._multi_select)
+        self.synced_box = self._filter("pb_synced", lambda parent: self._combobox(parent, 10))
+        self.reported_box = self._filter("pb_reported", lambda parent: self._combobox(parent, 10))
+        self.note_var = tk.StringVar()
+        self.note_var.trace_add("write", lambda *_: self._schedule_filter())
+        self.note_entry = self._filter("pb_note", lambda parent: tk.Entry(
+            parent, textvariable=self.note_var, width=10, font=self._font))
+        all_text = self.lang.get_message("pb_all")
+        self._set_choices(self.status_box, {all_text: None, self.lang.get_message("pb_online"): True,
                                             self.lang.get_message("pb_offline"): False})
+        ages = {all_text: None} | {self.lang.get_message(f"pb_age_{key}"): criterion for key, criterion in AGE_OPTIONS}
+        self._set_choices(self.synced_box, ages)
+        self._set_choices(self.reported_box, ages)
 
-    def _label(self, bar, message: str, column: int):
-        tk.Label(bar, text=self.lang.get_message(message), font=self._font).grid(row=0, column=column, padx=(0, 4))
+    def _filter(self, message: str, make_widget) -> tk.Widget:
+        group = tk.Frame(self._filter_bar)
+        tk.Label(group, text=self.lang.get_message(message), font=self._font).pack(side="left", padx=(0, 4))
+        widget = make_widget(group)
+        widget.pack(side="left")
+        self._filter_groups.append(group)
+        return widget
 
-    def _combobox(self, bar, message: str, column: int, width: int = 16) -> ttk.Combobox:
-        self._label(bar, message, column)
-        box = ttk.Combobox(bar, state="readonly", width=width, font=self._font)
-        box.grid(row=0, column=column + 1, padx=(0, 12))
+    def _combobox(self, parent, width: int) -> ttk.Combobox:
+        box = ttk.Combobox(parent, state="readonly", width=width, font=self._font)
         box.bind("<<ComboboxSelected>>", lambda _: self.apply_filters())
         return box
+
+    def _multi_select(self, parent) -> MultiSelectCombo:
+        return MultiSelectCombo(parent, self, font=self._font, width=9, on_change=self._schedule_filter)
+
+    def _flow_filters(self):
+        """All the filters in one row; on a screen too narrow for that, the rest goes to the next row."""
+        self.update_idletasks()
+        limit = self.winfo_screenwidth() - 40
+        row = column = used = 0
+        for group in self._filter_groups:
+            width = group.winfo_reqwidth() + FILTER_GAP
+            if column and used + width > limit:
+                row, column, used = row + 1, 0, 0
+            group.grid(row=row, column=column, sticky="w", padx=(0, FILTER_GAP), pady=2)
+            used += width
+            column += 1
 
     def _build_table(self):
         frame = self._table = tk.Frame(self)
@@ -156,7 +189,7 @@ class PlayerBrowser(tk.Toplevel):
         self._header_separators: List[tk.Canvas] = []
         for index, (key, _, _) in enumerate(COLUMNS):
             cell = tk.Label(self._header, font=bold, width=1, anchor="w", cursor=SORT_CURSOR)
-            cell.grid(row=0, column=2 * index, sticky="ew", padx=CELL_PADDING)
+            cell.grid(row=0, column=self._cell_column(index), sticky="ew", padx=CELL_PADDING)
             cell.bind("<Button-1>", lambda event, column=key: self._on_header_click(event, column))
             self._header_cells[key] = cell
             self._header_separators.append(self._header_separator(index, key))
@@ -190,17 +223,23 @@ class PlayerBrowser(tk.Toplevel):
         separator = tk.Canvas(self._header, width=SEPARATOR_WIDTH, height=1, highlightthickness=0, borderwidth=0)
         line = separator.create_line(middle, 0, middle, 1, fill=SEPARATOR_COLOR)
         separator.bind("<Configure>", lambda event: separator.coords(line, middle, 0, middle, event.height))
-        separator.grid(row=0, column=2 * index + 1, sticky="ns")
+        separator.grid(row=0, column=self._cell_column(index) + 1, sticky="ns")
         return separator
+
+    @staticmethod
+    def _cell_column(index: int) -> int:
+        """The grid column of the text column `index`: the first grid column holds the button, a line follows each."""
+        return 1 + 2 * index
 
     def _fit_window(self):
         """Opens wide enough for the filters and, as far as the screen allows, for the whole table."""
+        self._flow_filters()
         self.update_idletasks()
         self._header_canvas.configure(height=self._header.winfo_reqheight())
         filters = max(self._filter_bar.winfo_reqwidth(), self._actions_bar.winfo_reqwidth()) + 30
         table = self._header.winfo_reqwidth() + self._scrollbar.winfo_reqwidth() + 30
         self.minsize(filters, 300)
-        self.geometry(f"{min(max(filters, table), self.winfo_screenwidth() - 80)}x600")
+        self.geometry(f"{min(max(filters, table), self.winfo_screenwidth() - 20)}x600")
 
     # ---- column widths
 
@@ -210,10 +249,10 @@ class PlayerBrowser(tk.Toplevel):
     def _apply_widths(self):
         """Every column is exactly as wide as set; the text that does not fit is cut off."""
         for frame in (self._header, self._body):
+            frame.grid_columnconfigure(0, minsize=SNAPSHOT_COLUMN_MINSIZE)
             for index, (key, _, _) in enumerate(COLUMNS):
-                frame.grid_columnconfigure(2 * index, minsize=self._widths[key])
-                frame.grid_columnconfigure(2 * index + 1, minsize=SEPARATOR_WIDTH)
-            frame.grid_columnconfigure(2 * len(COLUMNS), minsize=SNAPSHOT_COLUMN_MINSIZE)
+                frame.grid_columnconfigure(self._cell_column(index), minsize=self._widths[key])
+                frame.grid_columnconfigure(self._cell_column(index) + 1, minsize=SEPARATOR_WIDTH)
 
     def _edge_at(self, x_root: int) -> Optional[str]:
         """The column whose right-hand line is within EDGE_ZONE pixels of the pointer, if any."""
@@ -341,27 +380,28 @@ class PlayerBrowser(tk.Toplevel):
         self._rows, self._widgets = rows, {}
         for row in rows:
             self._widgets[id(row)] = self._row_widgets(row)
-        all_text = self.lang.get_message("pb_all")
-        self._set_choices(self.group_box, {all_text: None} | (
-            {self.lang.get_message("pb_no_group"): ""} if any(not row.group for row in rows) else {}) | {
-            group: group for group in sorted({row.group for row in rows if row.group}, key=str.casefold)})
-        self._set_choices(self.label_box, {all_text: None} | {
-            label: label for label in sorted({label for row in rows for label in row.labels}, key=str.casefold)})
-        self._set_choices(self.location_box, {all_text: None} | {
-            location: location for location in sorted({row.location for row in rows if row.location},
-                                                      key=str.casefold)})
+        no_group = [(self.lang.get_message("pb_no_group"), "")] if any(not row.group for row in rows) else []
+        self.group_box.set_options(no_group + [(group, group) for group in sorted(
+            {row.group for row in rows if row.group}, key=str.casefold)])
+        self.label_box.set_options([(label, label) for label in sorted(
+            {label for row in rows for label in row.labels}, key=str.casefold)])
+        self.location_box.set_options([(location, location) for location in sorted(
+            {row.location for row in rows if row.location}, key=str.casefold)])
         self.apply_filters()
 
+    def _moment(self, moment) -> str:
+        return moment.strftime("%d.%m.%Y %H:%M") if moment else self.lang.get_message("pb_never")
+
     def _row_widgets(self, row: PlayerRow) -> List[tk.Widget]:
-        synced = row.synced.strftime("%d.%m.%Y %H:%M") if row.synced else self.lang.get_message("pb_never")
+        """The button first, then one cell for each column."""
         texts = (row.name, self.lang.get_message("pb_online" if row.online else "pb_offline"), row.group,
-                 row.location, synced)
-        widgets: List[tk.Widget] = [tk.Label(self._body, text=text, font=self._font, width=1, anchor="w")
-                                    for text in texts]
-        widgets[1].configure(foreground=ONLINE_COLOR if row.online else OFFLINE_COLOR)
+                 row.location, ", ".join(row.labels), self._moment(row.synced), self._moment(row.reported), row.note)
+        cells: List[tk.Widget] = [tk.Label(self._body, text=text, font=self._font, width=1, anchor="w")
+                                  for text in texts]
+        cells[1].configure(foreground=ONLINE_COLOR if row.online else OFFLINE_COLOR)
         button = ttk.Button(self._body, text=self.lang.get_message("pb_snapshot"))
         button.state(["disabled"])  # its function is defined later
-        return widgets + [button]
+        return [button] + cells
 
     # ---- filtering and sorting
 
@@ -375,8 +415,12 @@ class PlayerBrowser(tk.Toplevel):
     def _criteria(self) -> PlayerFilter:
         def chosen(box):
             return self._combo_values[box].get(box.get())
-        return PlayerFilter(name=self.name_var.get(), group=chosen(self.group_box), label=chosen(self.label_box),
-                            location=chosen(self.location_box), online=chosen(self.status_box))
+        return PlayerFilter(
+            name=self.name_var.get(), online=chosen(self.status_box),
+            group_text=self.group_box.text(), groups=self.group_box.checked(),
+            location_text=self.location_box.text(), locations=self.location_box.checked(),
+            label_text=self.label_box.text(), labels=self.label_box.checked(),
+            synced=chosen(self.synced_box), reported=chosen(self.reported_box), note=self.note_var.get())
 
     def _schedule_filter(self):
         if self._filter_after_id:
@@ -384,10 +428,13 @@ class PlayerBrowser(tk.Toplevel):
         self._filter_after_id = self.after(NAME_FILTER_DELAY_MS, self.apply_filters)
 
     def reset_filters(self):
-        """Clears the name and puts every drop-down back on "(all)"."""
+        """Clears the texts and the ticks and puts every drop-down back on "(all)"."""
         self.name_var.set("")
-        for box in (self.status_box, self.group_box, self.location_box, self.label_box):
+        self.note_var.set("")
+        for box in (self.status_box, self.synced_box, self.reported_box):
             box.set(next(iter(self._combo_values[box])))
+        for box in (self.group_box, self.location_box, self.label_box):
+            box.clear()
         self.apply_filters()
         self.name_entry.focus_set()
 
@@ -413,11 +460,12 @@ class PlayerBrowser(tk.Toplevel):
                 for widget in self._widgets[id(row)]:
                     widget.grid_remove()
         for index, row in enumerate(visible):
-            for column, widget in enumerate(self._widgets[id(row)]):
-                widget.grid(row=index, column=2 * column, sticky="ew" if column < len(COLUMNS) else "",
-                            padx=CELL_PADDING, pady=1)
+            button, *cells = self._widgets[id(row)]
+            button.grid(row=index, column=0, padx=CELL_PADDING, pady=1)
+            for column, cell in enumerate(cells):
+                cell.grid(row=index, column=self._cell_column(column), sticky="ew", padx=CELL_PADDING, pady=1)
         for column, line in enumerate(self._body_separators):  # the lines run down beside the rows
-            line.grid(row=0, column=2 * column + 1, rowspan=max(1, len(visible)), sticky="ns")
+            line.grid(row=0, column=self._cell_column(column) + 1, rowspan=max(1, len(visible)), sticky="ns")
         self._canvas.yview_moveto(0)
         self._visible = visible
         if not self._rows:

@@ -6,6 +6,7 @@ import tempfile
 import time
 import tkinter as tk
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -13,27 +14,40 @@ import requests
 from api_testing.request_calls import LoginError, ServerApi
 from gui_app import gui
 from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
-                                    SEPARATOR_COLOR, SORT_CURSOR, PlayerBrowser, valid_widths)
+                                    SEPARATOR_COLOR, SNAPSHOT_COLUMN_MINSIZE, SORT_CURSOR, PlayerBrowser,
+                                    valid_widths)
 from util.language import LanguageManager
 
 ACTION = "show_player_snapshots"
 
 
-def player(name, connected=True, group="Obchod", location="Praha", labels=(), uploaded=0):
+def player(name, connected=True, group="Obchod", location="Praha", labels=(), uploaded=0, reported=0, notes=""):
     return {"name": name, "isConnected": connected, "group": {"name": group} if group else None,
-            "configLocation": location, "labels": list(labels), "lastUpload": uploaded}
+            "configLocation": location, "labels": list(labels), "lastUpload": uploaded, "lastReported": reported,
+            "notes": notes}
 
 
-PLAYERS = [
-    player("Lobby", True, "Kancelar", "Praha", ["vstup"], 1_790_000_000_000),
-    player("Prerov 1", False, "Obchod", "Prerov", ["vstup", "test"], 1_780_000_000_000),
-    player("Prerov 2", True, "Obchod", "Prerov"),
-    player("Sklad", True, None, ""),
-]
+def ago(**delta):
+    return int((datetime.now() - timedelta(**delta)).timestamp() * 1000)
+
+
+def make_players():
+    return [
+        player("Lobby", True, "Kancelar", "Praha", ["vstup"], uploaded=ago(seconds=30), reported=ago(seconds=20),
+               notes="hlavní vchod"),
+        player("Prerov 1", False, "Obchod", "Prerov", ["vstup", "test"], uploaded=ago(days=40),
+               reported=ago(days=2), notes="rozbitá\nobrazovka"),
+        player("Prerov 2", True, "Obchod", "Prerov", reported=ago(minutes=3)),
+        player("Sklad", True, None, "", notes="rezerva"),
+    ]
+
+
+PLAYERS = make_players()  # refreshed for every test: the times in it are relative to now
 
 
 class BrowserTestCase(unittest.TestCase):
     def setUp(self):
+        PLAYERS[:] = make_players()  # in place: the tests hold on to this list
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         path = os.path.join(self.directory.name, "logins.json")
@@ -66,6 +80,16 @@ class BrowserTestCase(unittest.TestCase):
         box.event_generate("<<ComboboxSelected>>")
         self.app.update()
 
+    def tick(self, browser, box, *values, on=True):
+        """Ticks (or unticks) values in the list of a multi-choice filter and waits for the table to follow."""
+        for value in values:
+            box._vars[value].set(on)
+        self.wait_for(lambda: browser._filter_after_id is None)
+
+    def type_into(self, browser, variable, text):
+        variable.set(text)
+        self.wait_for(lambda: browser._filter_after_id is None)
+
 
 class PlayerBrowserTest(BrowserTestCase):
     def test_all_players_are_listed_sorted_by_name_with_a_count(self):
@@ -77,20 +101,24 @@ class PlayerBrowserTest(BrowserTestCase):
 
     def test_the_row_shows_state_group_location_and_when_it_was_synced(self):
         browser = self.open()
-        cells = {row.name: [w for w in browser._widgets[id(row)]] for row in browser._rows}
+        cells = {row.name: [w for w in browser._widgets[id(row)][1:]] for row in browser._rows}  # without the button
 
         lobby, offline, ungrouped = cells["Lobby"], cells["Prerov 1"], cells["Sklad"]
-        self.assertEqual([c.cget("text") for c in lobby[:4]], ["Lobby", "Online", "Kancelar", "Praha"])
+        self.assertEqual([c.cget("text") for c in lobby[:5]], ["Lobby", "Online", "Kancelar", "Praha", "vstup"])
         self.assertEqual(offline[1].cget("text"), "Offline")
         self.assertNotEqual(str(lobby[1].cget("foreground")), str(offline[1].cget("foreground")))
-        self.assertRegex(lobby[4].cget("text"), r"^\d\d\.\d\d\.\d{4} \d\d:\d\d$")
+        self.assertEqual(offline[4].cget("text"), "vstup, test")  # the categories, comma separated
+        self.assertRegex(lobby[5].cget("text"), r"^\d\d\.\d\d\.\d{4} \d\d:\d\d$")  # synced
+        self.assertRegex(lobby[6].cget("text"), r"^\d\d\.\d\d\.\d{4} \d\d:\d\d$")  # reported
+        self.assertEqual(lobby[7].cget("text"), "hlavní vchod")
+        self.assertEqual(offline[7].cget("text"), "rozbitá obrazovka")  # a note is one line
         self.assertEqual(ungrouped[2].cget("text"), "")
-        self.assertEqual(ungrouped[4].cget("text"), "nikdy")
+        self.assertEqual((ungrouped[5].cget("text"), ungrouped[6].cget("text")), ("nikdy", "nikdy"))
 
     def test_every_row_has_a_snapshot_button_that_is_inactive_for_now(self):
         browser = self.open()
 
-        buttons = [widgets[-1] for widgets in browser._widgets.values()]
+        buttons = [widgets[0] for widgets in browser._widgets.values()]
         self.assertEqual(len(buttons), 4)
         for button in buttons:
             self.assertEqual(button.cget("text"), "Snímek")
@@ -103,33 +131,91 @@ class PlayerBrowserTest(BrowserTestCase):
         self.wait_for(lambda: browser.visible_names() == ["Prerov 1", "Prerov 2"])
         self.assertEqual(browser.status_var.get(), "Zobrazeno 2 z 4")
 
-    def test_group_category_location_and_state_filters(self):
+    def test_state_group_location_and_category_filters(self):
         browser = self.open()
 
-        self.choose(browser.group_box, "Obchod")
+        self.tick(browser, browser.group_box, "Obchod")
         self.assertEqual(browser.visible_names(), ["Prerov 1", "Prerov 2"])
         self.choose(browser.status_box, "Online")
         self.assertEqual(browser.visible_names(), ["Prerov 2"])
         self.choose(browser.status_box, "(vše)")
-        self.choose(browser.label_box, "test")
+        self.tick(browser, browser.label_box, "test")
         self.assertEqual(browser.visible_names(), ["Prerov 1"])
-        self.choose(browser.label_box, "(vše)")
-        self.choose(browser.group_box, "(vše)")
-        self.choose(browser.location_box, "Praha")
+        self.tick(browser, browser.label_box, "test", on=False)
+        self.tick(browser, browser.group_box, "Obchod", on=False)
+        self.tick(browser, browser.location_box, "Praha")
         self.assertEqual(browser.visible_names(), ["Lobby"])
 
-    def test_the_drop_downs_offer_what_the_account_has(self):
+    def test_several_ticked_values_are_alternatives(self):
         browser = self.open()
 
-        self.assertEqual(list(browser.group_box["values"]), ["(vše)", "(bez skupiny)", "Kancelar", "Obchod"])
-        self.assertEqual(list(browser.label_box["values"]), ["(vše)", "test", "vstup"])
-        self.assertEqual(list(browser.location_box["values"]), ["(vše)", "Praha", "Prerov"])
+        self.tick(browser, browser.group_box, "Kancelar", "Obchod")
+        self.assertEqual(len(browser.visible_names()), 3)
+        self.tick(browser, browser.location_box, "Praha", "Prerov")
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 1", "Prerov 2"])
+        self.tick(browser, browser.label_box, "vstup", "test")
+        self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 1"])
+
+    def test_the_typed_text_and_the_ticks_apply_together(self):
+        browser = self.open()
+
+        self.type_into(browser, browser.group_box.text_var, "obch")
+        self.assertEqual(browser.visible_names(), ["Prerov 1", "Prerov 2"])
+        self.tick(browser, browser.group_box, "Kancelar")  # ticked, but the text does not match it
+        self.assertEqual(browser.visible_names(), [])
+        self.tick(browser, browser.group_box, "Obchod")
+        self.assertEqual(browser.visible_names(), ["Prerov 1", "Prerov 2"])
+
+    def test_the_text_of_the_category_field_and_the_other_text_filters(self):
+        browser = self.open()
+
+        self.type_into(browser, browser.label_box.text_var, "TES")
+        self.assertEqual(browser.visible_names(), ["Prerov 1"])
+        self.type_into(browser, browser.label_box.text_var, "")
+        self.type_into(browser, browser.location_box.text_var, "praha")
+        self.assertEqual(browser.visible_names(), ["Lobby"])
+        self.type_into(browser, browser.location_box.text_var, "")
+        self.type_into(browser, browser.note_var, "VCHOD")
+        self.assertEqual(browser.visible_names(), ["Lobby"])
+        self.type_into(browser, browser.note_var, "obrazovka")
+        self.assertEqual(browser.visible_names(), ["Prerov 1"])
+
+    def test_the_age_filters_of_synced_and_reported(self):
+        browser = self.open()
+
+        self.choose(browser.reported_box, "< 1 minuta")
+        self.assertEqual(browser.visible_names(), ["Lobby"])
+        self.choose(browser.reported_box, "> 1 den")
+        self.assertEqual(browser.visible_names(), ["Prerov 1", "Sklad"])  # and the one that never reported
+        self.choose(browser.reported_box, "(vše)")
+        self.choose(browser.synced_box, "> 1 měsíc")
+        self.assertEqual(browser.visible_names(), ["Prerov 1", "Prerov 2", "Sklad"])  # and those never synced
+        self.choose(browser.synced_box, "< 1 minuta")
+        self.assertEqual(browser.visible_names(), ["Lobby"])
+        self.choose(browser.reported_box, "> 1 den")  # both together: synced just now, but not reported for a day
+        self.assertEqual(browser.visible_names(), [])
+
+    def test_the_age_filters_offer_the_asked_for_choices(self):
+        browser = self.open()
+
+        expected = ["(vše)", "< 1 minuta", "> 1 minuta", "> 5 minut", "> 60 minut", "> 3 hodiny", "> 6 hodin",
+                    "> 12 hodin", "> 1 den", "> 1 týden", "> 1 měsíc"]
+        self.assertEqual(list(browser.synced_box["values"]), expected)
+        self.assertEqual(list(browser.reported_box["values"]), expected)
+
+    def test_the_choices_offer_what_the_account_has(self):
+        browser = self.open()
+
+        self.assertEqual([label for label, _ in browser.group_box._choices],
+                         ["(bez skupiny)", "Kancelar", "Obchod"])
+        self.assertEqual([label for label, _ in browser.label_box._choices], ["test", "vstup"])
+        self.assertEqual([label for label, _ in browser.location_box._choices], ["Praha", "Prerov"])
         self.assertEqual(list(browser.status_box["values"]), ["(vše)", "Online", "Offline"])
 
     def test_the_players_without_a_group_have_their_own_choice(self):
         browser = self.open()
 
-        self.choose(browser.group_box, "(bez skupiny)")
+        self.tick(browser, browser.group_box, "")
 
         self.assertEqual(browser.visible_names(), ["Sklad"])
 
@@ -164,7 +250,7 @@ class PlayerBrowserTest(BrowserTestCase):
         first_row = browser._widgets[id(browser._visible[0])]
         for index, (key, _, _) in enumerate(COLUMNS):
             with self.subTest(column=key):
-                self.assertEqual(browser._header_cells[key].winfo_x(), first_row[index].winfo_x())
+                self.assertEqual(browser._header_cells[key].winfo_x(), first_row[index + 1].winfo_x())
 
     def test_the_window_is_wide_enough_for_the_table(self):
         browser = self.open()
@@ -177,7 +263,7 @@ class PlayerBrowserTest(BrowserTestCase):
         browser = self.open()
         self.app.update()
 
-        for widget in (browser.status_box, browser.refresh_button):
+        for widget in (browser.note_entry, browser.refresh_button):
             with self.subTest(widget=str(widget)):
                 right_edge = widget.winfo_rootx() + widget.winfo_width() - browser.winfo_rootx()
                 self.assertLessEqual(right_edge, browser.winfo_width())
@@ -185,7 +271,7 @@ class PlayerBrowserTest(BrowserTestCase):
     def test_refresh_fetches_again_and_keeps_the_filters(self):
         fetch = MagicMock(return_value=PLAYERS)
         browser = self.open(fetch)
-        self.choose(browser.group_box, "Obchod")
+        self.tick(browser, browser.group_box, "Obchod")
 
         fetch.return_value = PLAYERS + [player("Prerov 3", True, "Obchod", "Prerov")]
         browser.refresh()
@@ -193,18 +279,18 @@ class PlayerBrowserTest(BrowserTestCase):
 
         self.assertEqual(fetch.call_count, 2)
         self.assertEqual(browser.visible_names(), ["Prerov 1", "Prerov 2", "Prerov 3"])
-        self.assertEqual(browser.group_box.get(), "Obchod")
+        self.assertEqual(browser.group_box.checked(), frozenset({"Obchod"}))
 
-    def test_a_filter_choice_that_no_longer_exists_falls_back_to_all(self):
+    def test_a_ticked_value_that_no_longer_exists_is_dropped(self):
         fetch = MagicMock(return_value=PLAYERS)
         browser = self.open(fetch)
-        self.choose(browser.group_box, "Kancelar")
+        self.tick(browser, browser.group_box, "Kancelar")
 
         fetch.return_value = [p for p in PLAYERS if p["name"] != "Lobby"]
         browser.refresh()
         self.wait_for(lambda: not browser._loading)
 
-        self.assertEqual(browser.group_box.get(), "(vše)")
+        self.assertEqual(browser.group_box.checked(), frozenset())
         self.assertEqual(len(browser.visible_names()), 3)
 
     def test_the_window_stays_responsive_while_loading(self):
@@ -221,15 +307,111 @@ class PlayerBrowserTest(BrowserTestCase):
 
 
 class LayoutTest(BrowserTestCase):
-    def test_the_filters_stand_in_the_order_of_the_columns(self):
+    def all_filters(self, browser):
+        return [browser.name_entry, browser.status_box, browser.group_box, browser.location_box, browser.label_box,
+                browser.synced_box, browser.reported_box, browser.note_entry]
+
+    @staticmethod
+    def filter_rows(browser):
+        return {group.grid_info()["row"] for group in browser._filter_groups}
+
+    def test_the_filters_stand_in_the_order_of_the_columns_in_one_row(self):
         browser = self.open()
         self.app.update()
 
-        order = [browser.name_entry, browser.status_box, browser.group_box, browser.location_box, browser.label_box]
-        positions = [widget.winfo_rootx() for widget in order]
+        filters = self.all_filters(browser)
+        positions = [widget.winfo_rootx() for widget in filters]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(len(set(positions)), 5)
-        self.assertEqual([key for key, _, _ in COLUMNS[:4]], ["name", "status", "group", "location"])
+        self.assertEqual(len(set(positions)), len(filters))
+        if self.app.winfo_screenwidth() >= 1500:  # narrower screens wrap them (tested separately)
+            self.assertEqual(self.filter_rows(browser), {0}, "one row on this screen")
+        self.assertLessEqual(max(widget.winfo_rootx() + widget.winfo_width() for widget in filters),
+                             browser.winfo_rootx() + browser.winfo_width())
+
+    def test_the_filters_are_in_one_row_when_the_screen_is_wide_enough(self):
+        with patch.object(self.app, "winfo_screenwidth", return_value=4000), \
+                patch.object(tk.Misc, "winfo_screenwidth", return_value=4000):
+            browser = self.open()
+            self.app.update()
+
+            self.assertEqual(self.filter_rows(browser), {0})
+
+    def test_on_a_narrow_screen_the_filters_wrap_and_none_is_cut_off(self):
+        with patch.object(tk.Misc, "winfo_screenwidth", return_value=900):
+            browser = self.open()
+            self.app.update()
+
+            self.assertGreater(len(self.filter_rows(browser)), 1)
+            positions = [widget.winfo_rootx() for widget in self.all_filters(browser)]
+            self.assertEqual(len(set(positions)), len(positions))
+            for widget in self.all_filters(browser):
+                self.assertLessEqual(widget.winfo_x() + widget.winfo_width(), browser._filter_bar.winfo_width() + 2)
+
+    def test_the_columns_are_in_the_agreed_order_with_the_button_first(self):
+        browser = self.open()
+        self.app.update()
+
+        keys = [key for key, _, _ in COLUMNS]
+        self.assertEqual(keys, ["name", "status", "group", "location", "label", "synced", "reported", "note"])
+        self.assertEqual([browser._header_cells[k].cget("text").rstrip(" ▲▼") for k in keys],
+                         ["Název", "Stav", "Skupina", "Lokace", "Kategorie", "Synchronizováno", "Reportováno",
+                          "Poznámka"])
+        positions = [browser._header_cells[k].winfo_x() for k in keys]
+        self.assertEqual(positions, sorted(positions))
+        row = browser._widgets[id(browser._visible[0])]
+        self.assertEqual(row[0].cget("text"), "Snímek")
+        self.assertLess(row[0].winfo_x() + row[0].winfo_width(), row[1].winfo_x())  # the button is left of the name
+
+    def test_the_button_column_has_a_fixed_width_and_no_resizable_line(self):
+        browser = self.open()
+        self.app.update()
+
+        first = browser._header_cells["name"].winfo_x()
+        self.assertGreaterEqual(first, SNAPSHOT_COLUMN_MINSIZE)
+        self.assertNotIn("snapshot", browser.column_widths())
+        self.assertEqual(len(browser._header_separators), len(COLUMNS))
+        self.assertLess(browser._header_separators[0].winfo_x(), browser._header_separators[1].winfo_x())
+        self.assertGreater(browser._header_separators[0].winfo_x(), first)  # the first line is right of "Název"
+
+    def test_a_click_on_a_new_header_sorts_by_it(self):
+        browser = self.open()
+
+        for key, expected_first in (("label", "Prerov 2"), ("note", "Prerov 2"), ("reported", "Prerov 1"),
+                                    ("synced", "Prerov 1")):
+            with self.subTest(column=key):
+                browser._header_cells[key].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
+                self.assertEqual(browser._sort[0], key)
+                self.assertEqual(browser.visible_names()[0], expected_first)
+                self.assertTrue(browser._header_cells[key].cget("text").endswith("▲"))
+
+    def test_the_new_columns_can_be_resized_and_their_width_is_saved(self):
+        saved = []
+        browser = self.open(save_column_widths=saved.append)
+        self.app.update()
+        separator = browser._header_separators[-1]  # the line after "Poznámka"
+        x = separator.winfo_rootx() + 3
+        before = browser.column_widths()["note"]
+
+        browser.event_generate("<ButtonPress-1>", x=1, y=1, rootx=x, rooty=100)
+        for step in (10, 30):
+            separator.event_generate("<B1-Motion>", x=3, y=5, rootx=x + step, rooty=100, state=0x100)
+        separator.event_generate("<ButtonRelease-1>", x=3, y=5, rootx=x + 30, rooty=100)
+
+        self.assertEqual(browser.column_widths()["note"], before)  # a press outside the table does not start it
+        separator.event_generate("<ButtonPress-1>", x=3, y=5, rootx=x, rooty=100)
+        separator.event_generate("<B1-Motion>", x=3, y=5, rootx=x + 40, rooty=100, state=0x100)
+        separator.event_generate("<ButtonRelease-1>", x=3, y=5, rootx=x + 40, rooty=100)
+        self.assertEqual(browser.column_widths()["note"], before + 40)
+        self.assertEqual(saved[-1]["note"], before + 40)
+
+    def test_widths_saved_before_the_new_columns_existed_are_still_valid(self):
+        old = {"name": 250, "status": 90, "group": 180, "location": 200, "synced": 150}
+
+        self.assertEqual(valid_widths(old), old)
+        browser = self.open(column_widths=old)
+        self.assertEqual(browser.column_widths()["name"], 250)
+        for key in ("label", "reported", "note"):
+            self.assertGreaterEqual(browser.column_widths()[key], MIN_COLUMN_WIDTH)
 
     def test_the_buttons_have_a_row_of_their_own_above_the_filters(self):
         browser = self.open()
@@ -275,8 +457,8 @@ class LayoutTest(BrowserTestCase):
         first = browser._widgets[id(browser._visible[0])]
         for index, (key, _, _) in enumerate(COLUMNS):
             with self.subTest(column=key):
-                self.assertEqual(browser._header_cells[key].winfo_x(), first[index].winfo_x())
-                self.assertEqual(first[index].winfo_width(), browser._header_cells[key].winfo_width())
+                self.assertEqual(browser._header_cells[key].winfo_x(), first[index + 1].winfo_x())
+                self.assertEqual(first[index + 1].winfo_width(), browser._header_cells[key].winfo_width())
 
 
 class ColumnWidthTest(BrowserTestCase):
@@ -301,7 +483,7 @@ class ColumnWidthTest(BrowserTestCase):
         self.assertEqual(browser.column_widths()["status"], before["status"])
         self.assertEqual(browser._header_cells["status"].winfo_x(), next_x + 60)
         first = browser._widgets[id(browser._visible[0])]
-        self.assertEqual(first[1].winfo_x(), next_x + 60)  # the rows moved with the header
+        self.assertEqual(first[2].winfo_x(), next_x + 60)  # the status cells moved with the header
 
     def test_dragging_left_narrows_and_stops_at_the_minimum(self):
         browser = self.open()
@@ -380,7 +562,7 @@ class ColumnWidthTest(BrowserTestCase):
         self.assertGreater(browser._canvas.xview()[0], 0)
         self.assertEqual(browser._header_canvas.xview()[0], browser._canvas.xview()[0])
         header_x = browser._header_cells["status"].winfo_rootx()
-        row_x = browser._widgets[id(browser._visible[0])][1].winfo_rootx()
+        row_x = browser._widgets[id(browser._visible[0])][2].winfo_rootx()
         self.assertEqual(header_x, row_x)  # still lined up after scrolling
 
     def test_the_horizontal_scroll_bar_is_hidden_while_everything_fits(self):
@@ -404,7 +586,7 @@ class ResizeZoneTest(BrowserTestCase):
         self.browser = self.open()
         self.app.update()
         self.line = self.browser._header_separators[0].winfo_rootx() + 3  # the x of the first line
-        self.body_cell = self.browser._widgets[id(self.browser._visible[0])][0]
+        self.body_cell = self.browser._widgets[id(self.browser._visible[0])][1]
         self.header_cell = self.browser._header_cells["status"]
 
     def event(self, widget, kind, offset, **options):
@@ -457,7 +639,7 @@ class ResizeZoneTest(BrowserTestCase):
         browser = self.open(save_column_widths=saved.append)
         self.app.update()
         line = browser._header_separators[1].winfo_rootx() + 3
-        cell = browser._widgets[id(browser._visible[0])][2]
+        cell = browser._widgets[id(browser._visible[0])][3]
         before = browser.column_widths()["status"]
 
         def at(offset, kind, **options):
@@ -531,16 +713,23 @@ class ResetFiltersTest(BrowserTestCase):
         browser = self.open()
         browser.name_var.set("lob")
         self.choose(browser.status_box, "Online")
-        self.choose(browser.group_box, "Kancelar")
-        self.choose(browser.location_box, "Praha")
-        self.choose(browser.label_box, "vstup")
+        self.choose(browser.synced_box, "< 1 minuta")
+        self.choose(browser.reported_box, "< 1 minuta")
+        self.type_into(browser, browser.note_var, "vchod")
+        self.tick(browser, browser.group_box, "Kancelar")
+        self.tick(browser, browser.location_box, "Praha")
+        self.tick(browser, browser.label_box, "vstup")
+        self.type_into(browser, browser.label_box.text_var, "vst")
         self.wait_for(lambda: browser.visible_names() == ["Lobby"])
 
         browser.reset_button.invoke()
 
-        self.assertEqual(browser.name_var.get(), "")
-        for box in (browser.status_box, browser.group_box, browser.location_box, browser.label_box):
+        self.assertEqual((browser.name_var.get(), browser.note_var.get()), ("", ""))
+        for box in (browser.status_box, browser.synced_box, browser.reported_box):
             self.assertEqual(box.get(), "(vše)")
+        for box in (browser.group_box, browser.location_box, browser.label_box):
+            self.assertEqual((box.text(), box.checked()), ("", frozenset()))
+            self.assertFalse(box._badge.winfo_ismapped())  # the count of ticks is gone
         self.assertEqual(len(browser.visible_names()), 4)
         self.assertEqual(browser.status_var.get(), "Zobrazeno 4 z 4")
 

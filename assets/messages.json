@@ -251,7 +251,23 @@
         "pb_default_columns": "Výchozí sloupce",
         "pb_tip_refresh": "Znovu načíst playery ze serveru",
         "pb_tip_reset": "Zrušit všechny filtry",
-        "pb_tip_default_columns": "Vrátit šířky sloupců na výchozí"
+        "pb_tip_default_columns": "Vrátit šířky sloupců na výchozí",
+        "pb_col_label": "Kategorie",
+        "pb_col_reported": "Reportováno",
+        "pb_col_note": "Poznámka",
+        "pb_synced": "Synchronizováno:",
+        "pb_reported": "Reportováno:",
+        "pb_note": "Poznámka:",
+        "pb_age_lt_1m": "< 1 minuta",
+        "pb_age_gt_1m": "> 1 minuta",
+        "pb_age_gt_5m": "> 5 minut",
+        "pb_age_gt_60m": "> 60 minut",
+        "pb_age_gt_3h": "> 3 hodiny",
+        "pb_age_gt_6h": "> 6 hodin",
+        "pb_age_gt_12h": "> 12 hodin",
+        "pb_age_gt_1d": "> 1 den",
+        "pb_age_gt_1w": "> 1 týden",
+        "pb_age_gt_1mo": "> 1 měsíc"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -505,6 +521,22 @@
         "pb_default_columns": "Default columns",
         "pb_tip_refresh": "Load the players from the server again",
         "pb_tip_reset": "Clear all the filters",
-        "pb_tip_default_columns": "Return the column widths to the default"
+        "pb_tip_default_columns": "Return the column widths to the default",
+        "pb_col_label": "Category",
+        "pb_col_reported": "Reported",
+        "pb_col_note": "Note",
+        "pb_synced": "Synced:",
+        "pb_reported": "Reported:",
+        "pb_note": "Note:",
+        "pb_age_lt_1m": "< 1 minute",
+        "pb_age_gt_1m": "> 1 minute",
+        "pb_age_gt_5m": "> 5 minutes",
+        "pb_age_gt_60m": "> 60 minutes",
+        "pb_age_gt_3h": "> 3 hours",
+        "pb_age_gt_6h": "> 6 hours",
+        "pb_age_gt_12h": "> 12 hours",
+        "pb_age_gt_1d": "> 1 day",
+        "pb_age_gt_1w": "> 1 week",
+        "pb_age_gt_1mo": "> 1 month"
     }
 }
