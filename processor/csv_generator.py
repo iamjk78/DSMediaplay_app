@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Set
-from api_testing.request_calls import ServerApi
+from api_testing.request_calls import ServerApi, WEEK_DAYS
 from processor.input_processing import DAY_CODE_BY_NUMBER
 import csv
 from datetime import datetime, timezone, timedelta
@@ -256,7 +256,7 @@ class LocationsPlanCSVTask(CSVTask):
             for location in locations_data:
                 for location_name, times in location.items():
                     row = [location_name]
-                    for day in ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]:
+                    for day in WEEK_DAYS:
                         row.append(times[day]["on"])
                         row.append(times[day]["off"])
                     csv_lines.append(row)
@@ -265,7 +265,7 @@ class LocationsPlanCSVTask(CSVTask):
 
     def get_headers(self, data: list) -> [str]:
         headers = ["Location"]
-        for day in ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]:
+        for day in WEEK_DAYS:
             headers.append(f"{day} ON")
             headers.append(f"{day} OFF")
         return headers

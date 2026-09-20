@@ -8,6 +8,10 @@ from dataclasses import dataclass
 
 LOGIN_TIMEOUT = 30  # seconds; without it a network black hole would freeze the window forever
 
+# The order of the days in the server's location schedule (`weekDays`, index 0 = Sunday), the way the web UI shows them
+# (SU MO TU ... SA). Reading, writing, the CSV export and the input all use this one order.
+WEEK_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
 
 class _AssertHostnameAdapter(HTTPAdapter):
     """Verifies the server certificate against `assert_hostname` instead of the host that is connected to."""
@@ -972,8 +976,7 @@ class ServerApi:
         for location in response["data"]:
             location_name = location.get('configLocation', "")
             toggle_rows = location.get('toggleRows', False)
-            times = {day: {"on": "", "off": ""} for day in
-                     ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]}
+            times = {day: {"on": "", "off": ""} for day in WEEK_DAYS}
 
             for row in toggle_rows:
                 on_time = row['turnOn']
@@ -1028,8 +1031,7 @@ class ServerApi:
             A list of toggle rows for the request body.
         """
         toggle_rows = []
-        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        for i, day in enumerate(days):
+        for i, day in enumerate(WEEK_DAYS):
             on_time = times[day]["on"]
             off_time = times[day]["off"]
             if on_time or off_time:

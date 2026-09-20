@@ -5,7 +5,7 @@ from time import sleep
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests.exceptions
-from api_testing.request_calls import ServerApi, LoginError, ResponseError
+from api_testing.request_calls import ServerApi, LoginError, ResponseError, WEEK_DAYS
 import json
 import re
 
@@ -1322,10 +1322,9 @@ class LocationTimesProcessor(AssignProcessor):
             yield Response(200, response)
 
     def _parse_times(self, times_list: List[str], line_num: int) -> Dict[str, Dict[str, str]]:
-        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        times = {day: {"on": "", "off": ""} for day in days}
+        times = {day: {"on": "", "off": ""} for day in WEEK_DAYS}
 
-        for i, day in enumerate(days):
+        for i, day in enumerate(WEEK_DAYS):
             on_time = times_list[i * 2]
             off_time = times_list[i * 2 + 1]
 
