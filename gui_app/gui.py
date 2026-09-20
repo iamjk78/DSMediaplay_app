@@ -14,7 +14,7 @@ from processor.input_processing import try_login
 from datetime import datetime
 from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
-from util import accounts, credentials
+from util import accounts, credentials, input_templates
 from util.actions import action_needs_input
 from util.paths import resource_path
 import requests
@@ -163,9 +163,7 @@ class DSMediaplayApp(tk.Tk):
                 # actions["Players"]["create_player"]: "create_player",
                 actions["Players"]["get_player_versions"]: "get_player_versions",
                 actions["Players"]["create_label"]: "create_label",
-                actions["Players"]["set_clone_player"]: "set_clone_player",
                 actions["Players"]["get_player_overview"]: "get_player_overview",
-                actions["Players"]["set_player_update"]: "set_player_update",
                 actions["Players"]["get_additional_playlists"]: "get_additional_playlists",
                 actions["Players"]["remove_additional_playlists"]: "remove_additional_playlists"
             },
@@ -342,9 +340,13 @@ class DSMediaplayApp(tk.Tk):
         self._text_box_data = None
         self.update_input_button()
 
+    def current_action(self):
+        """The key of the selected action, or None."""
+        return self.entity_actions.get(self.entity_type_var.get(), {}).get(self.option_choose_action.get())
+
     def update_input_button(self):
         """Shows the "Input Prompt" button only when the selected action takes input."""
-        action = self.entity_actions.get(self.entity_type_var.get(), {}).get(self.option_choose_action.get())
+        action = self.current_action()
         button = self.input_prompt_button
         if action and action_needs_input(action):
             button.grid()
@@ -464,6 +466,11 @@ class DSMediaplayApp(tk.Tk):
                     # noinspection PyArgumentList
                     method(action, url, login, password, data)
 
+    @staticmethod
+    def input_missing(data):
+        """No input, or only blanks: what remains when the user leaves nothing but the template."""
+        return data is None or not data.strip()
+
     def perform_get_action(self, action, url, login, password, _):
         if "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
@@ -473,7 +480,7 @@ class DSMediaplayApp(tk.Tk):
     def perform_set_action(self, action, url, login, password, data):
         if not action_needs_input(action):
             data = "Non-empty"
-        if data is None or "" in [login, password]:
+        if self.input_missing(data) or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
             return
         self.open_action_log_box(action[4:], url, login, password, data)
@@ -481,13 +488,13 @@ class DSMediaplayApp(tk.Tk):
     def perform_remove_action(self, action, url, login, password, data):
         if not action_needs_input(action):
             data = "Non-empty"
-        if data is None or "" in [login, password]:
+        if self.input_missing(data) or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
             return
         self.open_action_log_box(action, url, login, password, data)
 
     def perform_create_action(self, action, url, login, password, data):
-        if data is None or "" in [login, password]:
+        if self.input_missing(data) or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
             return
         self.open_action_log_box(action, url, login, password, data)
@@ -764,7 +771,9 @@ class DSMediaplayApp(tk.Tk):
     def save_data_from_text_box(self, data):
         # Normalize line endings: Spreadsheet applications on macOS separate copied rows with a bare \r,
         # Windows uses \r\n - both must become \n before processors split on it.
-        self._text_box_data = data.replace('\r\n', '\n').replace('\r', '\n')
+        text = data.replace('\r\n', '\n').replace('\r', '\n')
+        action = self.current_action()
+        self._text_box_data = input_templates.strip_template(text, action) if action else text
         self.update_input_button()
 
     def _generate_textbox(self):

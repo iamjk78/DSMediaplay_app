@@ -1,0 +1,930 @@
+{
+  "cz": {
+    "common": {
+      "title": "Vzor vstupu",
+      "tab": "Sloupce oddělujte tabulátorem (při kopírování z Excelu se vloží samy). Jeden záznam = jeden řádek, bez záhlaví.",
+      "names": "Názvy musí přesně odpovídat názvům v DSMediaplay (velikost písmen, diakritika, bez mezer na okrajích).",
+      "skip": "Tyto řádky (včetně nezměněného vzorového řádku) se při zpracování přeskočí - můžete je nechat, nebo smazat."
+    },
+    "actions": {
+      "set_assets_to_playlists": {
+        "summary": "Nastavení assetů playlistu: obsah playlistu se nahradí uvedenými assety v uvedeném pořadí.",
+        "columns": [
+          "1. název playlistu",
+          "2. a další: názvy assetů (libovolný počet, prázdné buňky se přeskočí)"
+        ],
+        "notes": [
+          "Jeden řádek na playlist."
+        ],
+        "example": [
+          "<název playlistu>",
+          "<asset 1>",
+          "<asset 2>",
+          "<asset 3>"
+        ]
+      },
+      "set_playlist_settings": {
+        "summary": "Nastavení playlistu: interval dominance.",
+        "columns": [
+          "1. název playlistu",
+          "2. interval dominance (celé číslo, např. 300; prázdné = dominance vypnutá)"
+        ],
+        "notes": [],
+        "example": [
+          "<název playlistu>",
+          "300"
+        ]
+      },
+      "remove_assets_from_playlists": {
+        "summary": "Odebrání assetů z playlistu podle klíčového slova.",
+        "columns": [
+          "1. název playlistu",
+          "2. klíčové slovo (odeberou se všechny assety, v jejichž názvu je; rozlišuje velikost písmen)"
+        ],
+        "notes": [],
+        "example": [
+          "<název playlistu>",
+          "<klíčové slovo>"
+        ]
+      },
+      "remove_unused_playlists": {
+        "summary": "Smazání nepoužívaných playlistů.",
+        "columns": [
+          "1. název playlistu (jeden na řádek)"
+        ],
+        "notes": [
+          "Playlisty se štítkem \"test\" se přeskočí."
+        ],
+        "example": [
+          "<název playlistu>"
+        ]
+      },
+      "create_playlist": {
+        "summary": "Vytvoření nových playlistů.",
+        "columns": [
+          "1. nový název playlistu (jeden na řádek)"
+        ],
+        "notes": [
+          "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
+        ],
+        "example": [
+          "<nový název playlistu>"
+        ]
+      },
+      "set_group_settings": {
+        "summary": "Nastavení parametrů skupiny.",
+        "columns": [
+          "1. název skupiny",
+          "2. rozlišení (text jako v CSV exportu, např. 1080p)",
+          "3. orientace (text jako v CSV exportu, např. landscape)",
+          "4. automatický restart: čas HH:MM, prázdné = vypnuto",
+          "5. automatický deploy: čas HH:MM, prázdné = vypnuto",
+          "6. kombinovat výchozí playlist: true / false",
+          "7. přehrávat všechny vyhovující playlisty: true / false",
+          "8. LCD zapnout: čas HH:MM",
+          "9. LCD vypnout: čas HH:MM (8 a 9 vyplňte obě, nebo ani jednu)",
+          "10. video přehrávač: default / mpv / cvlc"
+        ],
+        "notes": [
+          "Za ano se bere jen true, 1 nebo yes; cokoli jiného (i \"ano\") je ne.",
+          "Jeden řádek na skupinu."
+        ],
+        "example": [
+          "<název skupiny>",
+          "1080p",
+          "landscape",
+          "03:00",
+          "04:00",
+          "true",
+          "true",
+          "06:00",
+          "22:00",
+          "default"
+        ]
+      },
+      "set_detailed_playlists_to_groups": {
+        "summary": "Nastavení playlistů skupiny: playlisty skupiny se nahradí uvedenými.",
+        "columns": [
+          "1. název skupiny",
+          "2. výchozí playlist (bez omezení; může být prázdný)",
+          "3. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, tabulátory ponechte):",
+          "   a) název playlistu",
+          "   b) platí od: datum nebo prázdné",
+          "   c) platí do: datum nebo prázdné",
+          "   d) dny v týdnu nebo prázdné",
+          "   e) od kolika hodin: čas nebo prázdné",
+          "   f) do kolika hodin: čas nebo prázdné"
+        ],
+        "notes": [
+          "Jeden řádek na skupinu.",
+          "Datum: DD.MM.RRRR (např. 31.12.2026).",
+          "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.",
+          "Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny."
+        ],
+        "example": [
+          "<název skupiny>",
+          "<výchozí playlist>",
+          "<název playlistu>",
+          "01.01.2026",
+          "31.12.2026",
+          "mo,tu,we,th,fr",
+          "08:00",
+          "18:00"
+        ]
+      },
+      "set_add_detailed_playlist_to_group": {
+        "summary": "Přidání playlistů ke skupině: přidají se ke stávajícím, ty zůstanou.",
+        "columns": [
+          "1. název skupiny",
+          "2. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, tabulátory ponechte):",
+          "   a) název playlistu",
+          "   b) platí od: datum nebo prázdné",
+          "   c) platí do: datum nebo prázdné",
+          "   d) dny v týdnu nebo prázdné",
+          "   e) od kolika hodin: čas nebo prázdné",
+          "   f) do kolika hodin: čas nebo prázdné"
+        ],
+        "notes": [
+          "Jeden řádek na skupinu (bez sloupce výchozího playlistu).",
+          "Datum: DD.MM.RRRR (např. 31.12.2026).",
+          "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.",
+          "Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny."
+        ],
+        "example": [
+          "<název skupiny>",
+          "<název playlistu>",
+          "01.01.2026",
+          "31.12.2026",
+          "mo,tu,we,th,fr",
+          "08:00",
+          "18:00"
+        ]
+      },
+      "remove_expired_playlists": {
+        "summary": "Odebrání neplatných (prošlých) playlistů ze skupin.",
+        "columns": [
+          "1. název skupiny (jeden na řádek)"
+        ],
+        "notes": [],
+        "example": [
+          "<název skupiny>"
+        ]
+      },
+      "remove_playlists_from_group": {
+        "summary": "Odebrání playlistů ze skupiny podle klíčového slova.",
+        "columns": [
+          "1. název skupiny",
+          "2. klíčové slovo (odeberou se playlisty, v jejichž názvu je; rozlišuje velikost písmen)"
+        ],
+        "notes": [],
+        "example": [
+          "<název skupiny>",
+          "<klíčové slovo>"
+        ]
+      },
+      "remove_playlist_list": {
+        "summary": "Odebrání vybraných playlistů ze všech skupin.",
+        "columns": [
+          "1. název playlistu (jeden na řádek)"
+        ],
+        "notes": [
+          "Neexistující názvy se přeskočí s varováním."
+        ],
+        "example": [
+          "<název playlistu>"
+        ]
+      },
+      "set_group_rename": {
+        "summary": "Přejmenování skupin.",
+        "columns": [
+          "1. stávající název skupiny",
+          "2. nový název"
+        ],
+        "notes": [
+          "Nový název nesmí obsahovat mezeru, čárku, středník ani uvozovky, nesmí už existovat ani se opakovat."
+        ],
+        "example": [
+          "<stávající název>",
+          "<nový název>"
+        ]
+      },
+      "remove_unused_groups": {
+        "summary": "Smazání nepoužívaných skupin.",
+        "columns": [
+          "1. název skupiny (jeden na řádek)"
+        ],
+        "notes": [
+          "Skupiny se štítkem \"test\" se přeskočí."
+        ],
+        "example": [
+          "<název skupiny>"
+        ]
+      },
+      "create_group": {
+        "summary": "Vytvoření nových skupin.",
+        "columns": [
+          "1. nový název skupiny (jeden na řádek)"
+        ],
+        "notes": [
+          "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
+        ],
+        "example": [
+          "<nový název skupiny>"
+        ]
+      },
+      "set_groups_to_players": {
+        "summary": "Přiřazení skupiny přehrávači.",
+        "columns": [
+          "1. název přehrávače",
+          "2. název skupiny"
+        ],
+        "notes": [
+          "Každý přehrávač nejvýše jednou."
+        ],
+        "example": [
+          "<název přehrávače>",
+          "<název skupiny>"
+        ]
+      },
+      "set_player_config_location": {
+        "summary": "Přiřazení lokace přehrávači.",
+        "columns": [
+          "1. název přehrávače",
+          "2. název lokace"
+        ],
+        "notes": [
+          "Každý přehrávač nejvýše jednou."
+        ],
+        "example": [
+          "<název přehrávače>",
+          "<název lokace>"
+        ]
+      },
+      "set_notes_to_players": {
+        "summary": "Nastavení poznámky přehrávače.",
+        "columns": [
+          "1. název přehrávače",
+          "2. poznámka (může být prázdná = poznámka se smaže; bez tabulátoru a zalomení řádku)"
+        ],
+        "notes": [],
+        "example": [
+          "<název přehrávače>",
+          "<poznámka>"
+        ]
+      },
+      "set_player_labels": {
+        "summary": "Nastavení kategorií přehrávače.",
+        "columns": [
+          "1. název přehrávače",
+          "2. a další: názvy kategorií (libovolný počet, musí existovat)"
+        ],
+        "notes": [
+          "Jeden řádek na přehrávač.",
+          "Řádek jen s názvem přehrávače odebere všechny jeho kategorie."
+        ],
+        "example": [
+          "<název přehrávače>",
+          "<kategorie 1>",
+          "<kategorie 2>"
+        ]
+      },
+      "remove_additional_playlists": {
+        "summary": "Odebrání additional playlistů přehrávačům.",
+        "columns": [
+          "1. název přehrávače (jeden na řádek; další sloupce se ignorují)"
+        ],
+        "notes": [
+          "Zpracují se jen přehrávače, které additional playlist mají."
+        ],
+        "example": [
+          "<název přehrávače>"
+        ]
+      },
+      "set_player_rename": {
+        "summary": "Přejmenování přehrávačů.",
+        "columns": [
+          "1. stávající název přehrávače",
+          "2. nový název"
+        ],
+        "notes": [
+          "Nový název musí obsahovat identifikátor: PB, PC, PD nebo PE + 4 číslice (např. PB1234), nebo RPI + 3 číslice (např. RPI123), volitelně obklopený podtržítkem; nesmí už existovat."
+        ],
+        "example": [
+          "<stávající název>",
+          "<nový název>_PB1234"
+        ]
+      },
+      "remove_unused_labels": {
+        "summary": "Smazání nepoužívaných kategorií.",
+        "columns": [
+          "1. název kategorie (jeden na řádek)"
+        ],
+        "notes": [
+          "Kategorie, jejichž název začíná \"test\", se přeskočí."
+        ],
+        "example": [
+          "<název kategorie>"
+        ]
+      },
+      "create_label": {
+        "summary": "Vytvoření nových kategorií.",
+        "columns": [
+          "1. nový název kategorie (jeden na řádek)"
+        ],
+        "notes": [
+          "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
+        ],
+        "example": [
+          "<nový název kategorie>"
+        ]
+      },
+      "set_location_plan": {
+        "summary": "Nastavení časů zapnutí a vypnutí lokace pro každý den týdne.",
+        "columns": [
+          "1. název lokace",
+          "2. pondělí - zapnutí",
+          "3. pondělí - vypnutí",
+          "4. úterý - zapnutí",
+          "5. úterý - vypnutí",
+          "6. středa - zapnutí",
+          "7. středa - vypnutí",
+          "8. čtvrtek - zapnutí",
+          "9. čtvrtek - vypnutí",
+          "10. pátek - zapnutí",
+          "11. pátek - vypnutí",
+          "12. sobota - zapnutí",
+          "13. sobota - vypnutí",
+          "14. neděle - zapnutí",
+          "15. neděle - vypnutí"
+        ],
+        "notes": [
+          "Vždy všech 15 sloupců; prázdná buňka = v ten den se nic nenastaví.",
+          "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí."
+        ],
+        "example": [
+          "<název lokace>",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "",
+          "",
+          "",
+          ""
+        ]
+      },
+      "set_location_rename": {
+        "summary": "Přejmenování lokací.",
+        "columns": [
+          "1. stávající název lokace",
+          "2. nový název"
+        ],
+        "notes": [
+          "Nový název nesmí obsahovat mezeru (ani jiné bílé znaky) a nesmí už existovat."
+        ],
+        "example": [
+          "<stávající název>",
+          "<nový název>"
+        ]
+      },
+      "remove_unused_locations": {
+        "summary": "Smazání nepoužívaných lokací.",
+        "columns": [
+          "1. název lokace (jeden na řádek)"
+        ],
+        "notes": [
+          "Lokace se štítkem \"test\" se přeskočí."
+        ],
+        "example": [
+          "<název lokace>"
+        ]
+      },
+      "create_location": {
+        "summary": "Vytvoření nových lokací.",
+        "columns": [
+          "1. nový název lokace (jeden na řádek)"
+        ],
+        "notes": [
+          "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
+        ],
+        "example": [
+          "<nový název lokace>"
+        ]
+      },
+      "set_asset_validity": {
+        "summary": "Nastavení platnosti assetu.",
+        "columns": [
+          "1. název assetu",
+          "2. platí od: datum nebo prázdné",
+          "3. platí do: datum nebo prázdné",
+          "4. od kolika hodin: čas HH:MM nebo prázdné",
+          "5. do kolika hodin: čas HH:MM nebo prázdné"
+        ],
+        "notes": [
+          "Datum: DD.MM.RRRR (např. 31.12.2026).",
+          "Hodiny se použijí jen tehdy, když je vyplněné aspoň jedno datum; bez dat se platnost vypne.",
+          "Datum se při načtení neověřuje, špatný formát způsobí chybu až při provedení."
+        ],
+        "example": [
+          "<název assetu>",
+          "01.01.2026",
+          "31.12.2026",
+          "08:00",
+          "18:00"
+        ]
+      },
+      "remove_unused_assets": {
+        "summary": "Smazání nepoužívaných assetů.",
+        "columns": [
+          "1. název assetu (jeden na řádek)"
+        ],
+        "notes": [
+          "Assety se štítkem \"test\" se přeskočí."
+        ],
+        "example": [
+          "<název assetu>"
+        ]
+      },
+      "set_deploy_selected_groups": {
+        "summary": "Deploy vybraných skupin: obsah se nasadí na všechny online přehrávače těchto skupin.",
+        "columns": [
+          "1. název skupiny (jeden na řádek)"
+        ],
+        "notes": [],
+        "example": [
+          "<název skupiny>"
+        ]
+      }
+    }
+  },
+  "en": {
+    "common": {
+      "title": "Input template",
+      "tab": "Separate the columns with a tab (copying cells from a spreadsheet inserts them by itself). One record = one line, no header row.",
+      "names": "Names must match the names in DSMediaplay exactly (case, diacritics, no spaces at the ends).",
+      "skip": "These lines (including the unchanged example line) are skipped when the input is processed - keep or delete them."
+    },
+    "actions": {
+      "set_assets_to_playlists": {
+        "summary": "Set the assets of a playlist: the playlist content is replaced by the listed assets in the listed order.",
+        "columns": [
+          "1. playlist name",
+          "2. and more: asset names (any number, empty cells are skipped)"
+        ],
+        "notes": [
+          "One line per playlist."
+        ],
+        "example": [
+          "<playlist name>",
+          "<asset 1>",
+          "<asset 2>",
+          "<asset 3>"
+        ]
+      },
+      "set_playlist_settings": {
+        "summary": "Set a playlist: the domination interval.",
+        "columns": [
+          "1. playlist name",
+          "2. domination interval (a whole number, e.g. 300; empty = domination off)"
+        ],
+        "notes": [],
+        "example": [
+          "<playlist name>",
+          "300"
+        ]
+      },
+      "remove_assets_from_playlists": {
+        "summary": "Remove assets from a playlist by a keyword.",
+        "columns": [
+          "1. playlist name",
+          "2. keyword (every asset whose name contains it is removed; case-sensitive)"
+        ],
+        "notes": [],
+        "example": [
+          "<playlist name>",
+          "<keyword>"
+        ]
+      },
+      "remove_unused_playlists": {
+        "summary": "Delete unused playlists.",
+        "columns": [
+          "1. playlist name (one per line)"
+        ],
+        "notes": [
+          "Playlists labelled \"test\" are skipped."
+        ],
+        "example": [
+          "<playlist name>"
+        ]
+      },
+      "create_playlist": {
+        "summary": "Create new playlists.",
+        "columns": [
+          "1. new playlist name (one per line)"
+        ],
+        "notes": [
+          "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."
+        ],
+        "example": [
+          "<new playlist name>"
+        ]
+      },
+      "set_group_settings": {
+        "summary": "Set the parameters of a group.",
+        "columns": [
+          "1. group name",
+          "2. resolution (text as in the CSV export, e.g. 1080p)",
+          "3. orientation (text as in the CSV export, e.g. landscape)",
+          "4. auto restart: time HH:MM, empty = off",
+          "5. auto deploy: time HH:MM, empty = off",
+          "6. combine the default playlist: true / false",
+          "7. play all eligible playlists: true / false",
+          "8. LCD on: time HH:MM",
+          "9. LCD off: time HH:MM (fill in both 8 and 9, or neither)",
+          "10. video player: default / mpv / cvlc"
+        ],
+        "notes": [
+          "Only true, 1 or yes mean yes; anything else (even \"ano\") means no.",
+          "One line per group."
+        ],
+        "example": [
+          "<group name>",
+          "1080p",
+          "landscape",
+          "03:00",
+          "04:00",
+          "true",
+          "true",
+          "06:00",
+          "22:00",
+          "default"
+        ]
+      },
+      "set_detailed_playlists_to_groups": {
+        "summary": "Set the playlists of a group: the group's playlists are replaced by the listed ones.",
+        "columns": [
+          "1. group name",
+          "2. default playlist (no restrictions; may be empty)",
+          "3. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):",
+          "   a) playlist name",
+          "   b) valid from: a date or empty",
+          "   c) valid to: a date or empty",
+          "   d) days of the week or empty",
+          "   e) from what time: a time or empty",
+          "   f) until what time: a time or empty"
+        ],
+        "notes": [
+          "One line per group.",
+          "Date: DD.MM.YYYY (e.g. 31.12.2026).",
+          "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.",
+          "Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day."
+        ],
+        "example": [
+          "<group name>",
+          "<default playlist>",
+          "<playlist name>",
+          "01.01.2026",
+          "31.12.2026",
+          "mo,tu,we,th,fr",
+          "08:00",
+          "18:00"
+        ]
+      },
+      "set_add_detailed_playlist_to_group": {
+        "summary": "Add playlists to a group: they are added to the existing ones, which stay.",
+        "columns": [
+          "1. group name",
+          "2. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):",
+          "   a) playlist name",
+          "   b) valid from: a date or empty",
+          "   c) valid to: a date or empty",
+          "   d) days of the week or empty",
+          "   e) from what time: a time or empty",
+          "   f) until what time: a time or empty"
+        ],
+        "notes": [
+          "One line per group (there is no default playlist column).",
+          "Date: DD.MM.YYYY (e.g. 31.12.2026).",
+          "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.",
+          "Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day."
+        ],
+        "example": [
+          "<group name>",
+          "<playlist name>",
+          "01.01.2026",
+          "31.12.2026",
+          "mo,tu,we,th,fr",
+          "08:00",
+          "18:00"
+        ]
+      },
+      "remove_expired_playlists": {
+        "summary": "Remove expired playlists from groups.",
+        "columns": [
+          "1. group name (one per line)"
+        ],
+        "notes": [],
+        "example": [
+          "<group name>"
+        ]
+      },
+      "remove_playlists_from_group": {
+        "summary": "Remove playlists from a group by a keyword.",
+        "columns": [
+          "1. group name",
+          "2. keyword (playlists whose name contains it are removed; case-sensitive)"
+        ],
+        "notes": [],
+        "example": [
+          "<group name>",
+          "<keyword>"
+        ]
+      },
+      "remove_playlist_list": {
+        "summary": "Remove the selected playlists from all groups.",
+        "columns": [
+          "1. playlist name (one per line)"
+        ],
+        "notes": [
+          "Names that do not exist are skipped with a warning."
+        ],
+        "example": [
+          "<playlist name>"
+        ]
+      },
+      "set_group_rename": {
+        "summary": "Rename groups.",
+        "columns": [
+          "1. current group name",
+          "2. new name"
+        ],
+        "notes": [
+          "The new name must not contain a space, a comma, a semicolon or quotation marks, must not exist yet and must not be repeated."
+        ],
+        "example": [
+          "<current name>",
+          "<new name>"
+        ]
+      },
+      "remove_unused_groups": {
+        "summary": "Delete unused groups.",
+        "columns": [
+          "1. group name (one per line)"
+        ],
+        "notes": [
+          "Groups labelled \"test\" are skipped."
+        ],
+        "example": [
+          "<group name>"
+        ]
+      },
+      "create_group": {
+        "summary": "Create new groups.",
+        "columns": [
+          "1. new group name (one per line)"
+        ],
+        "notes": [
+          "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."
+        ],
+        "example": [
+          "<new group name>"
+        ]
+      },
+      "set_groups_to_players": {
+        "summary": "Assign a group to a player.",
+        "columns": [
+          "1. player name",
+          "2. group name"
+        ],
+        "notes": [
+          "Each player at most once."
+        ],
+        "example": [
+          "<player name>",
+          "<group name>"
+        ]
+      },
+      "set_player_config_location": {
+        "summary": "Assign a location to a player.",
+        "columns": [
+          "1. player name",
+          "2. location name"
+        ],
+        "notes": [
+          "Each player at most once."
+        ],
+        "example": [
+          "<player name>",
+          "<location name>"
+        ]
+      },
+      "set_notes_to_players": {
+        "summary": "Set the note of a player.",
+        "columns": [
+          "1. player name",
+          "2. note (may be empty = the note is deleted; no tab or line break)"
+        ],
+        "notes": [],
+        "example": [
+          "<player name>",
+          "<note>"
+        ]
+      },
+      "set_player_labels": {
+        "summary": "Set the categories of a player.",
+        "columns": [
+          "1. player name",
+          "2. and more: category names (any number, they must exist)"
+        ],
+        "notes": [
+          "One line per player.",
+          "A line with only the player name removes all its categories."
+        ],
+        "example": [
+          "<player name>",
+          "<category 1>",
+          "<category 2>"
+        ]
+      },
+      "remove_additional_playlists": {
+        "summary": "Remove the additional playlists of players.",
+        "columns": [
+          "1. player name (one per line; further columns are ignored)"
+        ],
+        "notes": [
+          "Only players that have an additional playlist are processed."
+        ],
+        "example": [
+          "<player name>"
+        ]
+      },
+      "set_player_rename": {
+        "summary": "Rename players.",
+        "columns": [
+          "1. current player name",
+          "2. new name"
+        ],
+        "notes": [
+          "The new name must contain an identifier: PB, PC, PD or PE + 4 digits (e.g. PB1234), or RPI + 3 digits (e.g. RPI123), optionally surrounded by underscores; it must not exist yet."
+        ],
+        "example": [
+          "<current name>",
+          "<new name>_PB1234"
+        ]
+      },
+      "remove_unused_labels": {
+        "summary": "Delete unused categories.",
+        "columns": [
+          "1. category name (one per line)"
+        ],
+        "notes": [
+          "Categories whose name starts with \"test\" are skipped."
+        ],
+        "example": [
+          "<category name>"
+        ]
+      },
+      "create_label": {
+        "summary": "Create new categories.",
+        "columns": [
+          "1. new category name (one per line)"
+        ],
+        "notes": [
+          "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."
+        ],
+        "example": [
+          "<new category name>"
+        ]
+      },
+      "set_location_plan": {
+        "summary": "Set the on and off times of a location for each day of the week.",
+        "columns": [
+          "1. location name",
+          "2. Monday - on",
+          "3. Monday - off",
+          "4. Tuesday - on",
+          "5. Tuesday - off",
+          "6. Wednesday - on",
+          "7. Wednesday - off",
+          "8. Thursday - on",
+          "9. Thursday - off",
+          "10. Friday - on",
+          "11. Friday - off",
+          "12. Saturday - on",
+          "13. Saturday - off",
+          "14. Sunday - on",
+          "15. Sunday - off"
+        ],
+        "notes": [
+          "Always all 15 columns; an empty cell = nothing is set for that day.",
+          "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time."
+        ],
+        "example": [
+          "<location name>",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "08:00",
+          "18:00",
+          "",
+          "",
+          "",
+          ""
+        ]
+      },
+      "set_location_rename": {
+        "summary": "Rename locations.",
+        "columns": [
+          "1. current location name",
+          "2. new name"
+        ],
+        "notes": [
+          "The new name must not contain a space (or other white space) and must not exist yet."
+        ],
+        "example": [
+          "<current name>",
+          "<new name>"
+        ]
+      },
+      "remove_unused_locations": {
+        "summary": "Delete unused locations.",
+        "columns": [
+          "1. location name (one per line)"
+        ],
+        "notes": [
+          "Locations labelled \"test\" are skipped."
+        ],
+        "example": [
+          "<location name>"
+        ]
+      },
+      "create_location": {
+        "summary": "Create new locations.",
+        "columns": [
+          "1. new location name (one per line)"
+        ],
+        "notes": [
+          "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."
+        ],
+        "example": [
+          "<new location name>"
+        ]
+      },
+      "set_asset_validity": {
+        "summary": "Set the validity of an asset.",
+        "columns": [
+          "1. asset name",
+          "2. valid from: a date or empty",
+          "3. valid to: a date or empty",
+          "4. from what hour: time HH:MM or empty",
+          "5. until what hour: time HH:MM or empty"
+        ],
+        "notes": [
+          "Date: DD.MM.YYYY (e.g. 31.12.2026).",
+          "The hours are used only when at least one date is filled in; with no dates the validity is off.",
+          "The date is not checked when the input is loaded, a wrong format fails only when it is carried out."
+        ],
+        "example": [
+          "<asset name>",
+          "01.01.2026",
+          "31.12.2026",
+          "08:00",
+          "18:00"
+        ]
+      },
+      "remove_unused_assets": {
+        "summary": "Delete unused assets.",
+        "columns": [
+          "1. asset name (one per line)"
+        ],
+        "notes": [
+          "Assets labelled \"test\" are skipped."
+        ],
+        "example": [
+          "<asset name>"
+        ]
+      },
+      "set_deploy_selected_groups": {
+        "summary": "Deploy the selected groups: the content is deployed to all online players of these groups.",
+        "columns": [
+          "1. group name (one per line)"
+        ],
+        "notes": [],
+        "example": [
+          "<group name>"
+        ]
+      }
+    }
+  }
+}

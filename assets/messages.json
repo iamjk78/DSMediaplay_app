@@ -89,9 +89,7 @@
                 "create_player": "Vytvořit player - zatím nefunkční",
                 "get_player_versions": "CSV - verze",
                 "create_label": "Vytvoření - kategorie",
-                "set_clone_player": "Klonování - nastavení playerů",
                 "get_player_overview": "CSV - přehled playerů",
-                "set_player_update": "Nastavení - aktualizace playerů",
                 "get_additional_playlists": "CSV - Additional playlisty",
                 "remove_additional_playlists": "Odebrání - additional playlisty"
             },
@@ -211,7 +209,8 @@
         "tip_settings": "Jazyk, písmo a další nastavení",
         "tip_help": "Otevřít nápovědu v prohlížeči",
         "tip_quit": "Ukončit aplikaci",
-        "tip_start": "Spustit vybranou činnost"
+        "tip_start": "Spustit vybranou činnost",
+        "no_input_template": "Pro tuto činnost není k dispozici vzor vstupu."
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -303,9 +302,7 @@
                 "create_player": "Create Player - under construction",
                 "get_player_versions": "CSV - Player version",
                 "create_label": "Create - Category",
-                "set_clone_player": "Clone - Player settings",
                 "get_player_overview": "CSV - Player Overview",
-                "set_player_update": "Change - Player software update",
                 "get_additional_playlists": "CSV - Additional playlists",
                 "remove_additional_playlists": "Remove - Additional playlists"
             },
@@ -425,6 +422,7 @@
         "tip_settings": "Language, font and other settings",
         "tip_help": "Open the help in the browser",
         "tip_quit": "Quit the application",
-        "tip_start": "Run the selected action"
+        "tip_start": "Run the selected action",
+        "no_input_template": "There is no input template for this action."
     }
 }
