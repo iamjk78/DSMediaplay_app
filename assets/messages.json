@@ -234,7 +234,7 @@
         "pb_no_group": "(bez skupiny)",
         "pb_online": "Online",
         "pb_offline": "Offline",
-        "pb_refresh": "Obnovit",
+        "pb_refresh": "Aktualizovat",
         "pb_col_name": "Název",
         "pb_col_status": "Stav",
         "pb_col_group": "Skupina",
@@ -246,7 +246,12 @@
         "pb_loading": "Načítám playery...",
         "pb_empty": "Žádný player neodpovídá filtrům.",
         "pb_no_players": "Účet nemá žádné playery.",
-        "pb_load_failed": "Playery se nepodařilo načíst: {reason}"
+        "pb_load_failed": "Playery se nepodařilo načíst: {reason}",
+        "pb_reset": "Reset",
+        "pb_default_columns": "Výchozí sloupce",
+        "pb_tip_refresh": "Znovu načíst playery ze serveru",
+        "pb_tip_reset": "Zrušit všechny filtry",
+        "pb_tip_default_columns": "Vrátit šířky sloupců na výchozí"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -495,6 +500,11 @@
         "pb_loading": "Loading players...",
         "pb_empty": "No player matches the filters.",
         "pb_no_players": "The account has no players.",
-        "pb_load_failed": "The players could not be loaded: {reason}"
+        "pb_load_failed": "The players could not be loaded: {reason}",
+        "pb_reset": "Reset",
+        "pb_default_columns": "Default columns",
+        "pb_tip_refresh": "Load the players from the server again",
+        "pb_tip_reset": "Clear all the filters",
+        "pb_tip_default_columns": "Return the column widths to the default"
     }
 }

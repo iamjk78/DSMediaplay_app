@@ -1,5 +1,6 @@
 import time
 import tkinter as tk
+from tkinter import ttk
 import unittest
 
 from gui_app.tooltip import GAP_LEFT_OF_POINTER, GAP_RIGHT_OF_POINTER, TOOLTIP_DELAY_MS, Tooltip
@@ -142,6 +143,18 @@ class TooltipTest(unittest.TestCase):
         self.button.destroy()
 
         self.wait(120)  # the cancelled timer must not fire on a destroyed widget
+
+
+    def test_works_on_a_themed_button_that_has_no_font_option(self):
+        themed = ttk.Button(self.root, text="themed")
+        themed.pack()
+        Tooltip(themed, lambda: "help", delay_ms=40)
+        self.root.update()
+
+        themed.event_generate("<Enter>", x=1, y=1, rootx=300, rooty=300)
+        self.wait(150)
+
+        self.assertEqual(themed.tooltip._label.cget("text"), "help")
 
 
 if __name__ == "__main__":

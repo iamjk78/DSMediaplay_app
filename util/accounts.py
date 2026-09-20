@@ -86,3 +86,17 @@ def remove_account(data: dict, account: str) -> List[Credential]:
     if data.get("default", ["", ""])[0] == account:
         data["default"] = ["", ""]
     return _unused(data, [(entry.get("url", ""), name["login"]) for name in entry.get("names", {}).values()])
+
+
+def player_columns(data: dict, account: str) -> dict:
+    """The column widths (pixels by column key) the user set in the player table of this account."""
+    return dict(data["logins"].get(account, {}).get("player_columns", {}))
+
+
+def set_player_columns(data: dict, account: str, widths: dict) -> None:
+    """Stores the column widths of the account; nothing (or an empty dict) goes back to the defaults."""
+    entry = data["logins"][account]
+    if widths:
+        entry["player_columns"] = dict(widths)
+    else:
+        entry.pop("player_columns", None)

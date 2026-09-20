@@ -41,10 +41,16 @@ class Tooltip:
             window.wm_overrideredirect(True)
         window.attributes("-topmost", True)
         # Fixed light colours: readable on both light and dark system themes
-        self._label = tk.Label(window, font=self._widget.cget("font"), background="#ffffe1", foreground="#000000",
+        self._label = tk.Label(window, font=self._font(), background="#ffffe1", foreground="#000000",
                                relief="solid", borderwidth=1, padx=6, pady=3, justify="left", wraplength=340)
         self._label.pack()
         self._window = window
+
+    def _font(self):
+        try:
+            return self._widget.cget("font")
+        except tk.TclError:  # themed (ttk) buttons have no font option of their own
+            return "TkDefaultFont"
 
     def _remember_pointer(self, event: tk.Event) -> None:
         self._pointer = (event.x_root, event.y_root)
@@ -65,7 +71,7 @@ class Tooltip:
         if not text:
             return
         widget, window = self._widget, self._window
-        self._label.configure(text=text, font=widget.cget("font"))
+        self._label.configure(text=text, font=self._font())
         window.update_idletasks()
         width, height = window.winfo_reqwidth(), window.winfo_reqheight()
         pointer_x, pointer_y = self._pointer

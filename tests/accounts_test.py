@@ -1,7 +1,7 @@
 import unittest
 
-from util.accounts import (AccountError, add_account, add_login, normalize_url, remember_selection,
-                           remove_account, remove_login)
+from util.accounts import (AccountError, add_account, add_login, normalize_url, player_columns, remember_selection,
+                           remove_account, remove_login, set_player_columns)
 
 
 def empty_config() -> dict:
@@ -165,6 +165,51 @@ class RemoveTest(unittest.TestCase):
         remove_account(data, "B")
 
         self.assertEqual(data["default"], ["A", "a1"])
+
+
+class PlayerColumnsTest(unittest.TestCase):
+    def config(self):
+        data = empty_config()
+        add_account(data, "A", "https://a.example.com")
+        add_account(data, "B", "https://b.example.com")
+        return data
+
+    def test_the_widths_are_kept_per_account(self):
+        data = self.config()
+
+        set_player_columns(data, "A", {"name": 300, "group": 150})
+
+        self.assertEqual(player_columns(data, "A"), {"name": 300, "group": 150})
+        self.assertEqual(player_columns(data, "B"), {})
+
+    def test_an_empty_dict_forgets_the_widths(self):
+        data = self.config()
+        set_player_columns(data, "A", {"name": 300})
+
+        set_player_columns(data, "A", {})
+
+        self.assertNotIn("player_columns", data["logins"]["A"])
+
+    def test_an_unknown_account_has_no_widths(self):
+        self.assertEqual(player_columns(self.config(), "nope"), {})
+
+    def test_the_widths_go_away_with_the_account_and_do_not_disturb_the_rest(self):
+        data = self.config()
+        add_login(data, "A", "jane")
+        set_player_columns(data, "A", {"name": 300})
+
+        self.assertEqual(remove_login(data, "A", "jane"), [("https://a.example.com", "jane")])
+        self.assertEqual(player_columns(data, "A"), {"name": 300})
+        remove_account(data, "A")
+        self.assertEqual(player_columns(data, "A"), {})
+
+    def test_the_returned_dict_is_a_copy(self):
+        data = self.config()
+        set_player_columns(data, "A", {"name": 300})
+
+        player_columns(data, "A")["name"] = 1
+
+        self.assertEqual(player_columns(data, "A"), {"name": 300})
 
 
 if __name__ == "__main__":

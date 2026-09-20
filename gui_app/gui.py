@@ -499,8 +499,19 @@ class DSMediaplayApp(tk.Tk):
                 browser.focus_force()
                 return
             browser.destroy()
-        self._player_browser = PlayerBrowser(self, url=url, login=login, password=password,
-                                             account_name=self.option_choose_administration.get())
+        self.sync_from_disk()
+        account = self.option_choose_administration.get()
+        self._player_browser = PlayerBrowser(
+            self, url=url, login=login, password=password, account_name=account,
+            column_widths=accounts.player_columns(self.all_data, account),
+            save_column_widths=lambda widths: self.save_player_columns(account, widths))
+
+    def save_player_columns(self, account, widths):
+        """The column widths the user set in the player table are remembered per account."""
+        self.sync_from_disk()
+        if account in self.account_data:
+            accounts.set_player_columns(self.all_data, account, widths)
+            self.save_account_configs()
 
     def close_player_browser(self):
         if self._player_browser is not None and self._player_browser.winfo_exists():
