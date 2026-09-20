@@ -20,3 +20,6 @@ csv_exports
 
 .idea
 .DS_Store
+
+# Local reference material (not versioned)
+docs_private/
