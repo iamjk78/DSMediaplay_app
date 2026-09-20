@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Set
 from api_testing.request_calls import ServerApi
+from processor.input_processing import DAY_CODE_BY_NUMBER
 import csv
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
@@ -31,16 +32,7 @@ def iso_to_legible(iso_str):
 def convert_days_of_week_to_str(days_numerical: List[int]) -> Optional[List[str]]:
     if days_numerical is None:
         return None
-    convertor = {
-        1: "su",
-        2: "mo",
-        3: "tu",
-        4: "we",
-        5: "th",
-        6: "fr",
-        7: "st"
-    }
-    return [convertor[day] for day in days_numerical]
+    return [DAY_CODE_BY_NUMBER[day] for day in days_numerical]
 
 
 class CSVTaskFactory:

@@ -29,11 +29,17 @@ def split_list(text: str) -> List[str]:
     return [x.replace(" ", "").lower() for x in text.split(',')]
 
 
+# The API numbers the days 1 (Sunday) to 7 (Saturday). The CSV export writes these codes and the input reads them,
+# both from this one table, so a file exported and pasted back always means the same days.
+DAY_CODE_BY_NUMBER = {1: "su", 2: "mo", 3: "tu", 4: "we", 5: "th", 6: "fr", 7: "sa"}
+# "st" is the older code for Saturday (older exports wrote it); still accepted on input
+DAY_CODES = {**{code: number for number, code in DAY_CODE_BY_NUMBER.items()}, "st": 7}
+
+
 def convert_days_of_week_to_int(days_numerical: List[str]) -> List[int]:
-    convertor = {
-        "su": 1, "mo": 2, "tu": 3, "we": 4, "th": 5, "fr": 6, "st": 7
-    }
-    return [convertor.get(day, 8) for day in days_numerical]
+    """Day codes (su mo tu we th fr sa) or the API numbers 1-7; anything else becomes 8, which is rejected later."""
+    return [int(day) if day in ("1", "2", "3", "4", "5", "6", "7") else DAY_CODES.get(day, 8)
+            for day in days_numerical]
 
 
 def try_login(url: str, login: str, password: str) -> bool:

@@ -407,7 +407,7 @@ class CSVTaskTestCase(unittest.TestCase):
 
     def test_convert_days_of_week_to_str(self):
         self.assertEqual(convert_days_of_week_to_str([1, 2, 3]), ["su", "mo", "tu"])
-        self.assertEqual(convert_days_of_week_to_str([4, 5, 6, 7]), ["we", "th", "fr", "st"])
+        self.assertEqual(convert_days_of_week_to_str([4, 5, 6, 7]), ["we", "th", "fr", "sa"])
 
 
 if __name__ == "__main__":
