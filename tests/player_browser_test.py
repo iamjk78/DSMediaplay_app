@@ -3,6 +3,7 @@ import os
 import re
 import glob
 import tempfile
+import threading
 import time
 import tkinter as tk
 import unittest
@@ -11,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from api_testing.request_calls import LoginError, ServerApi
+from api_testing.request_calls import LoginError, ResponseError, ServerApi
 from gui_app import gui
 from gui_app.color_button import GREEN, RED, ColorButton
 from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
@@ -49,6 +50,10 @@ PLAYERS = make_players()  # refreshed for every test: the times in it are relati
 class BrowserTestCase(unittest.TestCase):
     def setUp(self):
         PLAYERS[:] = make_players()  # in place: the tests hold on to this list
+        self.clock = [1000.0]  # the time of the refresh interval: the tests move it, they do not wait
+        clock_patch = patch("gui_app.player_browser._clock", lambda: self.clock[0])
+        clock_patch.start()
+        self.addCleanup(clock_patch.stop)
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         path = os.path.join(self.directory.name, "logins.json")
@@ -80,6 +85,11 @@ class BrowserTestCase(unittest.TestCase):
         box.set(text)
         box.event_generate("<<ComboboxSelected>>")
         self.app.update()
+
+    def advance(self, browser, seconds):
+        """Lets time pass for the refresh interval."""
+        self.clock[0] += seconds
+        browser._update_refresh_state()
 
     def tick(self, browser, box, *values, on=True):
         """Ticks (or unticks) values in the list of a multi-choice filter and waits for the table to follow."""
@@ -275,6 +285,7 @@ class PlayerBrowserTest(BrowserTestCase):
         self.tick(browser, browser.group_box, "Obchod")
 
         fetch.return_value = PLAYERS + [player("Prerov 3", True, "Obchod", "Prerov")]
+        self.advance(browser, 11)
         browser.refresh()
         self.wait_for(lambda: not browser._loading)
 
@@ -288,6 +299,7 @@ class PlayerBrowserTest(BrowserTestCase):
         self.tick(browser, browser.group_box, "Kancelar")
 
         fetch.return_value = [p for p in PLAYERS if p["name"] != "Lobby"]
+        self.advance(browser, 11)
         browser.refresh()
         self.wait_for(lambda: not browser._loading)
 
@@ -302,9 +314,8 @@ class PlayerBrowserTest(BrowserTestCase):
 
         self.assertLess(time.monotonic() - started, 0.3)  # the constructor did not wait for the server
         self.assertEqual(browser.status_var.get(), "Načítám playery...")
-        self.assertTrue(browser.refresh_button.instate(["disabled"]))
+        self.assertTrue(browser.refresh_button.instate(["!disabled"]))  # a press is remembered, so it is always on
         self.wait_for(lambda: not browser._loading)
-        self.assertTrue(browser.refresh_button.instate(["!disabled"]))
 
 
 class LayoutTest(BrowserTestCase):
@@ -1101,6 +1112,7 @@ class ColumnVisibilityTest(BrowserTestCase):
         fetch = MagicMock(return_value=PLAYERS)
         browser = self.open(fetch, hidden_columns=["synced"])
 
+        self.advance(browser, 11)
         browser.refresh()
         self.wait_for(lambda: not browser._loading)
 
@@ -1157,6 +1169,325 @@ class ResetFiltersTest(BrowserTestCase):
         self.assertEqual(len(browser.visible_names()), 4)
 
 
+class RefreshIntervalTest(BrowserTestCase):
+    """
+    Two downloads start at least 10 s apart. A press that comes earlier is remembered and its update runs 10 s after
+    the previous download started; more presses before that change nothing; when it has run, the next press asks for
+    the next update.
+    """
+
+    def download(self, browser):
+        self.wait_for(lambda: not browser._loading)
+
+    def test_a_press_in_the_first_second_after_an_update_gives_one_update_ten_seconds_after_it(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch)  # the download of the opening: t = 0
+        self.advance(browser, 1)
+
+        browser.refresh_button.invoke()
+
+        self.assertEqual(fetch.call_count, 1)  # nothing yet
+        self.assertTrue(browser._pending)
+        self.advance(browser, 8.9)  # t = 9.9
+        self.assertEqual(fetch.call_count, 1)
+        self.advance(browser, 0.1)  # t = 10
+        self.download(browser)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertFalse(browser._pending)
+
+    def test_more_presses_while_it_waits_change_nothing(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch)
+        self.advance(browser, 1)
+        browser.refresh_button.invoke()
+
+        for second in range(2, 10):  # the 2nd, 3rd ... 9th second
+            self.advance(browser, 1)
+            browser.refresh_button.invoke()
+            browser.refresh()
+            self.assertEqual(fetch.call_count, 1)
+        self.advance(browser, 1)  # the 10th second
+        self.download(browser)
+
+        self.assertEqual(fetch.call_count, 2)  # one update for all those presses
+        self.advance(browser, 0)
+        self.app.update()
+        self.assertEqual(fetch.call_count, 2)  # and not another one afterwards
+
+    def test_when_the_update_has_run_the_requests_are_cleared_and_a_press_asks_for_the_next_update(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch)
+        self.advance(browser, 1)
+        browser.refresh_button.invoke()
+        self.advance(browser, 9)
+        self.download(browser)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertFalse(browser._pending)
+
+        self.advance(browser, 2)  # t = 12: the second update started at t = 10
+        browser.refresh_button.invoke()
+        self.assertTrue(browser._pending)
+        self.advance(browser, 7.9)  # t = 19.9
+        self.assertEqual(fetch.call_count, 2)
+        self.advance(browser, 0.1)  # t = 20
+        self.download(browser)
+
+        self.assertEqual(fetch.call_count, 3)
+
+    def test_a_press_when_the_interval_is_over_updates_at_once(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch)
+        self.advance(browser, 10)
+
+        browser.refresh_button.invoke()
+        self.download(browser)
+
+        self.assertEqual(fetch.call_count, 2)
+        self.assertFalse(browser._pending)
+
+    def test_a_press_fifteen_seconds_after_the_previous_update_waits_for_nothing(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch)
+        self.advance(browser, 15)
+
+        browser.refresh_button.invoke()
+
+        self.assertFalse(browser._pending)  # nothing is remembered, the update starts at once
+        self.download(browser)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertNotIn("aktualizace za", browser.updated_var.get())
+
+    def test_the_fifteen_seconds_are_counted_from_the_start_of_the_previous_update(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch)  # the update at t = 0
+        self.advance(browser, 3)
+        browser.refresh_button.invoke()
+        self.advance(browser, 7)  # t = 10: the asked-for update runs
+        self.download(browser)
+        self.assertEqual(fetch.call_count, 2)
+
+        self.advance(browser, 15)  # t = 25: 15 s after the update that started at t = 10
+        browser.refresh_button.invoke()
+        self.download(browser)
+
+        self.assertEqual(fetch.call_count, 3)  # at once, without waiting
+
+    def test_a_press_while_a_download_is_running_counts_like_any_early_press(self):
+        release = threading.Event()
+        calls = []
+
+        def fetch(*_):
+            calls.append(1)
+            if len(calls) == 1:
+                release.wait(5)
+            return PLAYERS
+        browser = PlayerBrowser(self.app, url="u", login="l", password="p", account_name="A", fetch=fetch)
+        self.addCleanup(browser.destroy)
+        self.wait_for(lambda: len(calls) == 1)  # the first download is running (t = 0)
+        self.clock[0] += 1
+
+        browser.refresh_button.invoke()  # pressed during the download
+        release.set()
+        self.wait_for(lambda: not browser._loading)
+
+        self.assertEqual(len(calls), 1)
+        self.advance(browser, 9)
+        self.wait_for(lambda: len(calls) == 2)
+
+    def test_a_download_that_lasts_longer_than_the_interval_is_followed_at_once_by_the_asked_update(self):
+        release = threading.Event()
+        calls = []
+
+        def fetch(*_):
+            calls.append(1)
+            if len(calls) == 1:
+                release.wait(5)
+            return PLAYERS
+        browser = PlayerBrowser(self.app, url="u", login="l", password="p", account_name="A", fetch=fetch)
+        self.addCleanup(browser.destroy)
+        self.wait_for(lambda: len(calls) == 1)
+        self.clock[0] += 15  # the download has lasted 15 s, the interval is over
+        browser.refresh_button.invoke()
+        self.assertEqual(len(calls), 1)  # still one running: the press waits for it
+        self.assertTrue(browser._pending)
+
+        release.set()
+
+        self.wait_for(lambda: len(calls) == 2)
+
+    def test_the_wait_is_shown_as_a_countdown_only_while_an_update_is_asked_for(self):
+        browser = self.open()
+        self.assertRegex(browser.updated_var.get(), r"^Aktualizováno \d\d:\d\d:\d\d$")  # nothing asked for: nothing
+
+        self.advance(browser, 1)
+        browser.refresh_button.invoke()
+        self.assertRegex(browser.updated_var.get(), r"^Aktualizováno \d\d:\d\d:\d\d · aktualizace za 9 s$")
+        self.advance(browser, 3.5)
+        self.assertRegex(browser.updated_var.get(), r" · aktualizace za 6 s$")
+        self.advance(browser, 5.5)
+        self.download(browser)
+        self.assertNotIn("aktualizace za", browser.updated_var.get())
+
+    def test_the_countdown_and_the_update_come_by_themselves(self):
+        fetch = MagicMock(return_value=PLAYERS)
+        browser = self.open(fetch)
+        browser.refresh_button.invoke()
+        self.assertIn("za 10 s", browser.updated_var.get())
+
+        self.clock[0] += 4
+        self.wait_for(lambda: "za 6 s" in browser.updated_var.get())
+        self.clock[0] += 6
+        self.wait_for(lambda: fetch.call_count == 2)
+        self.download(browser)
+        self.assertNotIn("aktualizace za", browser.updated_var.get())
+
+    def test_the_button_is_always_on(self):
+        browser = self.open()
+
+        self.assertTrue(browser.refresh_button.instate(["!disabled"]))
+        browser.refresh_button.invoke()
+        self.assertTrue(browser.refresh_button.instate(["!disabled"]))
+
+    def test_the_interval_runs_from_the_start_of_a_download_not_from_its_end(self):
+        fetch = MagicMock(side_effect=lambda *_: (self.clock.__setitem__(0, self.clock[0] + 4), PLAYERS)[1])
+        browser = self.open(fetch)  # started at 0, ended at 4
+        browser.refresh_button.invoke()
+
+        self.assertIn("za 6 s", browser.updated_var.get())  # 10 s from the start minus the 4 s the download took
+
+    def test_a_failed_download_starts_the_interval_too_and_a_press_still_gets_its_update(self):
+        fetch = MagicMock(side_effect=[requests.exceptions.ConnectionError(), PLAYERS])
+        browser = self.open(fetch)
+        self.advance(browser, 2)
+        browser.refresh_button.invoke()
+        self.assertEqual(fetch.call_count, 1)
+
+        self.advance(browser, 8)
+        self.download(browser)
+
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(len(browser.visible_names()), 4)
+
+    def test_the_players_and_the_filters_stay_usable_while_an_update_waits(self):
+        browser = self.open()
+        self.advance(browser, 1)
+        browser.refresh_button.invoke()
+
+        browser.name_var.set("lobby")
+        self.wait_for(lambda: browser.visible_names() == ["Lobby"])
+
+        self.assertEqual(browser.status_var.get(), "Zobrazeno 1 z 4")
+        self.assertIn("aktualizace za", browser.updated_var.get())
+
+    def test_closing_the_window_while_an_update_waits_raises_nothing(self):
+        browser = self.open()
+        browser.refresh_button.invoke()
+
+        browser.destroy()
+        for _ in range(30):
+            self.app.update()
+            time.sleep(0.01)
+
+    def test_the_update_that_runs_shows_the_new_data_and_time(self):
+        changed = [dict(p) for p in PLAYERS]
+        changed[1] = {**changed[1], "isConnected": True, "notes": "opraveno"}
+        fetch = MagicMock(side_effect=[PLAYERS, changed])
+        browser = self.open(fetch)
+        self.advance(browser, 1)
+        browser.refresh_button.invoke()
+        self.advance(browser, 9)
+        self.download(browser)
+
+        row = next(r for r in browser._rows if r.name == "Prerov 1")
+        self.assertTrue(row.online)
+        cells = [w.cget("text") for w in browser._widgets[id(row)][1:]]
+        self.assertEqual((cells[1], cells[7]), ("Online", "opraveno"))
+        self.assertEqual(len(browser._widgets), 4)  # the old rows are gone, not piled up
+        self.assertRegex(browser.updated_var.get(), r"^Aktualizováno \d\d:\d\d:\d\d$")
+
+    def test_after_a_failed_update_the_old_players_stay_and_it_says_when_they_are_from(self):
+        answers = [PLAYERS, requests.exceptions.ConnectionError(), PLAYERS + [player("Novy")]]
+
+        def fetch(*_):
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        browser = self.open(fetch)
+        first_time = browser.updated_var.get().split(" · ")[0].split()[-1]
+        normal = str(browser._status_label.cget("foreground"))
+
+        self.advance(browser, 10)
+        browser.refresh_button.invoke()
+        self.download(browser)
+
+        self.assertEqual(len(browser.visible_names()), 4)  # the players of the first download are still there
+        self.assertTrue(browser.status_var.get().startswith("Playery se nepodařilo načíst"))
+        self.assertNotEqual(str(browser._status_label.cget("foreground")), normal)  # in red
+        self.assertIn(f"Zobrazená data jsou z {first_time}", browser.updated_var.get())
+        browser.name_var.set("lobby")  # using a filter must not make the old data look current
+        self.wait_for(lambda: browser.visible_names() == ["Lobby"])
+        self.assertNotEqual(str(browser._status_label.cget("foreground")), normal)
+        self.assertIn("Zobrazená data jsou z", browser.updated_var.get())
+
+        self.advance(browser, 10)
+        browser.refresh_button.invoke()
+        self.download(browser)
+        self.assertEqual(str(browser._status_label.cget("foreground")), normal)
+        self.assertRegex(browser.updated_var.get(), r"^Aktualizováno ")
+        browser.name_var.set("")
+        self.wait_for(lambda: len(browser.visible_names()) == 5)
+
+    def test_a_failure_at_the_very_first_download_shows_no_time(self):
+        fetch = MagicMock(side_effect=requests.exceptions.ConnectionError())
+        browser = self.open(fetch)
+
+        self.assertNotIn("Zobrazená data", browser.updated_var.get())
+        self.assertNotIn("Aktualizováno", browser.updated_var.get())
+
+
+class LogoutTest(unittest.TestCase):
+    """What was downloaded stays valid whatever the server answers to the logout."""
+
+    def test_a_logout_the_server_answers_unexpectedly_does_not_lose_the_players(self):
+        from gui_app.player_browser import fetch_players_from_server
+        server = MagicMock()
+        server.get_player_objects.return_value = [{"name": "a"}]
+        server.close_quietly.side_effect = None
+        with patch("gui_app.player_browser.ServerApi", return_value=server):
+            self.assertEqual(fetch_players_from_server("https://x", "l", "p"), [{"name": "a"}])
+        server.close_quietly.assert_called_once()
+
+    def test_the_logout_is_still_tried_when_the_download_fails(self):
+        from gui_app.player_browser import fetch_players_from_server
+        server = MagicMock()
+        server.get_player_objects.side_effect = requests.exceptions.Timeout()
+        with patch("gui_app.player_browser.ServerApi", return_value=server):
+            with self.assertRaises(requests.exceptions.Timeout):
+                fetch_players_from_server("https://x", "l", "p")
+        server.close_quietly.assert_called_once()
+
+    def test_close_quietly_swallows_the_errors_of_the_logout_only(self):
+        api = ServerApi.__new__(ServerApi)
+        for error in (ResponseError({"params": {}}), requests.exceptions.ConnectionError(), requests.exceptions.Timeout()):
+            api._make_request = MagicMock(side_effect=error)
+            api._session_token = "t"
+            api.close_quietly()
+            self.assertIsNone(api._session_token)  # the token is dropped in any case
+        api._make_request = MagicMock(side_effect=ValueError("a real bug"))
+        with self.assertRaises(ValueError):
+            api.close_quietly()
+
+    def test_the_answer_of_the_swagger_test_server_to_a_logout_is_not_an_error_for_the_download(self):
+        """It answers {"status": "Success"}: no "success" key, which the request helper treats as a failure."""
+        api = ServerApi.__new__(ServerApi)
+        api._url, api._assert_hostname, api._session_token = "https://x/api", None, "t"
+        response = MagicMock(ok=True)
+        response.json.return_value = {"status": "Success"}
+        with patch("api_testing.request_calls.requests.request", return_value=response):
+            api.close_quietly()
+
+
 class PlayerBrowserErrorTest(BrowserTestCase):
     def failing(self, error):
         def fetch(*_):
@@ -1176,6 +1507,7 @@ class PlayerBrowserErrorTest(BrowserTestCase):
                 self.assertTrue(browser.status_var.get().startswith("Playery se nepodařilo načíst"))
                 self.assertNotIn("secret-token", browser.status_var.get())
                 self.assertEqual(browser.visible_names(), [])
+                self.advance(browser, 11)
                 self.assertTrue(browser.refresh_button.instate(["!disabled"]))
 
     def test_an_http_error_shows_its_code(self):
@@ -1194,6 +1526,7 @@ class PlayerBrowserErrorTest(BrowserTestCase):
                 raise answer
             return answer
         browser = self.open(fetch)
+        self.advance(browser, 11)
         browser.refresh()
         self.wait_for(lambda: not browser._loading)
 

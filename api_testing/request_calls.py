@@ -130,6 +130,13 @@ class ServerApi:
         """
         self._close_session()
 
+    def close_quietly(self) -> None:
+        """Logs out, but a failure of that is of no interest: what has been fetched with the session stays valid."""
+        try:
+            self._close_session()
+        except (requests.exceptions.RequestException, ServerApiError):
+            pass
+
     def _close_session(self) -> None:
         """
         Sends request to close session and invalidates session token.

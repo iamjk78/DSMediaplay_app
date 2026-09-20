@@ -1,6 +1,9 @@
+import math
 import queue
 import threading
+import time
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk
 from tkinter import font as tkfont
 from typing import Callable, Dict, FrozenSet, Iterable, List, Optional
@@ -37,13 +40,22 @@ SNAPSHOT_COLUMN_MINSIZE = 110  # the first column, with the button; its width is
 ONLINE_COLOR = "#2e7d32"
 OFFLINE_COLOR = "#c62828"
 NAME_FILTER_DELAY_MS = 150
+MIN_REFRESH_INTERVAL = 10  # seconds between the starts of two downloads, however often the button is pressed
+COUNTDOWN_TICK_MS = 500
 POLL_INTERVAL_MS = 100
 CELL_PADDING = 4
 
 
+def _clock() -> float:
+    return time.monotonic()
+
+
 def fetch_players_from_server(url: str, login: str, password: str) -> List[Dict]:
-    with ServerApi(url=f"{url}/api", login=login, password=password) as server:
+    server = ServerApi(url=f"{url}/api", login=login, password=password)
+    try:
         return server.get_player_objects()
+    finally:
+        server.close_quietly()  # an answer to the logout that is not what was expected must not lose the players
 
 
 def valid_widths(raw) -> Dict[str, int]:
@@ -95,6 +107,11 @@ class PlayerBrowser(tk.Toplevel):
         self._drag = None
         self._filter_after_id: Optional[str] = None
         self._poll_after_id: Optional[str] = None
+        self._tick_after_id: Optional[str] = None
+        self._last_fetch_started: Optional[float] = None
+        self._pending = False  # an update was asked for while it was too early: it runs when the interval is over
+        self._updated_at: Optional[datetime] = None  # when the players shown were fetched
+        self._failed = False  # the last download failed: what is shown is older
         self._combo_values: Dict[ttk.Combobox, Dict[str, Optional[str]]] = {}
         zero = tkfont.Font(root=self, font=self._font).measure("0")
         self._default_widths = {key: chars * zero + 2 * CELL_PADDING for key, _, chars in COLUMNS}
@@ -105,8 +122,14 @@ class PlayerBrowser(tk.Toplevel):
         self._build_actions()
         self._build_table()
         self.status_var = tk.StringVar()
-        tk.Label(self, textvariable=self.status_var, font=self._font, anchor="w").grid(
-            row=2, column=0, sticky="ew", padx=10, pady=(0, 8))
+        self.updated_var = tk.StringVar()
+        bottom = tk.Frame(self)
+        bottom.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 8))
+        bottom.grid_columnconfigure(0, weight=1)
+        self._status_label = tk.Label(bottom, textvariable=self.status_var, font=self._font, anchor="w")
+        self._status_label.grid(row=0, column=0, sticky="ew")
+        self._default_status_color = str(self._status_label.cget("foreground"))
+        tk.Label(bottom, textvariable=self.updated_var, font=self._font, anchor="e").grid(row=0, column=1, sticky="e")
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
         self._fit_window()
@@ -407,14 +430,59 @@ class PlayerBrowser(tk.Toplevel):
     # ---- loading
 
     def refresh(self):
-        """Fetches the players again in the background, so the window stays responsive."""
-        if self._loading:
+        """
+        Fetches the players from the server again. Two downloads start at least MIN_REFRESH_INTERVAL seconds apart:
+        a press that comes earlier (or while a download is running) is remembered, and the update runs as soon as the
+        interval is over. Further presses before that change nothing; when the update starts the request is used up
+        and the next press asks for the next one.
+        """
+        if self._loading or self._seconds_until_refresh() > 0:
+            self._pending = True
+            self._update_refresh_state()
             return
+        self._start_download()
+
+    def _start_download(self):
+        """The download runs in the background, so the window stays responsive."""
+        self._pending = False
         self._loading = True
-        self.refresh_button.state(["disabled"])
-        self.status_var.set(self.lang.get_message("pb_loading"))
+        self._last_fetch_started = _clock()
+        self._set_status(self.lang.get_message("pb_loading"))
+        self._update_refresh_state()
         threading.Thread(target=self._load, daemon=True).start()
         self._poll_after_id = self.after(POLL_INTERVAL_MS, self._poll)
+
+    def _seconds_until_refresh(self) -> float:
+        if self._last_fetch_started is None:
+            return 0
+        return max(0.0, MIN_REFRESH_INTERVAL - (_clock() - self._last_fetch_started))
+
+    def _update_refresh_state(self):
+        """
+        Starts the update that was asked for early as soon as it is due, and shows how fresh the data is and, while an
+        update is waiting, how long until it runs.
+        """
+        remaining = self._seconds_until_refresh()
+        if self._pending and remaining <= 0 and not self._loading:
+            self._start_download()
+            return
+        parts = []
+        if self._updated_at:
+            parts.append(self.lang.get_message("pb_data_from" if self._failed else "pb_updated",
+                                               time=self._updated_at.strftime("%H:%M:%S")))
+        if self._pending and remaining > 0:
+            parts.append(self.lang.get_message("pb_next_update", seconds=math.ceil(remaining)))
+        self.updated_var.set(" · ".join(parts))
+        if self._tick_after_id:
+            self.after_cancel(self._tick_after_id)
+            self._tick_after_id = None
+        if self._pending:  # look again when it is due, at the latest after a tick (for the countdown)
+            delay = COUNTDOWN_TICK_MS if remaining <= 0 else min(COUNTDOWN_TICK_MS, max(int(remaining * 1000), 1))
+            self._tick_after_id = self.after(delay, self._update_refresh_state)
+
+    def _set_status(self, text: str, failed: bool = False):
+        self.status_var.set(text)
+        self._status_label.configure(foreground=OFFLINE_COLOR if failed else self._default_status_color)
 
     def _load(self):
         try:
@@ -438,11 +506,14 @@ class PlayerBrowser(tk.Toplevel):
             return
         self._poll_after_id = None
         self._loading = False
-        self.refresh_button.state(["!disabled"])
+        self._failed = kind == "error"
         if kind == "error":
-            self.status_var.set(self.lang.get_message("pb_load_failed", reason=value))
-            return
-        self._show_players(value)
+            # What was shown before stays, but it has to be plain that it is not current
+            self._set_status(self.lang.get_message("pb_load_failed", reason=value), failed=True)
+        else:
+            self._updated_at = datetime.now()
+            self._show_players(value)
+        self._update_refresh_state()
 
     def _show_players(self, rows: List[PlayerRow]):
         for widgets in self._widgets.values():
@@ -554,17 +625,17 @@ class PlayerBrowser(tk.Toplevel):
         self._canvas.yview_moveto(0)
         self._visible = visible
         if not self._rows:
-            self.status_var.set(self.lang.get_message("pb_no_players"))
+            self._set_status(self.lang.get_message("pb_no_players"), self._failed)
         elif not visible:
-            self.status_var.set(self.lang.get_message("pb_empty"))
+            self._set_status(self.lang.get_message("pb_empty"), self._failed)
         else:
-            self.status_var.set(self.lang.get_message("pb_count", shown=len(visible), total=len(self._rows)))
+            self._set_status(self.lang.get_message("pb_count", shown=len(visible), total=len(self._rows)), self._failed)
 
     def visible_names(self) -> List[str]:
         return [row.name for row in self._visible]
 
     def destroy(self):
-        for after_id in (self._filter_after_id, self._poll_after_id):
+        for after_id in (self._filter_after_id, self._poll_after_id, self._tick_after_id):
             if after_id:
                 self.after_cancel(after_id)
         super().destroy()

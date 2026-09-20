@@ -268,7 +268,10 @@
         "pb_age_gt_1d": "> 1 den",
         "pb_age_gt_1w": "> 1 týden",
         "pb_age_gt_1mo": "> 1 měsíc",
-        "pb_columns": "Zobrazení sloupců:"
+        "pb_columns": "Zobrazení sloupců:",
+        "pb_updated": "Aktualizováno {time}",
+        "pb_data_from": "Zobrazená data jsou z {time}",
+        "pb_next_update": "aktualizace za {seconds} s"
     },
     "en": {
         "title": "Control panel DSMediaplay",
@@ -539,6 +542,9 @@
         "pb_age_gt_1d": "> 1 day",
         "pb_age_gt_1w": "> 1 week",
         "pb_age_gt_1mo": "> 1 month",
-        "pb_columns": "Show columns:"
+        "pb_columns": "Show columns:",
+        "pb_updated": "Updated {time}",
+        "pb_data_from": "The data shown is from {time}",
+        "pb_next_update": "update in {seconds} s"
     }
 }
