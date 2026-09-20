@@ -108,6 +108,7 @@ class PlayerBrowser(tk.Toplevel):
         self._filter_after_id: Optional[str] = None
         self._poll_after_id: Optional[str] = None
         self._tick_after_id: Optional[str] = None
+        self._settle_after_id: Optional[str] = None
         self._last_fetch_started: Optional[float] = None
         self._pending = False  # an update was asked for while it was too early: it runs when the interval is over
         self._updated_at: Optional[datetime] = None  # when the players shown were fetched
@@ -239,7 +240,7 @@ class PlayerBrowser(tk.Toplevel):
         self._show_sort_arrow()
 
         self._canvas = tk.Canvas(frame, width=1, height=1, highlightthickness=0, borderwidth=0)
-        self._scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self._canvas.yview)
+        self._scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self._scroll_y)
         self._x_scrollbar = ttk.Scrollbar(frame, orient="horizontal", command=self._scroll_x)
         self._canvas.configure(yscrollcommand=self._scrollbar.set, xscrollcommand=self._on_x_scrolled)
         self._canvas.grid(row=2, column=0, sticky="nsew")
@@ -248,6 +249,7 @@ class PlayerBrowser(tk.Toplevel):
         self._body = tk.Frame(self._canvas)
         self._body_separators = [tk.Frame(self._body, width=1, background=SEPARATOR_COLOR) for _ in COLUMNS]
         self._canvas.create_window((0, 0), window=self._body, anchor="nw")
+        self._canvas.bind("<Configure>", lambda _: self._update_scroll_regions())
         for widget in (self._body, self._header, self._filters):
             widget.bind("<Configure>", lambda _: self._update_scroll_regions())
         self._compute_minimum_widths()
@@ -300,6 +302,7 @@ class PlayerBrowser(tk.Toplevel):
                 hidden = key in self._hidden
                 frame.grid_columnconfigure(self._cell_column(index), minsize=0 if hidden else self._widths[key])
                 frame.grid_columnconfigure(self._cell_column(index) + 1, minsize=0 if hidden else SEPARATOR_WIDTH)
+        self._schedule_scroll_update()
 
     def _edge_at(self, x_root: int) -> Optional[str]:
         """The column whose right-hand line is within EDGE_ZONE pixels of the pointer, if any."""
@@ -363,10 +366,50 @@ class PlayerBrowser(tk.Toplevel):
         self._canvas.configure(scrollregion=(0, 0, width, self._body.winfo_reqheight()))
         self._header_canvas.configure(scrollregion=(0, 0, width, self._header.winfo_reqheight()))
         self._filter_canvas.configure(scrollregion=(0, 0, width, self._filters.winfo_reqheight()))
+        self._settle_views()
+
+    def _schedule_scroll_update(self):
+        """
+        The sizes are known once the geometry has been worked out, and a canvas does not always report the resize of
+        a window that is scrolled out of view: so the scroll regions are also brought up to date when things are idle.
+        """
+        if not self._settle_after_id:
+            self._settle_after_id = self.after_idle(self._update_scroll_later)
+
+    def _update_scroll_later(self):
+        self._settle_after_id = None
+        self.update_idletasks()  # the grids first say how large they have become
+        self._update_scroll_regions()
+
+    def _fits(self, axis: str) -> bool:
+        """The table is not larger than the window in this direction: there is nothing to scroll."""
+        if axis == "x":
+            return self._body.winfo_reqwidth() <= self._canvas.winfo_width()
+        return self._body.winfo_reqheight() <= self._canvas.winfo_height()
+
+    def _settle_views(self):
+        """
+        A Tk canvas that is larger than its content can still be scrolled, which pushes the content away from the
+        corner and leaves an empty band (and the header and the filters behind). What fits stays where it belongs.
+        """
+        if self._fits("x"):
+            for canvas in (self._canvas, self._header_canvas, self._filter_canvas):
+                canvas.xview_moveto(0)
+        if self._fits("y"):
+            self._canvas.yview_moveto(0)
 
     def _scroll_x(self, *args):
+        if self._fits("x"):
+            self._settle_views()
+            return
         for canvas in (self._canvas, self._header_canvas, self._filter_canvas):
             canvas.xview(*args)
+
+    def _scroll_y(self, *args):
+        if self._fits("y"):
+            self._settle_views()
+            return
+        self._canvas.yview(*args)
 
     def _on_x_scrolled(self, first, last):
         """The scroll bar shows only while the table is wider than the window."""
@@ -380,7 +423,7 @@ class PlayerBrowser(tk.Toplevel):
         return -event.delta if self.tk.call("tk", "windowingsystem") == "aqua" else -event.delta // 120
 
     def _on_mouse_wheel(self, event):
-        self._canvas.yview_scroll(self._wheel_step(event), "units")
+        self._scroll_y("scroll", self._wheel_step(event), "units")
 
     def _on_shift_mouse_wheel(self, event):
         self._scroll_x("scroll", self._wheel_step(event), "units")
@@ -415,6 +458,7 @@ class PlayerBrowser(tk.Toplevel):
         for index, (key, _, _) in enumerate(COLUMNS):
             for widget in (self._header_cells[key], self._header_separators[index], self._filter_widgets[key]):
                 widget.grid_remove() if key in self._hidden else widget.grid()
+        self._schedule_scroll_update()
 
     def _clear_filter(self, key: str):
         if key == "note":
@@ -623,6 +667,7 @@ class PlayerBrowser(tk.Toplevel):
             else:
                 line.grid(row=0, column=self._cell_column(column) + 1, rowspan=max(1, len(visible)), sticky="ns")
         self._canvas.yview_moveto(0)
+        self._schedule_scroll_update()
         self._visible = visible
         if not self._rows:
             self._set_status(self.lang.get_message("pb_no_players"), self._failed)
@@ -635,7 +680,7 @@ class PlayerBrowser(tk.Toplevel):
         return [row.name for row in self._visible]
 
     def destroy(self):
-        for after_id in (self._filter_after_id, self._poll_after_id, self._tick_after_id):
+        for after_id in (self._filter_after_id, self._poll_after_id, self._tick_after_id, self._settle_after_id):
             if after_id:
                 self.after_cancel(after_id)
         super().destroy()

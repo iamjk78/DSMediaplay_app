@@ -1121,6 +1121,154 @@ class ColumnVisibilityTest(BrowserTestCase):
         self.assertTrue(self.shown(browser, "reported"))
 
 
+class ScrollLimitsTest(BrowserTestCase):
+    """The table can be scrolled only as far as it is larger than the window; nothing is ever pushed away from its corner."""
+
+    def offset(self, browser):
+        """Where the rows are inside their canvas."""
+        return (browser._body.winfo_rootx() - browser._canvas.winfo_rootx(),
+                browser._body.winfo_rooty() - browser._canvas.winfo_rooty())
+
+    def positions(self, browser):
+        """Header cells and filters, from the left edge of the window and the top of their canvases."""
+        return ([browser._header_cells[k].winfo_rootx() for k, _, _ in COLUMNS],
+                [w.winfo_rootx() for w in browser._filter_widgets.values()],
+                browser._header_cells["name"].winfo_rooty() - browser._header_canvas.winfo_rooty(),
+                browser._filter_widgets["name"].winfo_rooty() - browser._filter_canvas.winfo_rooty())
+
+    def wheel(self, browser, delta, shift=False):
+        cell = browser._widgets[id(browser._visible[0])][1]
+        cell.event_generate("<Shift-MouseWheel>" if shift else "<MouseWheel>", delta=delta, x=3, y=3)
+        self.app.update()
+
+    def test_a_table_that_fits_does_not_move_whatever_is_scrolled_with_the_wheel(self):
+        browser = self.open(hidden_columns=["synced", "note"])
+        self.app.update()
+        self.assertTrue(browser._fits("x") and browser._fits("y"))
+        before = (self.offset(browser), self.positions(browser))
+
+        for delta in (-5, 5, -40, 40):
+            self.wheel(browser, delta)
+            self.wheel(browser, delta, shift=True)
+
+        self.assertEqual((self.offset(browser), self.positions(browser)), before)
+        self.assertEqual(self.offset(browser), (0, 0))
+
+    def test_the_scroll_bars_and_the_code_cannot_push_a_table_that_fits_either(self):
+        browser = self.open()
+        self.app.update()
+        browser.geometry("2400x900")
+        self.app.update()
+        before = (self.offset(browser), self.positions(browser))
+
+        for args in (("scroll", 3, "units"), ("scroll", -7, "units"), ("moveto", 0.5), ("moveto", 1.0), ("moveto", -0.5)):
+            browser._scroll_y(*args)
+            browser._scroll_x(*args)
+            self.app.update()
+
+        self.assertEqual((self.offset(browser), self.positions(browser)), before)
+
+    def test_a_short_list_is_not_pushed_down_leaving_an_empty_row_below_the_filters(self):
+        browser = self.open()
+        self.app.update()
+        self.assertTrue(browser._fits("y"))
+        top = browser._widgets[id(browser._visible[0])][1].winfo_rooty()
+
+        for delta in (-10, -30, 25):
+            self.wheel(browser, delta)
+
+        self.assertEqual(browser._widgets[id(browser._visible[0])][1].winfo_rooty(), top)
+
+    def test_a_table_wider_than_the_window_scrolls_and_stops_at_both_ends_without_a_gap(self):
+        browser = self.open(column_widths={"name": 1400, "group": 1400})
+        self.app.update()
+        self.assertFalse(browser._fits("x"))
+
+        browser._scroll_x("moveto", 1.0)
+        self.app.update()
+        right_edge = browser._body.winfo_rootx() + browser._body.winfo_reqwidth()
+        self.assertEqual(right_edge, browser._canvas.winfo_rootx() + browser._canvas.winfo_width())  # no empty band
+        for key, widget in zip((k for k, _, _ in COLUMNS), browser._filter_widgets.values()):
+            if widget.winfo_ismapped():
+                self.assertEqual(widget.winfo_rootx(), browser._header_cells[key].winfo_rootx())
+        for _ in range(5):
+            self.wheel(browser, -40, shift=True)  # further to the right than there is
+        self.assertEqual(browser._body.winfo_rootx() + browser._body.winfo_reqwidth(), right_edge)
+
+        for _ in range(20):
+            self.wheel(browser, 40, shift=True)  # and back to the left, further than there is
+        self.assertEqual(self.offset(browser)[0], 0)
+
+    def test_a_list_longer_than_the_window_scrolls_down_and_up_and_stops_at_the_ends(self):
+        players = [player(f"P{index:03d}", True) for index in range(80)]
+        browser = self.open(players=players)
+        self.app.update()
+        self.assertFalse(browser._fits("y"))
+
+        for _ in range(60):
+            self.wheel(browser, 30)  # up, at the top: nothing happens
+        self.assertEqual(self.offset(browser)[1], 0)
+        browser._scroll_y("moveto", 1.0)
+        self.app.update()
+        bottom = browser._body.winfo_rooty() + browser._body.winfo_reqheight()
+        self.assertEqual(bottom, browser._canvas.winfo_rooty() + browser._canvas.winfo_height())
+        for _ in range(30):
+            self.wheel(browser, -40)  # down, at the bottom
+        self.assertEqual(browser._body.winfo_rooty() + browser._body.winfo_reqheight(), bottom)
+        browser._scroll_y("moveto", 0.0)
+        self.app.update()
+        self.assertEqual(self.offset(browser)[1], 0)
+
+    def test_a_scrolled_table_that_no_longer_needs_scrolling_goes_back_to_its_corner(self):
+        browser = self.open(column_widths={"name": 1400, "group": 1400})
+        self.app.update()
+        browser._scroll_x("moveto", 1.0)
+        self.app.update()
+        self.assertLess(self.offset(browser)[0], 0)
+
+        for key in ("group", "location", "label", "synced", "reported", "note"):
+            browser.toggle_column(key)  # the table is narrower than the window now... but "name" is still 1400 wide
+        browser.reset_columns()
+        self.app.update()
+
+        self.assertTrue(browser._fits("x"))
+        self.assertEqual(self.offset(browser)[0], 0)
+        header, filters, _, _ = self.positions(browser)
+        self.assertEqual(header[0], filters[0])
+
+    def test_making_the_window_larger_takes_a_scrolled_table_back_to_its_corner(self):
+        browser = self.open(column_widths={"name": 800, "group": 500, "location": 400})
+        browser.geometry("900x500")
+        for _ in range(20):
+            self.app.update()
+            time.sleep(0.01)
+        browser._scroll_x("moveto", 1.0)
+        self.app.update()
+        self.assertLess(self.offset(browser)[0], 0)
+        self.assertFalse(browser._fits("x"))
+
+        browser.geometry(f"{browser._body.winfo_reqwidth() + 100}x500")  # wide enough for the whole table
+        for _ in range(30):
+            self.app.update()
+            time.sleep(0.01)
+
+        self.assertTrue(browser._fits("x"))
+        self.assertEqual(self.offset(browser)[0], 0)
+
+    def test_the_header_and_the_filters_scroll_with_the_rows_and_stay_aligned(self):
+        browser = self.open(column_widths={"name": 1400, "group": 1400})
+        self.app.update()
+
+        for fraction in (0.25, 0.5, 1.0, 0.1):
+            browser._scroll_x("moveto", fraction)
+            self.app.update()
+            for key, widget in zip((k for k, _, _ in COLUMNS), browser._filter_widgets.values()):
+                if widget.winfo_ismapped():
+                    self.assertEqual(widget.winfo_rootx(), browser._header_cells[key].winfo_rootx())
+            first_row = browser._widgets[id(browser._visible[0])]
+            self.assertEqual(first_row[2].winfo_rootx(), browser._header_cells["status"].winfo_rootx())
+
+
 class ResetFiltersTest(BrowserTestCase):
     def test_reset_clears_every_filter_and_shows_all_the_players_again(self):
         browser = self.open()
