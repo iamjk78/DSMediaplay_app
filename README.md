@@ -33,7 +33,7 @@ GitHub Actions (`Build` workflow, run manually or by pushing a `v*` tag) builds 
 (`DSMediaplay_app-Setup-<version>.exe`, Inno Setup) and the macOS app with PyInstaller and attaches them to the run as artifacts.
 Running it manually with a `release_tag` (e.g. `v1.0.0`), or pushing a `v*` tag, also publishes a GitHub release
 with the installer and/or `DSMediaplay_app-macos.zip`. On Windows the workflow installs the installer silently, starts the
-installed app and uninstalls it again before the build counts as successful. Locally:
+installed app, installs over it again (a running instance included) and uninstalls it again before the build counts as successful. Locally:
 
 ```bash
 pip install -r requirements-build.txt
@@ -43,7 +43,8 @@ pyinstaller --noconfirm DSMediaplay_app.spec                 # output in dist/
 The installer needs no administrator rights: it installs for the current user
 (`%LOCALAPPDATA%\Programs\DSMediaplay_app`), adds a Start menu shortcut (optionally a desktop one) and an entry in
 *Apps & features* for uninstalling. Uninstalling keeps your account list and saved passwords, so a reinstall
-picks them up again.
+picks them up again. Installing a newer version over an installed one first uninstalls the old version (closing it if it is
+running), so no file of it is left behind; the account list and the passwords stay.
 
 The app icon comes from `assets/ds_media_icon.jpg`; `python packaging/make_icons.py` regenerates
 `assets/app.ico` and `assets/app.icns` from it (a larger source image gives sharper large icons).
