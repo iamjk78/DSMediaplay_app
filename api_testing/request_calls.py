@@ -38,6 +38,26 @@ def _assert_hostname_for(url: str) -> Optional[str]:
     return host.replace("_", "-") if "_" in host else None
 
 
+# "_jdoe", "_asmi", "_bwhi": an underscore and four letters ending the first part of the host name (before "." or the port)
+USER_ABBREVIATION = re.compile(r"^(?P<main>[^.:@/]+)_[A-Za-z]{4}(?=[.:]|$)")
+
+
+def main_account_url(url: str) -> str:
+    """
+    A user of an account (a collaborator) has an address of its own with the user's abbreviation at the end of the
+    first part of the host name: https://acmeshop_jdoe.signage... belongs to the user "jdoe" of the account
+    "acmeshop" and holds nothing but that user's own, empty installation. The players are at the address of the
+    main account, the one without the abbreviation, which is where the web app takes the user when they switch
+    to the main account. Only that first part of the host name is changed, so the address stays on the same server.
+
+    The abbreviation is an underscore and exactly four letters: "acme_shp" or "shop_admin" are names of accounts
+    and stay as they are.
+    """
+    parsed = urlparse(url)
+    netloc = USER_ABBREVIATION.sub(r"\g<main>", parsed.netloc, count=1)  # on the text: a host name has any case
+    return url if netloc == parsed.netloc else parsed._replace(netloc=netloc).geturl()
+
+
 def flatten(xss: List[Any]):
     return [x for xs in xss for x in xs]
 
@@ -115,16 +135,17 @@ class ServerApi:
         Parameters
         ----------
         url : str
-            The base URL for the API.
+            The base URL for the API. The address of a user of an account is replaced by the address of the main
+            account (see `main_account_url`).
         login : str
             The login username.
         password : str
             The password for API access.
         """
-        self._url = url
+        self._url = main_account_url(url)
         self._login = login
         self._password = password
-        self._assert_hostname = _assert_hostname_for(url)
+        self._assert_hostname = _assert_hostname_for(self._url)
         self._session_token = self._get_session_token()
 
     def __enter__(self) -> "ServerApi":
