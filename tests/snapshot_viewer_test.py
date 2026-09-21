@@ -17,8 +17,8 @@ from PIL import Image
 
 from api_testing.request_calls import LoginError, ResponseError, SnapshotError
 from gui_app import gui
-from gui_app.snapshot_viewer import (LIVE_INTERVALS, MIN_REQUEST_INTERVAL, SnapshotSlots, SnapshotViewer,
-                                     ask_save_path)
+from gui_app.snapshot_viewer import (DEFAULT_WINDOW_SIZE, LIVE_INTERVALS, MIN_REQUEST_INTERVAL, SnapshotSlots,
+                                     SnapshotViewer, ask_save_path, valid_window_size)
 from util.language import LanguageManager
 
 
@@ -53,8 +53,8 @@ class ViewerTestCase(unittest.TestCase):
         self.addCleanup(self.app.destroy)
         self.app.update()
 
-    def open(self, fetch=None, slots=None, ask_path=None, wait=True) -> SnapshotViewer:
-        kwargs = {"ask_path": ask_path} if ask_path else {}
+    def open(self, fetch=None, slots=None, ask_path=None, wait=True, **options) -> SnapshotViewer:
+        kwargs = {"ask_path": ask_path, **options} if ask_path else dict(options)
         viewer = SnapshotViewer(self.app, player_name="Lobby 1", player_id="id-1",
                                 credentials=("https://demo.example.com", "jane", "pw"),
                                 slots=slots or SnapshotSlots(), font=("Helvetica", 12),
@@ -294,6 +294,85 @@ class ScalingTest(ViewerTestCase):
         width, height = self.shown(viewer)
         self.assertAlmostEqual(width / height, 0.5, delta=0.05)  # the new image is tall
         self.assertLessEqual(height, viewer.canvas.winfo_height())
+
+
+class WindowSizeTest(ViewerTestCase):
+    """The window opens in the size it is asked for and says when the user gives it another."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 50)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def size(self, viewer):
+        return viewer.winfo_width(), viewer.winfo_height()
+
+    def pump(self, seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            self.app.update()
+            time.sleep(0.01)
+
+    def test_it_opens_in_the_default_size(self):
+        viewer = self.open()
+
+        self.assertEqual(self.size(viewer), DEFAULT_WINDOW_SIZE)
+
+    def test_it_opens_in_the_size_it_is_asked_for(self):
+        viewer = self.open(size=(1100, 700))
+
+        self.assertEqual(self.size(viewer), (1100, 700))
+
+    def test_a_size_larger_than_the_screen_is_cut_down_to_it(self):
+        viewer = self.open(size=(9000, 9000))
+
+        self.assertLess(viewer.winfo_width(), viewer.winfo_screenwidth())
+        self.assertLess(viewer.winfo_height(), viewer.winfo_screenheight())
+
+    def test_opening_reports_nothing(self):
+        reported = MagicMock()
+        self.open(size=(1100, 700), on_resized=reported)
+        self.pump(0.4)
+
+        reported.assert_not_called()
+
+    def test_a_resize_is_reported_once_with_the_final_size(self):
+        reported = MagicMock()
+        viewer = self.open(on_resized=reported)
+
+        for geometry in ("1000x650", "1050x680", "1150x720"):  # the pointer keeps moving
+            viewer.geometry(geometry)
+            self.app.update()
+        self.wait_for(lambda: reported.called)
+        self.pump(0.2)
+
+        reported.assert_called_once_with((1150, 720))
+
+    def test_a_window_closed_right_after_a_resize_still_reports_it(self):
+        reported = MagicMock()
+        viewer = self.open(on_resized=reported)
+        viewer.geometry("1000x650")
+        self.app.update()
+
+        viewer.destroy()
+
+        reported.assert_called_once_with((1000, 650))
+
+    def test_a_saved_size_is_used_only_when_it_makes_sense(self):
+        self.assertEqual(valid_window_size([1100, 700]), (1100, 700))
+        self.assertEqual(valid_window_size((1100, 700)), (1100, 700))
+        for raw in (None, [], [1100], [1100, 700, 5], "1100x700", [1100.5, 700], [True, 700], [10, 700],
+                    [1100, 99999], {"w": 1}):
+            with self.subTest(raw=raw):
+                self.assertIsNone(valid_window_size(raw))
+
+    def test_windows_opened_one_after_another_are_shifted(self):
+        first = self.open(offset=0)
+        second = self.open(offset=30)
+
+        self.assertEqual(second.winfo_x() - first.winfo_x(), 30)
+        self.assertEqual(second.winfo_y() - first.winfo_y(), 30)
 
 
 class SlotsTest(ViewerTestCase):

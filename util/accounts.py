@@ -130,6 +130,20 @@ def set_hidden_player_columns(data: dict, account: str, hidden: list) -> None:
             entry.pop(key, None)
 
 
+def snapshot_window_size(data: dict, account: str):
+    """The size (width, height) the user gave the snapshot windows of this account, or None."""
+    return data["logins"].get(account, {}).get("snapshot_window")
+
+
+def set_snapshot_window_size(data: dict, account: str, size) -> None:
+    """Stores the size of the snapshot windows of the account; None goes back to the default."""
+    entry = data["logins"][account]
+    if size is None:
+        entry.pop("snapshot_window", None)
+    else:
+        entry["snapshot_window"] = [int(size[0]), int(size[1])]
+
+
 def player_font_size(data: dict, account: str):
     """The font size the user chose for the player table of this account, or None."""
     return data["logins"].get(account, {}).get("player_font")

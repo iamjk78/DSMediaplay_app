@@ -22,6 +22,11 @@ MIN_REQUEST_INTERVAL = 10  # seconds between the starts of two snapshots asked f
 MAX_CONCURRENT_SNAPSHOTS = 3
 SLOT_RETRY_MS = 500
 POLL_INTERVAL_MS = 100
+DEFAULT_WINDOW_SIZE = (960, 620)
+MIN_WINDOW_SIDE, MAX_WINDOW_SIDE = 300, 10000
+WINDOW_MARGIN = (40, 120)  # what a window is kept smaller than the screen by: the room for the borders and the dock
+CASCADE_STEP = 30  # pixels a window opens further right and down than the one before it
+RESIZE_REPORT_DELAY_MS = 600  # quiet time after the window was resized before the new size is reported
 SHARPEN_DELAY_MS = 150  # quiet time after a resize before the image is scaled again with the best filter
 IMAGE_BACKGROUND = "#1e1e1e"
 ERROR_COLOR = "#c62828"
@@ -29,6 +34,15 @@ ERROR_COLOR = "#c62828"
 
 def _clock() -> float:
     return time.monotonic()
+
+
+def valid_window_size(raw) -> Optional[Tuple[int, int]]:
+    """A saved window size that makes sense as (width, height), or None; a hand-edited or damaged config is ignored."""
+    if (isinstance(raw, (list, tuple)) and len(raw) == 2
+            and all(isinstance(side, int) and not isinstance(side, bool) for side in raw)
+            and all(MIN_WINDOW_SIDE <= side <= MAX_WINDOW_SIDE for side in raw)):
+        return raw[0], raw[1]
+    return None
 
 
 class SnapshotSlots:
@@ -82,7 +96,10 @@ class SnapshotViewer(tk.Toplevel):
     def __init__(self, master, *, player_name: str, player_id: str, credentials: Tuple[str, str, str],
                  slots: SnapshotSlots, font, button_style: str = "TButton",
                  fetch: Callable[[str, str, str, str], Tuple[bytes, str]] = fetch_snapshot_from_server,
-                 ask_path: Callable[[tk.Misc, str, str], str] = ask_save_path):
+                 ask_path: Callable[[tk.Misc, str, str], str] = ask_save_path,
+                 size: Optional[Tuple[int, int]] = None,
+                 on_resized: Callable[[Tuple[int, int]], None] = lambda size: None,
+                 offset: int = 0):
         super().__init__(master)
         self.lang = master.lang
         self.player_name = player_name
@@ -91,6 +108,9 @@ class SnapshotViewer(tk.Toplevel):
         self._slots = slots
         self._fetch = fetch
         self._ask_path = ask_path
+        self._on_resized = on_resized
+        self._known_size: Optional[Tuple[int, int]] = None
+        self._report_id: Optional[str] = None
         self._font = font
         self._results: "queue.Queue" = queue.Queue()
         self._busy = False  # a snapshot is being taken (or is waiting for a free slot)
@@ -113,7 +133,8 @@ class SnapshotViewer(tk.Toplevel):
         self.title(self.lang.get_message("sv_title", player=player_name))
         set_window_icon(self)
         self._build(button_style)
-        self._place_near(master)
+        self._place_near(master, size or DEFAULT_WINDOW_SIZE, offset)
+        self.bind("<Configure>", self._on_configure, add="+")
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._update_controls()
         self.take_snapshot()
@@ -173,8 +194,32 @@ class SnapshotViewer(tk.Toplevel):
         Tooltip(button, tip)
         return button
 
-    def _place_near(self, master):
-        self.geometry(f"960x620+{master.winfo_rootx() + 40}+{master.winfo_rooty() + 40}")
+    def _place_near(self, master, size: Tuple[int, int], offset: int):
+        """The window opens in the size it was asked for, as far as the screen allows, a little further on than the last."""
+        width = min(size[0], self.winfo_screenwidth() - WINDOW_MARGIN[0])
+        height = min(size[1], self.winfo_screenheight() - WINDOW_MARGIN[1])
+        self.geometry(f"{width}x{height}+{master.winfo_rootx() + 40 + offset}+{master.winfo_rooty() + 40 + offset}")
+
+    def _on_configure(self, event):
+        """When the user has resized the window (and let go of it) its new size is reported, to be remembered."""
+        if event.widget is not self:
+            return
+        size = (event.width, event.height)
+        if min(size) < MIN_WINDOW_SIDE:  # the first event of a new window comes before it has got its size
+            return
+        if self._known_size is None:  # the size the window has when it appears: not something the user did
+            self._known_size = size
+            return
+        if size == self._known_size:
+            return
+        self._known_size = size
+        if self._report_id:
+            self.after_cancel(self._report_id)
+        self._report_id = self.after(RESIZE_REPORT_DELAY_MS, self._report_size)
+
+    def _report_size(self):
+        self._report_id = None
+        self._on_resized((self.winfo_width(), self.winfo_height()))
 
     def set_font(self, font) -> None:
         self._font = font
@@ -424,6 +469,9 @@ class SnapshotViewer(tk.Toplevel):
         self._status_label.configure(foreground=ERROR_COLOR if failed else self._default_status_color)
 
     def destroy(self):
+        if self._report_id:  # resized and closed at once: the size is still remembered
+            self.after_cancel(self._report_id)
+            self._report_size()
         self._closed = True
         self._live = False
         for after_id in (self._next_id, self._slot_id, self._poll_id, self._sharpen_id):

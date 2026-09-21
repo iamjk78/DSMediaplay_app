@@ -583,7 +583,16 @@ class DSMediaplayApp(tk.Tk):
             hidden_columns=accounts.hidden_player_columns(self.all_data, account),
             save_hidden_columns=lambda hidden: self.save_hidden_player_columns(account, hidden),
             font_size=accounts.player_font_size(self.all_data, account),
-            save_font_size=lambda size: self.save_player_font_size(account, size))
+            save_font_size=lambda size: self.save_player_font_size(account, size),
+            snapshot_size=accounts.snapshot_window_size(self.all_data, account),
+            save_snapshot_size=lambda size: self.save_snapshot_window_size(account, size))
+
+    def save_snapshot_window_size(self, account, size):
+        """The size the user gave the snapshot windows is remembered per account too."""
+        self.sync_from_disk()
+        if account in self.account_data:
+            accounts.set_snapshot_window_size(self.all_data, account, size)
+            self.save_account_configs()
 
     def save_player_font_size(self, account, size):
         """The font size of the player table is remembered per account as well."""

@@ -16,7 +16,8 @@ from api_testing.request_calls import LoginError, ServerApi
 from gui_app.color_button import GREEN, RED, make_color_button, set_button_colors, set_button_interactive
 from gui_app.icons import set_window_icon
 from gui_app.multi_select import MultiSelectCombo
-from gui_app.snapshot_viewer import SnapshotSlots, SnapshotViewer, fetch_snapshot_from_server
+from gui_app.snapshot_viewer import (CASCADE_STEP, SnapshotSlots, SnapshotViewer, fetch_snapshot_from_server,
+                                     valid_window_size)
 from gui_app.tooltip import Tooltip
 from util.accounts import DEFAULT_HIDDEN_COLUMNS
 from util.player_filter import (AGE_OPTIONS, TEMPERATURE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row,
@@ -122,7 +123,9 @@ class PlayerBrowser(tk.Toplevel):
                  save_hidden_columns: Callable[[List[str]], None] = lambda hidden: None,
                  font_size: Optional[int] = None,
                  save_font_size: Callable[[int], None] = lambda size: None,
-                 snapshot_fetch: Callable[[str, str, str, str], Tuple[bytes, str]] = fetch_snapshot_from_server):
+                 snapshot_fetch: Callable[[str, str, str, str], Tuple[bytes, str]] = fetch_snapshot_from_server,
+                 snapshot_size=None,
+                 save_snapshot_size: Callable[[Tuple[int, int]], None] = lambda size: None):
         super().__init__(master)
         self.lang = master.lang
         self.connection = (url, login)
@@ -143,6 +146,8 @@ class PlayerBrowser(tk.Toplevel):
         self._sort = ("name", False)
         self._results: "queue.Queue" = queue.Queue()
         self._snapshot_fetch = snapshot_fetch
+        self._snapshot_size = valid_window_size(snapshot_size)  # what the user made the snapshot windows, if they did
+        self._save_snapshot_size = save_snapshot_size
         self._snapshot_slots = SnapshotSlots()  # shared by the snapshot windows of this account
         self._viewers: Dict[str, SnapshotViewer] = {}  # by the id of the player: one window for each
         self._loading = False
@@ -806,6 +811,12 @@ class PlayerBrowser(tk.Toplevel):
         Tooltip(button, lambda: self.lang.get_message("pb_tip_snapshot" if can_ask else "pb_tip_snapshot_offline"))
         return [button] + cells
 
+    def _remember_snapshot_size(self, size: Tuple[int, int]):
+        """The next snapshot windows open in the size the user has just given one of them."""
+        if valid_window_size(size) and size != self._snapshot_size:
+            self._snapshot_size = size
+            self._save_snapshot_size(size)
+
     def show_snapshot(self, row: PlayerRow):
         """Opens the window with the player's snapshot; when it is open already it is brought forward."""
         viewer = self._viewers.get(row.player_id)
@@ -818,7 +829,9 @@ class PlayerBrowser(tk.Toplevel):
             return
         viewer = SnapshotViewer(self, player_name=row.name, player_id=row.player_id, credentials=self._credentials,
                                 slots=self._snapshot_slots, font=self._font, button_style=BUTTON_STYLE,
-                                fetch=self._snapshot_fetch)
+                                fetch=self._snapshot_fetch, size=self._snapshot_size,
+                                on_resized=self._remember_snapshot_size,
+                                offset=CASCADE_STEP * len(self._viewers))
         self._viewers[row.player_id] = viewer
         viewer.bind("<Destroy>", lambda event: self._viewers.pop(row.player_id, None) if event.widget is viewer else None,
                     add="+")

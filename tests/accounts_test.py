@@ -2,7 +2,8 @@ import unittest
 
 from util.accounts import (AccountError, add_account, add_login, hidden_player_columns, normalize_url, player_columns,
                            player_font_size, remember_selection, remove_account, remove_login,
-                           set_hidden_player_columns, set_player_columns, set_player_font_size)
+                           set_hidden_player_columns, set_player_columns, set_player_font_size,
+                           set_snapshot_window_size, snapshot_window_size)
 
 
 def empty_config() -> dict:
@@ -309,6 +310,34 @@ class PlayerFontSizeTest(unittest.TestCase):
         remove_account(data, "A")
 
         self.assertIsNone(player_font_size(data, "A"))
+
+
+class SnapshotWindowSizeTest(unittest.TestCase):
+    def config(self):
+        data = empty_config()
+        add_account(data, "A", "https://a.example.com")
+        add_account(data, "B", "https://b.example.com")
+        return data
+
+    def test_kept_per_account_and_none_forgets_it(self):
+        data = self.config()
+
+        set_snapshot_window_size(data, "A", (1100, 700))
+
+        self.assertEqual(snapshot_window_size(data, "A"), [1100, 700])
+        self.assertIsNone(snapshot_window_size(data, "B"))
+        self.assertIsNone(snapshot_window_size(data, "nope"))
+        set_snapshot_window_size(data, "A", None)
+        self.assertNotIn("snapshot_window", data["logins"]["A"])
+
+    def test_independent_of_the_other_settings_of_the_player_table(self):
+        data = self.config()
+        set_player_font_size(data, "A", 15)
+
+        set_snapshot_window_size(data, "A", (1100, 700))
+        set_snapshot_window_size(data, "A", None)
+
+        self.assertEqual(player_font_size(data, "A"), 15)
 
 
 if __name__ == "__main__":

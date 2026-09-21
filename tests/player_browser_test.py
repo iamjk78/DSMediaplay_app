@@ -16,6 +16,7 @@ import requests
 from api_testing.request_calls import LoginError, ResponseError, ServerApi
 from gui_app import gui
 from gui_app.color_button import GREEN, RED, ColorButton, button_interactive
+from gui_app.snapshot_viewer import DEFAULT_WINDOW_SIZE
 from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
                                     SEPARATOR_COLOR, SEPARATOR_WIDTH, SNAPSHOT_COLUMN_MINSIZE, SORT_CURSOR, TOGGLE_COLUMNS,
                                     PlayerBrowser, valid_hidden, valid_widths)
@@ -2027,6 +2028,35 @@ class MainWindowTest(BrowserTestCase):
         with open(self.app.config_file, encoding="utf-8") as file:
             self.assertEqual(json.load(file)["logins"], {})
 
+    def test_the_size_of_the_snapshot_windows_is_stored_per_account(self):
+        self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {}}
+        self.app.account_data = self.app.all_data["logins"]
+        self.app.save_account_configs()
+
+        self.app.save_snapshot_window_size("Demo", (1100, 700))
+
+        with open(self.app.config_file, encoding="utf-8") as file:
+            self.assertEqual(json.load(file)["logins"]["Demo"]["snapshot_window"], [1100, 700])
+
+    def test_the_stored_size_of_the_snapshot_windows_is_given_to_the_browser(self):
+        self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {}, "snapshot_window": [1100, 700]}
+        self.app.account_data = self.app.all_data["logins"]
+        self.app.save_account_configs()
+        self.app.option_choose_administration.set("Demo")
+        with patch("gui_app.gui.PlayerBrowser") as browser_class:
+            self.app.open_player_browser("https://x", "jane", "pw")
+
+        self.assertEqual(browser_class.call_args.kwargs["snapshot_size"], [1100, 700])
+        browser_class.call_args.kwargs["save_snapshot_size"]((900, 600))
+        with open(self.app.config_file, encoding="utf-8") as file:
+            self.assertEqual(json.load(file)["logins"]["Demo"]["snapshot_window"], [900, 600])
+
+    def test_saving_the_snapshot_window_size_for_a_removed_account_writes_nothing(self):
+        self.app.save_snapshot_window_size("Gone", (1100, 700))
+
+        with open(self.app.config_file, encoding="utf-8") as file:
+            self.assertEqual(json.load(file)["logins"], {})
+
     def test_saving_widths_for_a_removed_account_writes_nothing(self):
         self.app.save_player_columns("Gone", {"name": 300})
 
@@ -2190,6 +2220,79 @@ class SnapshotButtonTest(TableButtons, BrowserTestCase):
 
         self.assertIs(browser._viewers["id-Lobby"], viewer)
         self.assertTrue(viewer.winfo_exists())
+
+    def test_the_next_window_opens_in_the_size_the_user_gave_the_previous_one(self):
+        saved = MagicMock()
+        browser = self.open_with_snapshots(save_snapshot_size=saved)
+        self.press(self.button(browser, "Lobby")[1])
+        self.app.update()
+        first = browser._viewers["id-Lobby"]
+        self.wait_for(lambda: not first.busy)
+
+        with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 50):
+            first.geometry("1100x700")
+            self.wait_for(lambda: saved.called)
+        self.press(self.button(browser, "Sklad")[1])
+        self.app.update()
+        second = browser._viewers["id-Sklad"]
+
+        saved.assert_called_once_with((1100, 700))
+        self.assertEqual((second.winfo_width(), second.winfo_height()), (1100, 700))
+
+    def test_the_size_that_was_saved_before_is_used_from_the_start(self):
+        browser = self.open_with_snapshots(snapshot_size=[1000, 650])
+        self.press(self.button(browser, "Lobby")[1])
+        self.app.update()
+        viewer = browser._viewers["id-Lobby"]
+
+        self.assertEqual((viewer.winfo_width(), viewer.winfo_height()), (1000, 650))
+
+    def test_a_damaged_saved_size_is_ignored(self):
+        browser = self.open_with_snapshots(snapshot_size=[5, "x"])
+        self.press(self.button(browser, "Lobby")[1])
+        self.app.update()
+        viewer = browser._viewers["id-Lobby"]
+
+        self.assertEqual((viewer.winfo_width(), viewer.winfo_height()), DEFAULT_WINDOW_SIZE)
+
+    def test_opening_and_closing_windows_saves_nothing_while_the_user_changes_no_size(self):
+        saved = MagicMock()
+        browser = self.open_with_snapshots(save_snapshot_size=saved)
+        self.press(self.button(browser, "Lobby")[1])
+        self.app.update()
+        self.press(self.button(browser, "Sklad")[1])
+        self.app.update()
+        for viewer in list(browser._viewers.values()):
+            viewer.destroy()
+        self.app.update()
+
+        saved.assert_not_called()
+
+    def test_the_same_size_is_not_saved_again(self):
+        saved = MagicMock()
+        browser = self.open_with_snapshots(save_snapshot_size=saved)
+        self.press(self.button(browser, "Lobby")[1])
+        self.app.update()
+        viewer = browser._viewers["id-Lobby"]
+        with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 50):
+            viewer.geometry("1100x700")
+            self.wait_for(lambda: saved.called)
+            viewer.geometry("1000x650")
+            viewer.geometry("1100x700")
+            self.app.update()
+            self.wait_for(lambda: viewer._report_id is None)
+
+        saved.assert_called_once_with((1100, 700))
+
+    def test_the_windows_are_shifted_so_that_none_hides_another(self):
+        browser = self.open_with_snapshots()
+        self.press(self.button(browser, "Lobby")[1])
+        self.app.update()
+        self.press(self.button(browser, "Sklad")[1])
+        self.app.update()
+        first, second = browser._viewers["id-Lobby"], browser._viewers["id-Sklad"]
+
+        self.assertEqual((second.winfo_x() - first.winfo_x(), second.winfo_y() - first.winfo_y()), (30, 30))
 
     def test_the_text_size_follows_to_the_open_windows(self):
         browser = self.open_with_snapshots()
