@@ -2335,6 +2335,94 @@ class AutoRefreshTest(TableButtons, BrowserTestCase):
         self.assertEqual(fetch.call_count, count)
 
 
+class LargeTableTest(BrowserTestCase):
+    """
+    Changing a table of hundreds of players used to take tens of seconds (every cell is a window that was moved and
+    redrawn one by one while it was on the screen). It is done with the rows hidden now.
+    """
+
+    def open_large(self, count=310):
+        players = [player(f"Player {index:03d}", index % 3 != 0, f"Group {index % 9}", f"Praha {index % 40}",
+                          ["a", "b"], notes="poznamka " * 3, temperature="47.2", version="5.3.1")
+                   for index in range(count)]
+        fetch = MagicMock(return_value=players)
+        return self.open(fetch=fetch), fetch
+
+    def state(self, browser):
+        return browser._canvas.itemcget(browser._body_item, "state")
+
+    def seconds(self, action):
+        started = time.perf_counter()
+        action()
+        self.app.update()
+        return time.perf_counter() - started
+
+    def test_hiding_and_showing_columns_and_changing_the_text_size_download_nothing(self):
+        browser, fetch = self.open_large(60)
+
+        browser.toggle_column("note")
+        browser.toggle_column("note")
+        browser.set_font_size(15)
+        browser.set_font_size(12)
+        browser.reset_columns()
+        self.app.update()
+
+        self.assertEqual(fetch.call_count, 1)
+
+    def test_a_column_is_shown_or_hidden_in_seconds_not_in_tens_of_seconds(self):
+        browser, _ = self.open_large()
+
+        hide = self.seconds(lambda: browser.toggle_column("location"))
+        show = self.seconds(lambda: browser.toggle_column("location"))
+
+        self.assertLess(max(hide, show), 4, f"{hide:.1f} s to hide, {show:.1f} s to show")
+
+    def test_the_text_size_changes_in_seconds_not_in_tens_of_seconds(self):
+        browser, _ = self.open_large()
+
+        larger = self.seconds(lambda: browser.set_font_size(14))
+        smaller = self.seconds(lambda: browser.set_font_size(12))
+
+        self.assertLess(max(larger, smaller), 4, f"{larger:.1f} s larger, {smaller:.1f} s smaller")
+
+    def test_the_rows_are_hidden_during_a_change_and_shown_after_it(self):
+        browser, _ = self.open_large(20)
+        during = []
+        real = browser._apply_widths
+
+        def watching():
+            during.append(self.state(browser))
+            real()
+        browser._apply_widths = watching
+        self.assertEqual(self.state(browser), "normal")
+
+        browser.set_font_size(14)
+        browser.toggle_column("note")
+
+        self.assertTrue(during and all(state == "hidden" for state in during), during)
+        self.assertEqual(self.state(browser), "normal")
+
+    def test_the_rows_are_shown_again_when_a_change_fails(self):
+        browser, _ = self.open_large(20)
+
+        with patch("gui_app.player_browser.sort_rows", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                browser.apply_filters()
+
+        self.assertEqual(self.state(browser), "normal")
+        browser.apply_filters()
+        self.assertEqual(len(browser.visible_names()), 20)
+
+    def test_a_change_inside_a_change_shows_the_rows_only_at_the_end(self):
+        browser, _ = self.open_large(20)
+
+        with browser._frozen():
+            with browser._frozen():
+                self.assertEqual(self.state(browser), "hidden")
+            self.assertEqual(self.state(browser), "hidden")
+        self.assertEqual(self.state(browser), "normal")
+
+
 class MessageKeysTest(unittest.TestCase):
     """Every literal message key the code asks for must exist in both languages (a missing one is a KeyError)."""
 

@@ -1,3 +1,5 @@
+import contextlib
+import functools
 import math
 import queue
 import threading
@@ -61,6 +63,15 @@ CELL_PADDING = 4
 
 def _clock() -> float:
     return time.monotonic()
+
+
+def frozen_table(method):
+    """The method changes the table (its rows, columns or text size) with the table hidden meanwhile; see _frozen."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._frozen():
+            return method(self, *args, **kwargs)
+    return wrapper
 
 
 def fetch_players_from_server(url: str, login: str, password: str) -> List[Dict]:
@@ -328,7 +339,8 @@ class PlayerBrowser(tk.Toplevel):
         self._x_scrollbar.grid(row=3, column=0, sticky="ew")
         self._body = tk.Frame(self._canvas)
         self._body_separators = [tk.Frame(self._body, width=1, background=SEPARATOR_COLOR) for _ in COLUMNS]
-        self._canvas.create_window((0, 0), window=self._body, anchor="nw")
+        self._body_item = self._canvas.create_window((0, 0), window=self._body, anchor="nw")
+        self._frozen_depth = 0
         self._canvas.bind("<Configure>", lambda _: self._update_scroll_regions())
         for widget in (self._body, self._header, self._filters):
             widget.bind("<Configure>", lambda _: self._update_scroll_regions())
@@ -402,6 +414,27 @@ class PlayerBrowser(tk.Toplevel):
         if self._customized:
             self._save_column_widths(self.column_widths())
 
+    @contextlib.contextmanager
+    def _frozen(self):
+        """
+        Hides the rows of the table for as long as it is being changed and shows them, finished, at the end. Every cell
+        is a window of its own, and while the table is on the screen each of them is moved and redrawn one after the
+        other: with a few hundred players that takes many seconds for a change of the text size, a column or a filter.
+        Hidden, the same change takes a fraction of a second. Nothing is painted in between, so nothing flickers.
+        Changes inside changes are fine: the rows are shown when the outermost one is done.
+        """
+        self._frozen_depth += 1
+        if self._frozen_depth == 1:
+            self._canvas.itemconfigure(self._body_item, state="hidden")
+        try:
+            yield
+        finally:
+            self._frozen_depth -= 1
+            if self._frozen_depth == 0:
+                self.update_idletasks()  # the geometry is worked out while the rows are hidden, which is cheap
+                self._canvas.itemconfigure(self._body_item, state="normal")
+
+    @frozen_table
     def _apply_font(self, ratio: float):
         self._configure_styles()
         bold = (self._family, self._font_size, "bold")
@@ -440,6 +473,7 @@ class PlayerBrowser(tk.Toplevel):
     def column_widths(self) -> Dict[str, int]:
         return dict(self._widths)
 
+    @frozen_table
     def _apply_widths(self):
         """Every column is exactly as wide as set; the text that does not fit is cut off."""
         for frame in (self._filters, self._header, self._body):
@@ -581,6 +615,7 @@ class PlayerBrowser(tk.Toplevel):
     def hidden_columns(self) -> List[str]:
         return [key for key in TOGGLE_COLUMNS if key in self._hidden]
 
+    @frozen_table
     def toggle_column(self, key: str):
         """Shows or hides an optional column together with its filter; hiding also clears that filter."""
         if key in self._hidden:
@@ -727,6 +762,7 @@ class PlayerBrowser(tk.Toplevel):
             self._show_players(value)
         self._update_refresh_state()
 
+    @frozen_table
     def _show_players(self, rows: List[PlayerRow]):
         scroll = self._canvas.yview()[0]  # the table stays where it was scrolled to, also when it updates itself
         for widgets in self._widgets.values():
@@ -844,6 +880,7 @@ class PlayerBrowser(tk.Toplevel):
             arrow = (" ▼" if self._sort[1] else " ▲") if key == self._sort[0] else ""
             self._header_cells[key].configure(text=self.lang.get_message(message) + arrow)
 
+    @frozen_table
     def apply_filters(self, keep_scroll: bool = False):
         """Shows the players that match all the filters, in the chosen order (from the top, unless `keep_scroll`)."""
         if self._filter_after_id:
