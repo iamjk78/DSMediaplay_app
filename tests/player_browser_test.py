@@ -19,7 +19,7 @@ from gui_app.color_button import GREEN, RED, ColorButton, button_interactive
 from gui_app.snapshot_viewer import DEFAULT_WINDOW_SIZE
 from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
                                     SEPARATOR_COLOR, SEPARATOR_WIDTH, SNAPSHOT_COLUMN_MINSIZE, SORT_CURSOR, TOGGLE_COLUMNS,
-                                    PlayerBrowser, valid_hidden, valid_widths)
+                                    PlayerBrowser, valid_hidden, valid_widths, valid_window_geometry)
 from util.language import LanguageManager
 
 ACTION = "show_player_snapshots"
@@ -2057,6 +2057,25 @@ class MainWindowTest(BrowserTestCase):
         with open(self.app.config_file, encoding="utf-8") as file:
             self.assertEqual(json.load(file)["logins"], {})
 
+    def test_the_place_of_the_table_window_is_stored_per_account_and_given_to_the_browser(self):
+        self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {}, "player_window": [1150, 640, 120, 130]}
+        self.app.account_data = self.app.all_data["logins"]
+        self.app.save_account_configs()
+        self.app.option_choose_administration.set("Demo")
+        with patch("gui_app.gui.PlayerBrowser") as browser_class:
+            self.app.open_player_browser("https://x", "jane", "pw")
+
+        self.assertEqual(browser_class.call_args.kwargs["window_geometry"], [1150, 640, 120, 130])
+        browser_class.call_args.kwargs["save_window_geometry"]((1000, 650, 150, 110))
+        with open(self.app.config_file, encoding="utf-8") as file:
+            self.assertEqual(json.load(file)["logins"]["Demo"]["player_window"], [1000, 650, 150, 110])
+
+    def test_saving_the_table_window_place_for_a_removed_account_writes_nothing(self):
+        self.app.save_player_window_geometry("Gone", (1000, 650, 150, 110))
+
+        with open(self.app.config_file, encoding="utf-8") as file:
+            self.assertEqual(json.load(file)["logins"], {})
+
     def test_saving_widths_for_a_removed_account_writes_nothing(self):
         self.app.save_player_columns("Gone", {"name": 300})
 
@@ -2436,6 +2455,122 @@ class AutoRefreshTest(TableButtons, BrowserTestCase):
             time.sleep(0.01)
 
         self.assertEqual(fetch.call_count, count)
+
+
+class WindowGeometryTest(BrowserTestCase):
+    """The table window opens where and how large the user left it, and says when they move or resize it."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = patch("gui_app.player_browser.GEOMETRY_REPORT_DELAY_MS", 50)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def pump(self, seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            self.app.update()
+            time.sleep(0.01)
+
+    def test_a_window_with_nothing_saved_opens_as_before(self):
+        browser = self.open()
+        self.app.update()
+
+        self.assertEqual(browser.winfo_height(), 600)
+
+    def test_it_opens_where_and_how_large_it_was_left(self):
+        browser = self.open(window_geometry=[1300, 640, 120, 130])
+        self.pump(0.2)
+
+        self.assertEqual(browser.geometry(), "1300x640+120+130")
+
+    def test_a_saved_width_too_small_for_the_buttons_is_widened(self):
+        browser = self.open(window_geometry=[300, 640, 120, 130])  # 300 is the least a saved window can be
+        self.pump(0.2)
+
+        self.assertGreater(browser.winfo_width(), 300)
+        self.assertGreaterEqual(browser.winfo_width(), browser._actions_bar.winfo_reqwidth())
+
+    def test_a_size_larger_than_the_screen_is_cut_down_to_it(self):
+        browser = self.open(window_geometry=[9000, 9000, 0, 100])
+        self.pump(0.2)
+
+        self.assertLess(browser.winfo_width(), browser.winfo_screenwidth())
+        self.assertLess(browser.winfo_height(), browser.winfo_screenheight())
+
+    def test_a_damaged_saved_geometry_is_ignored(self):
+        for raw in ("1300x640+1+1", [1300, 640], [1300, 640, "x", 3], [5, 640, 1, 1], [True, 640, 1, 1], {}):
+            with self.subTest(raw=raw):
+                self.assertIsNone(valid_window_geometry(raw))
+        browser = self.open(window_geometry=[5, "x", 1])
+        self.app.update()
+
+        self.assertEqual(browser.winfo_height(), 600)
+
+    def test_moving_and_resizing_is_reported_once_with_the_final_place(self):
+        saved = MagicMock()
+        browser = self.open(save_window_geometry=saved)
+        self.pump(0.2)
+
+        for geometry in ("1300x650+150+110", "1350x660+160+120", "1400x680+170+130"):  # the pointer keeps moving
+            browser.geometry(geometry)
+            self.app.update()
+        self.wait_for(lambda: saved.called)
+        self.pump(0.2)
+
+        saved.assert_called_once_with((1400, 680, 170, 130))
+
+    def test_moving_alone_is_reported_too(self):
+        saved = MagicMock()
+        browser = self.open(save_window_geometry=saved)
+        self.pump(0.2)
+        size = browser.geometry().split("+")[0]
+
+        browser.geometry(f"{size}+210+140")
+        self.wait_for(lambda: saved.called)
+
+        self.assertEqual(saved.call_args.args[0][2:], (210, 140))
+
+    def test_opening_reports_nothing(self):
+        saved = MagicMock()
+        self.open(window_geometry=[1300, 640, 120, 130], save_window_geometry=saved)
+        self.pump(0.4)
+
+        saved.assert_not_called()
+
+    def test_the_same_place_is_not_saved_again(self):
+        saved = MagicMock()
+        browser = self.open(window_geometry=[1300, 640, 120, 130], save_window_geometry=saved)
+        self.pump(0.2)
+
+        browser.geometry("1300x650+150+110")
+        self.wait_for(lambda: saved.called)
+        browser.geometry("1300x640+120+130")
+        self.wait_for(lambda: saved.call_count == 2)
+        browser.geometry("1300x640+120+130")
+        self.pump(0.3)
+
+        self.assertEqual([call.args[0] for call in saved.call_args_list], [(1300, 650, 150, 110), (1300, 640, 120, 130)])
+
+    def test_a_window_closed_right_after_being_moved_still_reports_it(self):
+        saved = MagicMock()
+        browser = self.open(save_window_geometry=saved)
+        self.pump(0.2)
+        browser.geometry("1300x650+150+110")
+        self.app.update()
+
+        browser.destroy()
+
+        saved.assert_called_once_with((1300, 650, 150, 110))
+
+    def test_a_change_of_the_text_size_does_not_lose_the_place(self):
+        browser = self.open(window_geometry=[1300, 640, 120, 130])
+        self.pump(0.2)
+
+        browser.set_font_size(14)
+        self.pump(0.2)
+
+        self.assertEqual(browser.geometry().split("+", 1)[1], "120+130")
 
 
 class LargeTableTest(BrowserTestCase):

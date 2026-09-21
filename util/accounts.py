@@ -144,6 +144,20 @@ def set_snapshot_window_size(data: dict, account: str, size) -> None:
         entry["snapshot_window"] = [int(size[0]), int(size[1])]
 
 
+def player_window_geometry(data: dict, account: str):
+    """The size and position (width, height, x, y) the user gave the player table window of this account, or None."""
+    return data["logins"].get(account, {}).get("player_window")
+
+
+def set_player_window_geometry(data: dict, account: str, geometry) -> None:
+    """Stores the size and position of the account's player table window; None goes back to the default."""
+    entry = data["logins"][account]
+    if geometry is None:
+        entry.pop("player_window", None)
+    else:
+        entry["player_window"] = [int(value) for value in geometry]
+
+
 def player_font_size(data: dict, account: str):
     """The font size the user chose for the player table of this account, or None."""
     return data["logins"].get(account, {}).get("player_font")

@@ -584,8 +584,17 @@ class DSMediaplayApp(tk.Tk):
             save_hidden_columns=lambda hidden: self.save_hidden_player_columns(account, hidden),
             font_size=accounts.player_font_size(self.all_data, account),
             save_font_size=lambda size: self.save_player_font_size(account, size),
+            window_geometry=accounts.player_window_geometry(self.all_data, account),
+            save_window_geometry=lambda geometry: self.save_player_window_geometry(account, geometry),
             snapshot_size=accounts.snapshot_window_size(self.all_data, account),
             save_snapshot_size=lambda size: self.save_snapshot_window_size(account, size))
+
+    def save_player_window_geometry(self, account, geometry):
+        """The size and position of the player table window are remembered per account too."""
+        self.sync_from_disk()
+        if account in self.account_data:
+            accounts.set_player_window_geometry(self.all_data, account, geometry)
+            self.save_account_configs()
 
     def save_snapshot_window_size(self, account, size):
         """The size the user gave the snapshot windows is remembered per account too."""

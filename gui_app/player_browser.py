@@ -2,6 +2,7 @@ import contextlib
 import functools
 import math
 import queue
+import re
 import threading
 import time
 import tkinter as tk
@@ -53,6 +54,11 @@ LARGE_A_STYLE = "PlayerBrowserLargeA.TButton"
 ONLINE_COLOR = "#2e7d32"
 OFFLINE_COLOR = "#c62828"
 NAME_FILTER_DELAY_MS = 150
+GEOMETRY_REPORT_DELAY_MS = 600  # quiet time after the window was moved or resized before that is reported
+MIN_WINDOW_SIDE, MAX_WINDOW_SIDE, MAX_WINDOW_POSITION = 300, 10000, 20000
+WINDOW_HEIGHT = 600  # of a window that has no size saved
+SCREEN_MARGIN = (20, 120)  # what a window is kept smaller than the screen by: the room for the borders and the dock
+GEOMETRY_PATTERN = re.compile(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)")
 MAX_SNAPSHOT_WINDOWS = 5  # players whose snapshot can be open at the same time
 MIN_REFRESH_INTERVAL = 10  # seconds between the starts of two downloads, however often the button is pressed
 AUTO_REFRESH_SECONDS = 600  # a window that is left open updates itself this long after its last download started
@@ -99,6 +105,18 @@ def valid_hidden(raw) -> FrozenSet[str]:
     return frozenset(key for key in raw if key in TOGGLE_COLUMNS)
 
 
+def valid_window_geometry(raw) -> Optional[Tuple[int, int, int, int]]:
+    """A saved size and position as (width, height, x, y), or None: a hand-edited or damaged config is ignored."""
+    if not (isinstance(raw, (list, tuple)) and len(raw) == 4
+            and all(isinstance(value, int) and not isinstance(value, bool) for value in raw)):
+        return None
+    width, height, x, y = raw
+    if (MIN_WINDOW_SIDE <= width <= MAX_WINDOW_SIDE and MIN_WINDOW_SIDE <= height <= MAX_WINDOW_SIDE
+            and abs(x) <= MAX_WINDOW_POSITION and abs(y) <= MAX_WINDOW_POSITION):
+        return width, height, x, y
+    return None
+
+
 def valid_font_size(raw) -> Optional[int]:
     """A saved font size that makes sense, or None."""
     if isinstance(raw, int) and not isinstance(raw, bool) and MIN_FONT_SIZE <= raw <= MAX_FONT_SIZE:
@@ -125,7 +143,9 @@ class PlayerBrowser(tk.Toplevel):
                  save_font_size: Callable[[int], None] = lambda size: None,
                  snapshot_fetch: Callable[[str, str, str, str], Tuple[bytes, str]] = fetch_snapshot_from_server,
                  snapshot_size=None,
-                 save_snapshot_size: Callable[[Tuple[int, int]], None] = lambda size: None):
+                 save_snapshot_size: Callable[[Tuple[int, int]], None] = lambda size: None,
+                 window_geometry=None,
+                 save_window_geometry: Callable[[Tuple[int, int, int, int]], None] = lambda geometry: None):
         super().__init__(master)
         self.lang = master.lang
         self.connection = (url, login)
@@ -146,6 +166,10 @@ class PlayerBrowser(tk.Toplevel):
         self._sort = ("name", False)
         self._results: "queue.Queue" = queue.Queue()
         self._snapshot_fetch = snapshot_fetch
+        self._saved_geometry = valid_window_geometry(window_geometry)  # where the user left this window last time
+        self._save_window_geometry = save_window_geometry
+        self._known_geometry: Optional[Tuple[int, int, int, int]] = None
+        self._geometry_after_id: Optional[str] = None
         self._snapshot_size = valid_window_size(snapshot_size)  # what the user made the snapshot windows, if they did
         self._save_snapshot_size = save_snapshot_size
         self._snapshot_slots = SnapshotSlots()  # shared by the snapshot windows of this account
@@ -184,6 +208,7 @@ class PlayerBrowser(tk.Toplevel):
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
         self._fit_window()
+        self.bind("<Configure>", self._on_window_configure, add="+")
         self.refresh()
 
     # ---- construction
@@ -385,7 +410,55 @@ class PlayerBrowser(tk.Toplevel):
         buttons = self._actions_bar.winfo_reqwidth() + 30
         table = self._header.winfo_reqwidth() + self._scrollbar.winfo_reqwidth() + 30
         self.minsize(buttons, 300)
-        self.geometry(f"{min(max(buttons, table), self.winfo_screenwidth() - 20)}x600")
+        screen_width, screen_height = self.winfo_screenwidth(), self.winfo_screenheight()
+        if self._saved_geometry is None:
+            self.geometry(f"{min(max(buttons, table), screen_width - SCREEN_MARGIN[0])}x{WINDOW_HEIGHT}")
+            return
+        width, height, x, y = self._saved_geometry
+        width = min(max(width, buttons), screen_width - SCREEN_MARGIN[0])
+        height = min(height, screen_height - SCREEN_MARGIN[1])
+        place = f"+{x}+{y}" if self._is_reachable(x, y, width) else ""
+        self.geometry(f"{width}x{height}{place}")
+
+    def _is_reachable(self, x: int, y: int, width: int) -> bool:
+        """
+        A position the user can still get at: a monitor may have been unplugged since it was saved. macOS moves a
+        window that is off every screen by itself (and Tk knows only the main screen there), elsewhere the position
+        is checked against the whole desktop.
+        """
+        if self.tk.call("tk", "windowingsystem") == "aqua":
+            return True
+        left, top = self.winfo_vrootx(), self.winfo_vrooty()
+        right, bottom = left + self.winfo_vrootwidth(), top + self.winfo_vrootheight()
+        return left - width + 100 <= x <= right - 100 and top <= y <= bottom - 50
+
+    def _current_geometry(self) -> Optional[Tuple[int, int, int, int]]:
+        found = GEOMETRY_PATTERN.fullmatch(self.geometry())
+        return tuple(int(value) for value in found.groups()) if found else None
+
+    def _on_window_configure(self, event):
+        """When the user has moved or resized the window (and let go of it) its new place is reported, to be remembered."""
+        if event.widget is not self:
+            return
+        geometry = self._current_geometry()
+        if geometry is None or min(geometry[:2]) < MIN_WINDOW_SIDE:  # a new window is 1 x 1 until it gets its size
+            return
+        if self._known_geometry is None:  # where the window appears: not something the user did
+            self._known_geometry = geometry
+            return
+        if geometry == self._known_geometry:
+            return
+        self._known_geometry = geometry
+        if self._geometry_after_id:
+            self.after_cancel(self._geometry_after_id)
+        self._geometry_after_id = self.after(GEOMETRY_REPORT_DELAY_MS, self._report_geometry)
+
+    def _report_geometry(self):
+        self._geometry_after_id = None
+        geometry = self._current_geometry()
+        if geometry and valid_window_geometry(geometry) and geometry != self._saved_geometry:
+            self._saved_geometry = geometry
+            self._save_window_geometry(geometry)
 
     # ---- font size
 
@@ -933,6 +1006,9 @@ class PlayerBrowser(tk.Toplevel):
         return [row.name for row in self._visible]
 
     def destroy(self):
+        if self._geometry_after_id:  # moved or resized and closed at once: the place is still remembered
+            self.after_cancel(self._geometry_after_id)
+            self._report_geometry()
         for after_id in (self._filter_after_id, self._poll_after_id, self._tick_after_id, self._auto_after_id,
                          self._settle_after_id):
             if after_id:

@@ -3,7 +3,8 @@ import unittest
 from util.accounts import (AccountError, add_account, add_login, hidden_player_columns, normalize_url, player_columns,
                            player_font_size, remember_selection, remove_account, remove_login,
                            set_hidden_player_columns, set_player_columns, set_player_font_size,
-                           set_snapshot_window_size, snapshot_window_size)
+                           set_snapshot_window_size, snapshot_window_size, player_window_geometry,
+                           set_player_window_geometry)
 
 
 def empty_config() -> dict:
@@ -338,6 +339,25 @@ class SnapshotWindowSizeTest(unittest.TestCase):
         set_snapshot_window_size(data, "A", None)
 
         self.assertEqual(player_font_size(data, "A"), 15)
+
+
+class PlayerWindowGeometryTest(unittest.TestCase):
+    def config(self):
+        data = empty_config()
+        add_account(data, "A", "https://a.example.com")
+        add_account(data, "B", "https://b.example.com")
+        return data
+
+    def test_kept_per_account_and_none_forgets_it(self):
+        data = self.config()
+
+        set_player_window_geometry(data, "A", (1200, 700, -300, 80))
+
+        self.assertEqual(player_window_geometry(data, "A"), [1200, 700, -300, 80])
+        self.assertIsNone(player_window_geometry(data, "B"))
+        self.assertIsNone(player_window_geometry(data, "nope"))
+        set_player_window_geometry(data, "A", None)
+        self.assertNotIn("player_window", data["logins"]["A"])
 
 
 if __name__ == "__main__":
