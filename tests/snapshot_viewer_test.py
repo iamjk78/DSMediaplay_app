@@ -301,7 +301,10 @@ class WindowSizeTest(ViewerTestCase):
 
     def setUp(self):
         super().setUp()
-        patcher = patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 50)
+        # Comfortably above what a real geometry() + update() cycle costs under the test suite (measured up to ~100 ms):
+        # too close to that and three rapid resizes in a row (see test_a_resize_is_reported_once...) can each
+        # have their delay elapse before the next one arrives, reporting every one instead of only the last.
+        patcher = patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 400)
         patcher.start()
         self.addCleanup(patcher.stop)
 

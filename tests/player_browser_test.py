@@ -2259,7 +2259,7 @@ class SnapshotButtonTest(TableButtons, BrowserTestCase):
         first = browser._viewers["id-Lobby"]
         self.wait_for(lambda: not first.busy)
 
-        with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 50):
+        with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 400):
             first.geometry("1100x700")
             self.wait_for(lambda: saved.called)
         self.press(self.button(browser, "Sklad")[1])
@@ -2304,7 +2304,7 @@ class SnapshotButtonTest(TableButtons, BrowserTestCase):
         self.press(self.button(browser, "Lobby")[1])
         self.app.update()
         viewer = browser._viewers["id-Lobby"]
-        with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 50):
+        with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 400):
             viewer.geometry("1100x700")
             self.wait_for(lambda: saved.called)
             viewer.geometry("1000x650")
@@ -2473,7 +2473,10 @@ class WindowGeometryTest(BrowserTestCase):
 
     def setUp(self):
         super().setUp()
-        patcher = patch("gui_app.player_browser.GEOMETRY_REPORT_DELAY_MS", 50)
+        # Comfortably above what a real geometry() + update() cycle costs under the test suite (measured up to ~50 ms):
+        # too close to that and three rapid moves in a row (see test_moving_and_resizing_is_reported_once...)
+        # can each have their delay elapse before the next one arrives, reporting every one, not only the last.
+        patcher = patch("gui_app.player_browser.GEOMETRY_REPORT_DELAY_MS", 400)
         patcher.start()
         self.addCleanup(patcher.stop)
 
