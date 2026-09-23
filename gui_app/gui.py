@@ -63,6 +63,7 @@ class DSMediaplayApp(tk.Tk):
         self.lang = LanguageManager(language=self.all_data.get("lang", "en"), config_path=language_file)
         self.import_legacy_accounts()
         self.migrate_plaintext_passwords()
+        self.migrate_credential_items()
         self.font = tuple(self.all_data.get("font", ["Helvetica", 12]))
         self.account_data = self.all_data["logins"]
         self.default = self.all_data["default"]
@@ -877,6 +878,19 @@ class DSMediaplayApp(tk.Tk):
         try:
             if credentials.migrate_plaintext_passwords(self.all_data):
                 self.save_account_configs()
+        except credentials.KeyringError as error:
+            messagebox.showwarning(self.lang.get_message("warning_title"),
+                                   self.lang.get_message("credential_store_error", error=str(error)))
+
+    def migrate_credential_items(self):
+        """
+        Move of passwords from an item of their own (one per account, the shape every account had before this) into
+        the one item every account now shares: on macOS this is what makes the credential store ask to allow access
+        once for the whole application, instead of once per customer account. Nothing in the config file changes,
+        so there is nothing to save; it costs nothing once it has already moved everything there is to move.
+        """
+        try:
+            credentials.migrate_per_account_items(self.all_data)
         except credentials.KeyringError as error:
             messagebox.showwarning(self.lang.get_message("warning_title"),
                                    self.lang.get_message("credential_store_error", error=str(error)))
