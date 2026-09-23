@@ -19,7 +19,7 @@ from gui_app.icons import set_window_icon
 from gui_app.multi_select import MultiSelectCombo
 from gui_app.snapshot_viewer import (CASCADE_STEP, SnapshotSlots, SnapshotViewer, fetch_snapshot_from_server,
                                      valid_window_size)
-from gui_app.tooltip import Tooltip
+from gui_app.tooltip import Tooltip, hide_if_shown
 from util.accounts import DEFAULT_HIDDEN_COLUMNS
 from util.player_filter import (AGE_OPTIONS, TEMPERATURE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row,
                                 sort_rows, version_key)
@@ -557,7 +557,13 @@ class PlayerBrowser(tk.Toplevel):
         self._schedule_scroll_update()
 
     def _update_font_buttons(self):
+        # A disabled button cannot be trusted to still say when the pointer leaves it (a known Tk/Aqua shortcoming),
+        # so its tooltip is closed right away rather than left to <Leave> or the watchdog to catch, possibly late
+        if self._font_size <= MIN_FONT_SIZE:
+            hide_if_shown(self.smaller_font_button)
         self.smaller_font_button.state(["disabled"] if self._font_size <= MIN_FONT_SIZE else ["!disabled"])
+        if self._font_size >= MAX_FONT_SIZE:
+            hide_if_shown(self.larger_font_button)
         self.larger_font_button.state(["disabled"] if self._font_size >= MAX_FONT_SIZE else ["!disabled"])
 
     # ---- column widths

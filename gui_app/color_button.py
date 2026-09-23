@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from tkinter import font as tkfont
 from typing import Callable, List, Optional, Union
 
+from gui_app.tooltip import hide_if_shown
+
 FontSpec = Union[str, tuple]
 
 PADDING_X, PADDING_Y, RADIUS = 16, 6, 7
@@ -171,6 +173,8 @@ def equalize_widths(*buttons: tk.Widget) -> None:
 
 def set_button_enabled(button: tk.Widget, enabled: bool, colors: ButtonColors) -> None:
     """Switches a button made by make_color_button on (in `colors`) or off (grey)."""
+    if not enabled:
+        hide_if_shown(button)  # a disabled button cannot be trusted to still say when the pointer leaves it
     if isinstance(button, ColorButton):
         button.set_enabled(enabled)
     else:
@@ -186,6 +190,8 @@ def button_enabled(button: tk.Widget) -> bool:
 
 def set_button_interactive(button: tk.Widget, interactive: bool, colors: ButtonColors) -> None:
     """Shows a button in `colors` and lets it be pressed, or not: unlike a disabled button it stays coloured."""
+    if not interactive:
+        hide_if_shown(button)  # a disabled button cannot be trusted to still say when the pointer leaves it
     if isinstance(button, ColorButton):
         button.set_colors(colors)
         button.set_interactive(interactive)

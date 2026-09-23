@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from gui_app.color_button import GREEN, ColorButton
 from gui_app.tooltip import (GAP_LEFT_OF_POINTER, GAP_RIGHT_OF_POINTER, IGNORE_ACTIVATE_AFTER_SHOW_MS,
-                             MAX_VISIBLE_MS, TOOLTIP_DELAY_MS, WATCH_INTERVAL_MS, Tooltip)
+                             MAX_VISIBLE_MS, TOOLTIP_DELAY_MS, WATCH_INTERVAL_MS, Tooltip, hide_if_shown)
 
 
 class TooltipTest(unittest.TestCase):
@@ -40,9 +40,9 @@ class TooltipTest(unittest.TestCase):
         window = self.tooltip._window
         return window is not None and window.state() == "normal"
 
-    def test_default_delay_is_half_a_second(self):
-        self.assertEqual(TOOLTIP_DELAY_MS, 500)
-        self.assertEqual(Tooltip(self.button, lambda: "x")._delay_ms, 500)
+    def test_default_delay_is_one_second(self):
+        self.assertEqual(TOOLTIP_DELAY_MS, 1000)
+        self.assertEqual(Tooltip(self.button, lambda: "x")._delay_ms, 1000)
 
     def test_appears_only_after_the_delay(self):
         self.button.event_generate("<Enter>")
@@ -153,6 +153,24 @@ class TooltipTest(unittest.TestCase):
 
         self.wait(120)  # the cancelled timer must not fire on a destroyed widget
 
+    def test_hide_if_shown_closes_a_visible_tooltip(self):
+        self.button.event_generate("<Enter>")
+        self.wait(120)
+        self.assertTrue(self.visible())
+
+        hide_if_shown(self.button)
+
+        self.assertFalse(self.visible())
+
+    def test_hide_if_shown_does_nothing_to_a_widget_without_a_tooltip(self):
+        plain = tk.Button(self.root, text="plain")  # never wrapped in Tooltip(): no .tooltip attribute at all
+
+        hide_if_shown(plain)  # must not raise
+
+    def test_hide_if_shown_on_one_that_is_not_showing_does_nothing(self):
+        hide_if_shown(self.button)  # never entered: nothing to hide, must not raise
+
+        self.assertFalse(self.visible())
 
     def test_works_on_a_themed_button_that_has_no_font_option(self):
         themed = ttk.Button(self.root, text="themed")

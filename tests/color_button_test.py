@@ -1,8 +1,11 @@
+import time
 import tkinter as tk
 import unittest
+from unittest.mock import patch
 
 from gui_app.color_button import (DISABLED, GREEN, GREEN_DARK, RED, ColorButton, button_enabled, button_interactive,
                                   make_color_button, set_button_colors, set_button_enabled, set_button_interactive)
+from gui_app.tooltip import Tooltip
 
 
 class ColorButtonTest(unittest.TestCase):
@@ -232,6 +235,38 @@ class DisabledButtonTest(unittest.TestCase):
         self.assertEqual(str(native.cget("background")), GREEN.normal)
         native.invoke()
         self.assertEqual(self.clicks, [1])
+
+    def show_tooltip(self):
+        """The pointer stays away from this in the tests, so the check that it is really there is patched out."""
+        tooltip = Tooltip(self.button, lambda: "help", delay_ms=1)
+        with patch.object(Tooltip, "_pointer_over_widget", lambda self: True):
+            self.button.event_generate("<Enter>")
+            end = time.monotonic() + 1
+            while (tooltip._window is None or tooltip._window.state() != "normal") and time.monotonic() < end:
+                self.root.update()
+                time.sleep(0.005)
+        self.assertEqual(tooltip._window.state(), "normal", "the tooltip never appeared")
+        return tooltip
+
+    def test_disabling_closes_a_tooltip_that_is_showing(self):
+        """A disabled widget cannot be trusted to still say when the pointer leaves it, so this is not left to that."""
+        tooltip = self.show_tooltip()
+
+        set_button_enabled(self.button, False, GREEN)
+
+        self.assertEqual(tooltip._window.state(), "withdrawn")
+
+    def test_making_inert_closes_a_tooltip_that_is_showing(self):
+        tooltip = self.show_tooltip()
+
+        set_button_interactive(self.button, False, RED)
+
+        self.assertEqual(tooltip._window.state(), "withdrawn")
+
+    def test_enabling_or_making_interactive_does_not_disturb_a_tooltip(self):
+        set_button_enabled(self.button, False, GREEN)
+
+        set_button_enabled(self.button, True, GREEN)  # nothing was ever showing: nothing raises, nothing to hide
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from gui_app.player_browser import (BUTTON_STYLE, CHECK_STYLE, COLUMNS, LARGE_A_STYLE, MAX_FONT_SIZE, MIN_FONT_SIZE,
                                     SMALL_A_STYLE, SNAPSHOT_COLUMN_MINSIZE, valid_font_size)
+from gui_app.tooltip import Tooltip
 from player_browser_test import BrowserTestCase, PLAYERS
 
 
@@ -83,6 +84,19 @@ class FontButtonsTest(FontSizeCase):
         browser.set_font_size(MIN_FONT_SIZE)
         self.assertTrue(browser.smaller_font_button.instate(["disabled"]))
         self.assertTrue(browser.larger_font_button.instate(["!disabled"]))
+
+    def test_a_tooltip_showing_on_an_a_button_closes_when_it_reaches_the_limit_and_is_disabled(self):
+        """A disabled button cannot be relied on to still say when the pointer leaves it (see gui_app.tooltip)."""
+        browser = self.open()
+        browser.set_font_size(MAX_FONT_SIZE - 1)
+        tooltip = browser.larger_font_button.tooltip
+        with patch.object(Tooltip, "_pointer_over_widget", lambda self: True):
+            browser.larger_font_button.event_generate("<Enter>")
+            self.wait_for(lambda: tooltip._window is not None and tooltip._window.state() == "normal")
+
+            browser.change_font_size(1)
+
+            self.assertEqual(tooltip._window.state(), "withdrawn")
 
 
 class FontSizeTest(FontSizeCase):

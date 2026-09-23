@@ -13,7 +13,7 @@ from PIL import Image, ImageTk
 
 from api_testing.request_calls import LoginError, ServerApi, SnapshotError, snapshot_file_stem, snapshot_reason
 from gui_app.icons import set_window_icon
-from gui_app.tooltip import Tooltip
+from gui_app.tooltip import Tooltip, hide_if_shown
 from util.paths import downloads_dir
 
 LIVE_INTERVALS = (2, 5, 10, 15, 20)  # seconds between two snapshots of the live view; 2 is the least a player can bear
@@ -432,7 +432,13 @@ class SnapshotViewer(tk.Toplevel):
     # ---- state shown
 
     def _update_controls(self):
+        # A disabled button cannot be trusted to still say when the pointer leaves it (a known Tk/Aqua shortcoming),
+        # so its tooltip is closed right away rather than left to <Leave> or the watchdog to catch, possibly late
+        if self._busy:
+            hide_if_shown(self.retake_button)
         self.retake_button.state(["disabled"] if self._busy else ["!disabled"])
+        if self._image is None:
+            hide_if_shown(self.save_button)
         self.save_button.state(["!disabled"] if self._image is not None else ["disabled"])
         self.live_button.configure(text=self.lang.get_message("sv_pause" if self._live else "sv_live"))
 

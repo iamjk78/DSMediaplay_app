@@ -2,11 +2,11 @@ import time
 import tkinter as tk
 from typing import Callable, Optional
 
-TOOLTIP_DELAY_MS = 500
+TOOLTIP_DELAY_MS = 1000
 WATCH_INTERVAL_MS = 250
 # However long a tooltip has genuinely been read, this is well past it: a last-resort ceiling for whatever kind of
-# stuck state the two defences below do not catch (an unknown one is what a ceiling like this is for)
-MAX_VISIBLE_MS = 8000
+# stuck state the defences below do not catch (an unknown one is what a ceiling like this is for)
+MAX_VISIBLE_MS = 4000
 # Showing the tooltip's own window can itself fire more than one spurious <Activate> in a row right afterwards
 # (measured, on a window that has several tooltips of its own): this is longer than that whole burst ever takes,
 # and far too short for a user to have genuinely switched to another application and back in the meantime
@@ -145,3 +145,14 @@ class Tooltip:
             pass
         self._after_id = self._watch_id = self._expire_id = None
         self._shown_at = None
+
+
+def hide_if_shown(widget: tk.Widget) -> None:
+    """
+    Hides `widget`'s tooltip right away, if it has one. For code that is about to disable a widget the pointer
+    might still be resting on: a disabled widget cannot be relied on to still report the pointer leaving it (a
+    known Tk/Aqua shortcoming), so neither <Leave> nor the watchdog can be trusted to close the tooltip there.
+    """
+    tooltip = getattr(widget, "tooltip", None)
+    if tooltip is not None:
+        tooltip._hide()

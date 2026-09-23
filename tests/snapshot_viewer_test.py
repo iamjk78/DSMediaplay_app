@@ -17,6 +17,7 @@ from PIL import Image
 
 from api_testing.request_calls import LoginError, ResponseError, SnapshotError
 from gui_app import gui
+from gui_app.tooltip import Tooltip
 from gui_app.snapshot_viewer import (DEFAULT_WINDOW_SIZE, LIVE_INTERVALS, MIN_REQUEST_INTERVAL, SnapshotSlots,
                                      SnapshotViewer, ask_save_path, valid_window_size)
 from util.language import LanguageManager
@@ -159,6 +160,27 @@ class TakingSnapshotsTest(ViewerTestCase):
         release.set()
         self.wait_for(lambda: not viewer.busy)
         self.assertNotIn("disabled", viewer.retake_button.state())
+
+    def test_a_tooltip_showing_on_the_retake_button_closes_when_it_is_disabled(self):
+        """
+        A disabled widget cannot be relied on to still say when the pointer leaves it, so a tooltip that happened
+        to be showing is closed the moment the button is disabled, instead of possibly lingering on screen.
+        """
+        viewer = self.open(MagicMock(return_value=(RED, ".png")))
+        tooltip = viewer.retake_button.tooltip
+        fetch, release, calls = self.blocking_fetch()
+        viewer._fetch = fetch
+        with patch.object(Tooltip, "_pointer_over_widget", lambda self: True):
+            viewer.retake_button.event_generate("<Enter>")
+            self.wait_for(lambda: tooltip._window is not None and tooltip._window.state() == "normal", seconds=2)
+
+            viewer.take_snapshot()
+            self.wait_for(lambda: len(calls) == 1)
+
+            self.assertEqual(tooltip._window.state(), "withdrawn")
+
+        release.set()
+        self.wait_for(lambda: not viewer.busy)
 
     def test_an_image_that_cannot_be_read_is_an_error(self):
         viewer = self.open(MagicMock(return_value=(b"\x89PNG\r\n\x1a\nnot really", ".png")))
