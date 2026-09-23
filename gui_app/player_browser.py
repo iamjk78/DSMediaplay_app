@@ -66,6 +66,8 @@ AUTO_REFRESH_RETRY_MS = 5000  # how long an automatic update waits when the user
 COUNTDOWN_TICK_MS = 500
 POLL_INTERVAL_MS = 100
 CELL_PADDING = 4
+ROW_PADY = 1
+POOL_OVERSCAN = 1  # a couple more pool rows than the canvas strictly needs, so a partial row is never left blank
 
 
 def _clock() -> float:
@@ -131,6 +133,12 @@ class PlayerBrowser(tk.Toplevel):
     dragging the black lines between them (anywhere along a line, EDGE_ZONE pixels to each side of it);
     `save_column_widths` is called with the widths when the user lets go
     (and with {} when they go back to the defaults).
+
+    The rows on the screen (`_pool`) are a fixed, small set of widgets, as many as fit the window: with an account
+    of thousands of players a row of widgets for every single one would be far too many for Tk to keep up with, so
+    scrolling instead moves which player's data a row shows (`_first_index`, the index into `_visible` the pool
+    starts at), the same few dozen widgets the whole time. A player scrolled out of view has no widgets of its own
+    until it is scrolled back into view.
     """
 
     def __init__(self, master, *, url: str, login: str, password: str, account_name: str,
@@ -162,7 +170,10 @@ class PlayerBrowser(tk.Toplevel):
         self._configure_styles()
         self._rows: List[PlayerRow] = []
         self._visible: List[PlayerRow] = []
-        self._widgets: Dict[int, List[tk.Widget]] = {}
+        self._pool: List[List[tk.Widget]] = []  # the row widgets on screen, reused for whatever row scrolls into them
+        self._pool_rows: List[Optional[PlayerRow]] = []  # which row (if any) each pool slot currently shows
+        self._pool_size = 0
+        self._first_index = 0  # index into _visible of the row the pool's first slot currently shows
         self._sort = ("name", False)
         self._results: "queue.Queue" = queue.Queue()
         self._snapshot_fetch = snapshot_fetch
@@ -361,9 +372,11 @@ class PlayerBrowser(tk.Toplevel):
         self._show_sort_arrow()
 
         self._canvas = tk.Canvas(frame, width=1, height=1, highlightthickness=0, borderwidth=0)
+        # The vertical scrollbar does not reflect the canvas (there is nothing left of it to scroll: see _scroll_y);
+        # _update_scrollbar sets it instead, whenever the pool's position in the filtered rows changes.
         self._scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self._scroll_y)
         self._x_scrollbar = ttk.Scrollbar(frame, orient="horizontal", command=self._scroll_x)
-        self._canvas.configure(yscrollcommand=self._scrollbar.set, xscrollcommand=self._on_x_scrolled)
+        self._canvas.configure(xscrollcommand=self._on_x_scrolled)
         self._canvas.grid(row=2, column=0, sticky="nsew")
         self._scrollbar.grid(row=2, column=1, sticky="ns")
         self._x_scrollbar.grid(row=3, column=0, sticky="ew")
@@ -371,7 +384,7 @@ class PlayerBrowser(tk.Toplevel):
         self._body_separators = [tk.Frame(self._body, width=1, background=SEPARATOR_COLOR) for _ in COLUMNS]
         self._body_item = self._canvas.create_window((0, 0), window=self._body, anchor="nw")
         self._frozen_depth = 0
-        self._canvas.bind("<Configure>", lambda _: self._update_scroll_regions())
+        self._canvas.bind("<Configure>", lambda _: self._on_canvas_resized())
         for widget in (self._body, self._header, self._filters):
             widget.bind("<Configure>", lambda _: self._update_scroll_regions())
         self._compute_minimum_widths()
@@ -525,7 +538,7 @@ class PlayerBrowser(tk.Toplevel):
             cell.configure(font=bold)
         for viewer in self._viewers.values():
             viewer.set_font(self._font)
-        for widgets in self._widgets.values():
+        for widgets in self._pool:
             for widget in widgets:  # the button first, then the cells
                 widget.configure(font=self._font)
         zero = tkfont.Font(root=self, font=self._font).measure("0")
@@ -540,6 +553,7 @@ class PlayerBrowser(tk.Toplevel):
         self._filter_canvas.configure(height=self._filters.winfo_reqheight())
         self.minsize(self._actions_bar.winfo_reqwidth() + 30, 300)
         self._update_font_buttons()
+        self._render_pool()  # a row's height changed: how many of them fit the canvas may have too
         self._schedule_scroll_update()
 
     def _update_font_buttons(self):
@@ -641,22 +655,26 @@ class PlayerBrowser(tk.Toplevel):
         self.update_idletasks()  # the grids first say how large they have become
         self._update_scroll_regions()
 
+    def _on_canvas_resized(self):
+        """A taller or shorter window may fit a different number of rows; a wider or narrower one, its scrollbar."""
+        self._update_scroll_regions()
+        self._render_pool()
+
     def _fits(self, axis: str) -> bool:
-        """The table is not larger than the window in this direction: there is nothing to scroll."""
+        """The table has nothing to scroll in this direction: sideways, it is not wider than the window; up and
+        down, the pool already shows the whole (filtered) list, so there is no further row to scroll to."""
         if axis == "x":
             return self._body.winfo_reqwidth() <= self._canvas.winfo_width()
-        return self._body.winfo_reqheight() <= self._canvas.winfo_height()
+        return len(self._visible) <= self._pool_size
 
     def _settle_views(self):
-        """
-        A Tk canvas that is larger than its content can still be scrolled, which pushes the content away from the
-        corner and leaves an empty band (and the header and the filters behind). What fits stays where it belongs.
-        """
+        """A Tk canvas that is larger than its content can still be scrolled, which pushes the content away from the
+        corner and leaves an empty band (and the header and the filters behind); what fits stays where it belongs.
+        The rows never really scroll the canvas at all any more (see _scroll_y), so they are pinned at its corner."""
         if self._fits("x"):
             for canvas in (self._canvas, self._header_canvas, self._filter_canvas):
                 canvas.xview_moveto(0)
-        if self._fits("y"):
-            self._canvas.yview_moveto(0)
+        self._canvas.yview_moveto(0)
 
     def _scroll_x(self, *args):
         if self._fits("x"):
@@ -666,10 +684,24 @@ class PlayerBrowser(tk.Toplevel):
             canvas.xview(*args)
 
     def _scroll_y(self, *args):
-        if self._fits("y"):
-            self._settle_views()
+        """
+        Unlike _scroll_x, there is no real canvas view behind this: the rows on screen are a fixed pool (see the
+        class docstring), so "scrolling" means asking a different slice of _visible to fill it instead of moving
+        anything. A "unit" is one row, a "page" a poolful of them (a click in the scrollbar's trough).
+        """
+        if args[0] == "moveto":
+            first = round(float(args[1]) * len(self._visible))
+        elif args[0] == "scroll":
+            first = self._first_index + int(args[1]) * (self._pool_size if args[2] == "pages" else 1)
+        else:
             return
-        self._canvas.yview(*args)
+        self._set_first_index(first)
+
+    def _set_first_index(self, first: int):
+        first = min(max(first, 0), max(0, len(self._visible) - self._pool_size))
+        if first != self._first_index:
+            self._first_index = first
+            self._render_pool()
 
     def _on_x_scrolled(self, first, last):
         """The scroll bar shows only while the table is wider than the window."""
@@ -842,13 +874,7 @@ class PlayerBrowser(tk.Toplevel):
 
     @frozen_table
     def _show_players(self, rows: List[PlayerRow]):
-        scroll = self._canvas.yview()[0]  # the table stays where it was scrolled to, also when it updates itself
-        for widgets in self._widgets.values():
-            for widget in widgets:
-                widget.destroy()
-        self._rows, self._widgets = rows, {}
-        for row in rows:
-            self._widgets[id(row)] = self._row_widgets(row)
+        self._rows = rows
         no_group = [(self.lang.get_message("pb_no_group"), "")] if any(not row.group for row in rows) else []
         self.group_box.set_options(no_group + [(group, group) for group in sorted(
             {row.group for row in rows if row.group}, key=str.casefold)])
@@ -858,31 +884,111 @@ class PlayerBrowser(tk.Toplevel):
             {row.version for row in rows if row.version}, key=version_key)])
         self.location_box.set_options([(location, location) for location in sorted(
             {row.location for row in rows if row.location}, key=str.casefold)])
-        self.apply_filters(keep_scroll=True)
-        self.update_idletasks()
-        self._update_scroll_regions()
-        if not self._fits("y"):
-            self._canvas.yview_moveto(scroll)
+        self.apply_filters(keep_scroll=True)  # _first_index itself already survives: the pool is never rebuilt
 
     def _moment(self, moment) -> str:
         return moment.strftime("%d.%m.%Y %H:%M") if moment else self.lang.get_message("pb_never")
 
-    def _row_widgets(self, row: PlayerRow) -> List[tk.Widget]:
-        """The button first, then one cell for each column."""
+    # ---- the pool of row widgets (see the class docstring)
+
+    def _ensure_pool(self):
+        """As many reusable row slots as the canvas currently fits; once made, one is never taken away again."""
+        if not self._pool:
+            row = self._new_pool_row(0)
+            self._pool.append(row)
+            self._pool_rows.append(None)
+            button, first_cell, *_ = row
+            button.grid(row=0, column=0, padx=CELL_PADDING, pady=ROW_PADY)
+            first_cell.grid(row=0, column=self._cell_column(0), sticky="ew", padx=CELL_PADDING, pady=ROW_PADY)
+        self._pool_size = max(len(self._pool), self._rows_that_fit())
+        while len(self._pool) < self._pool_size:
+            self._pool.append(self._new_pool_row(len(self._pool)))
+            self._pool_rows.append(None)
+
+    def _rows_that_fit(self) -> int:
+        """How many rows the canvas has room for at its current height, at least one and never a partial one."""
+        self.update_idletasks()
+        row_height = self._pool[0][1].winfo_reqheight() + 2 * ROW_PADY
+        return max(1, math.ceil(max(self._canvas.winfo_height(), 1) / row_height) + POOL_OVERSCAN)
+
+    def _new_pool_row(self, index: int) -> List[tk.Widget]:
+        """One reusable slot in the window of rows on screen: the button first, then one cell for each column."""
+        cells = [tk.Label(self._body, font=self._font, width=1, anchor="w") for _ in COLUMNS]
+        button = make_color_button(self._body, self.lang.get_message("pb_snapshot"),
+                                   lambda: self._click_snapshot(index), self._font, GREEN)
+        Tooltip(button, lambda: self._snapshot_tip(index))
+        return [button] + cells
+
+    def _row_at(self, index: int) -> Optional[PlayerRow]:
+        """The player the pool slot `index` currently shows, if any."""
+        return self._pool_rows[index] if index < len(self._pool_rows) else None
+
+    def _click_snapshot(self, index: int):
+        row = self._row_at(index)
+        if row is not None and row.online and row.player_id:  # an offline player cannot answer
+            self.show_snapshot(row)
+
+    def _snapshot_tip(self, index: int) -> str:
+        row = self._row_at(index)
+        can_ask = row is not None and row.online and bool(row.player_id)
+        return self.lang.get_message("pb_tip_snapshot" if can_ask else "pb_tip_snapshot_offline")
+
+    def _fill_slot(self, index: int, row: Optional[PlayerRow]):
+        """Shows `row` in pool slot `index`, reusing the widgets already there; empties the slot when there is none."""
+        button, *cells = self._pool[index]
+        self._pool_rows[index] = row
+        if row is None:
+            button.grid_remove()
+            for cell in cells:
+                cell.grid_remove()
+            return
         texts = (row.name, self.lang.get_message("pb_online" if row.online else "pb_offline"), row.group,
                  row.location, ", ".join(row.labels), self._moment(row.synced), self._moment(row.reported), row.note,
                  f"{row.temperature:g} °C" if row.temperature is not None else "", row.version)
-        cells: List[tk.Widget] = [tk.Label(self._body, text=text, font=self._font, width=1, anchor="w")
-                                  for text in texts]
-        cells[1].configure(foreground=ONLINE_COLOR if row.online else OFFLINE_COLOR)
+        for column, (cell, text) in enumerate(zip(cells, texts)):
+            if COLUMNS[column][0] in self._hidden:
+                cell.grid_remove()
+                continue
+            cell.configure(text=text)
+            cell.grid(row=index, column=self._cell_column(column), sticky="ew", padx=CELL_PADDING, pady=ROW_PADY)
+        cells[1].configure(foreground=ONLINE_COLOR if row.online else OFFLINE_COLOR)  # cells[0] is the name
         can_ask = row.online and bool(row.player_id)  # an offline player cannot answer
         # Green where a snapshot can be asked for, red where it cannot: seen at a glance
-        button = make_color_button(self._body, self.lang.get_message("pb_snapshot"),
-                                   lambda: self.show_snapshot(row), self._font, GREEN if can_ask else RED)
-        if not can_ask:
-            set_button_interactive(button, False, RED)
-        Tooltip(button, lambda: self.lang.get_message("pb_tip_snapshot" if can_ask else "pb_tip_snapshot_offline"))
-        return [button] + cells
+        set_button_interactive(button, can_ask, GREEN if can_ask else RED)
+        button.grid(row=index, column=0, padx=CELL_PADDING, pady=ROW_PADY)
+
+    def _render_pool(self):
+        """Fills the pool with the slice of _visible that starts at _first_index; empties whatever is left of it."""
+        self._ensure_pool()
+        total = len(self._visible)
+        self._first_index = min(max(self._first_index, 0), max(0, total - self._pool_size))
+        shown = 0
+        for offset in range(self._pool_size):
+            index = self._first_index + offset
+            row = self._visible[index] if index < total else None
+            self._fill_slot(offset, row)
+            shown += row is not None
+        for column, line in enumerate(self._body_separators):  # the lines run down beside the rows
+            if COLUMNS[column][0] in self._hidden:
+                line.grid_remove()
+            else:
+                line.grid(row=0, column=self._cell_column(column) + 1, rowspan=max(1, shown), sticky="ns")
+        self._update_scrollbar()
+        self._schedule_scroll_update()
+
+    def _update_scrollbar(self):
+        total = len(self._visible)
+        if total <= self._pool_size:
+            self._scrollbar.set(0.0, 1.0)
+        else:
+            self._scrollbar.set(self._first_index / total, min(1.0, (self._first_index + self._pool_size) / total))
+
+    def widgets_for(self, row: PlayerRow) -> Optional[List[tk.Widget]]:
+        """The button and the cells currently showing `row`, if it is scrolled into view; None if it is not."""
+        for index, current in enumerate(self._pool_rows):
+            if current is row:
+                return self._pool[index]
+        return None
 
     def _remember_snapshot_size(self, size: Tuple[int, int]):
         """The next snapshot windows open in the size the user has just given one of them."""
@@ -972,35 +1078,17 @@ class PlayerBrowser(tk.Toplevel):
         if self._filter_after_id:
             self.after_cancel(self._filter_after_id)
             self._filter_after_id = None
-        visible = sort_rows(apply_filter(self._rows, self._criteria()), *self._sort)
-        shown = {id(row) for row in visible}
-        for row in self._rows:
-            if id(row) not in shown:
-                for widget in self._widgets[id(row)]:
-                    widget.grid_remove()
-        for index, row in enumerate(visible):
-            button, *cells = self._widgets[id(row)]
-            button.grid(row=index, column=0, padx=CELL_PADDING, pady=1)
-            for column, cell in enumerate(cells):
-                if COLUMNS[column][0] in self._hidden:
-                    cell.grid_remove()
-                else:
-                    cell.grid(row=index, column=self._cell_column(column), sticky="ew", padx=CELL_PADDING, pady=1)
-        for column, line in enumerate(self._body_separators):  # the lines run down beside the rows
-            if COLUMNS[column][0] in self._hidden:
-                line.grid_remove()
-            else:
-                line.grid(row=0, column=self._cell_column(column) + 1, rowspan=max(1, len(visible)), sticky="ns")
+        self._visible = sort_rows(apply_filter(self._rows, self._criteria()), *self._sort)
         if not keep_scroll:
-            self._canvas.yview_moveto(0)
-        self._schedule_scroll_update()
-        self._visible = visible
+            self._first_index = 0
+        self._render_pool()
         if not self._rows:
             self._set_status(self.lang.get_message("pb_no_players"), self._failed)
-        elif not visible:
+        elif not self._visible:
             self._set_status(self.lang.get_message("pb_empty"), self._failed)
         else:
-            self._set_status(self.lang.get_message("pb_count", shown=len(visible), total=len(self._rows)), self._failed)
+            self._set_status(self.lang.get_message("pb_count", shown=len(self._visible), total=len(self._rows)),
+                             self._failed)
 
     def visible_names(self) -> List[str]:
         return [row.name for row in self._visible]

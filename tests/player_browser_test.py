@@ -123,7 +123,7 @@ class PlayerBrowserTest(BrowserTestCase):
 
     def test_the_row_shows_state_group_location_and_when_it_was_synced(self):
         browser = self.open()
-        cells = {row.name: [w for w in browser._widgets[id(row)][1:]] for row in browser._rows}  # without the button
+        cells = {row.name: [w for w in browser.widgets_for(row)[1:]] for row in browser._rows}  # without the button
 
         lobby, offline, ungrouped = cells["Lobby"], cells["Prerov 1"], cells["Sklad"]
         self.assertEqual([c.cget("text") for c in lobby[:5]], ["Lobby", "Online", "Kancelar", "Praha", "vstup"])
@@ -140,7 +140,7 @@ class PlayerBrowserTest(BrowserTestCase):
     def test_every_row_has_a_snapshot_button(self):
         browser = self.open()
 
-        buttons = [widgets[0] for widgets in browser._widgets.values()]
+        buttons = [widgets[0] for widgets, row in zip(browser._pool, browser._pool_rows) if row is not None]
         self.assertEqual(len(buttons), 4)
         for button in buttons:
             self.assertEqual(button.cget("text"), "Snímek")
@@ -268,7 +268,7 @@ class PlayerBrowserTest(BrowserTestCase):
         browser = self.open()
         self.app.update()
 
-        first_row = browser._widgets[id(browser._visible[0])]
+        first_row = browser.widgets_for(browser._visible[0])
         for index, (key, _, _) in enumerate(COLUMNS):
             with self.subTest(column=key):
                 self.assertEqual(browser._header_cells[key].winfo_x(), first_row[index + 1].winfo_x())
@@ -352,8 +352,8 @@ class LayoutTest(BrowserTestCase):
             self.assertLess(widget.winfo_rooty() + widget.winfo_height(), header_top)
             self.assertGreater(widget.winfo_rooty(), browser.refresh_button.winfo_rooty()
                                + browser.refresh_button.winfo_height())
-            self.assertGreater(widget.winfo_rootx(), browser._widgets[id(browser._visible[0])][0].winfo_rootx()
-                               + browser._widgets[id(browser._visible[0])][0].winfo_width() - 1)
+            self.assertGreater(widget.winfo_rootx(), browser.widgets_for(browser._visible[0])[0].winfo_rootx()
+                               + browser.widgets_for(browser._visible[0])[0].winfo_width() - 1)
         heights = {widget.winfo_rooty() for widget in self.all_filters(browser)}
         self.assertLess(max(heights) - min(heights), 6)  # one row (the field types differ a little in height)
 
@@ -482,7 +482,7 @@ class LayoutTest(BrowserTestCase):
                           "Poznámka", "Teplota", "Verze"])
         positions = [browser._header_cells[k].winfo_x() for k in keys]
         self.assertEqual(positions, sorted(positions))
-        row = browser._widgets[id(browser._visible[0])]
+        row = browser.widgets_for(browser._visible[0])
         self.assertEqual(row[0].cget("text"), "Snímek")
         self.assertLess(row[0].winfo_x() + row[0].winfo_width(), row[1].winfo_x())  # the button is left of the name
 
@@ -565,7 +565,7 @@ class LayoutTest(BrowserTestCase):
 
         self.assertEqual(len(browser._header_separators), len(COLUMNS))
         self.assertEqual(len(browser._body_separators), len(COLUMNS))
-        rows_height = max(w.winfo_y() + w.winfo_height() for w in browser._widgets[id(browser._visible[-1])])
+        rows_height = max(w.winfo_y() + w.winfo_height() for w in browser.widgets_for(browser._visible[-1]))
         for line in browser._body_separators:
             self.assertEqual(str(line.cget("background")), SEPARATOR_COLOR)
             self.assertEqual(line.winfo_width(), 1)
@@ -578,7 +578,7 @@ class LayoutTest(BrowserTestCase):
         browser = self.open(players=players)
         self.app.update()
 
-        first = browser._widgets[id(browser._visible[0])]
+        first = browser.widgets_for(browser._visible[0])
         for index, (key, _, _) in enumerate(COLUMNS):
             with self.subTest(column=key):
                 self.assertEqual(browser._header_cells[key].winfo_x(), first[index + 1].winfo_x())
@@ -606,7 +606,7 @@ class ColumnWidthTest(BrowserTestCase):
         self.assertEqual(browser.column_widths()["name"], before["name"] + 60)
         self.assertEqual(browser.column_widths()["status"], before["status"])
         self.assertEqual(browser._header_cells["status"].winfo_x(), next_x + 60)
-        first = browser._widgets[id(browser._visible[0])]
+        first = browser.widgets_for(browser._visible[0])
         self.assertEqual(first[2].winfo_x(), next_x + 60)  # the status cells moved with the header
 
     def test_dragging_left_narrows_and_stops_at_the_minimum(self):
@@ -686,7 +686,7 @@ class ColumnWidthTest(BrowserTestCase):
         self.assertGreater(browser._canvas.xview()[0], 0)
         self.assertEqual(browser._header_canvas.xview()[0], browser._canvas.xview()[0])
         header_x = browser._header_cells["status"].winfo_rootx()
-        row_x = browser._widgets[id(browser._visible[0])][2].winfo_rootx()
+        row_x = browser.widgets_for(browser._visible[0])[2].winfo_rootx()
         self.assertEqual(header_x, row_x)  # still lined up after scrolling
 
     def test_the_horizontal_scroll_bar_is_hidden_while_everything_fits(self):
@@ -710,7 +710,7 @@ class ResizeZoneTest(BrowserTestCase):
         self.browser = self.open()
         self.app.update()
         self.line = self.browser._header_separators[0].winfo_rootx() + 3  # the x of the first line
-        self.body_cell = self.browser._widgets[id(self.browser._visible[0])][1]
+        self.body_cell = self.browser.widgets_for(self.browser._visible[0])[1]
         self.header_cell = self.browser._header_cells["status"]
 
     def event(self, widget, kind, offset, **options):
@@ -763,7 +763,7 @@ class ResizeZoneTest(BrowserTestCase):
         browser = self.open(save_column_widths=saved.append)
         self.app.update()
         line = browser._header_separators[1].winfo_rootx() + 3
-        cell = browser._widgets[id(browser._visible[0])][3]
+        cell = browser.widgets_for(browser._visible[0])[3]
         before = browser.column_widths()["status"]
 
         def at(offset, kind, **options):
@@ -843,7 +843,8 @@ class ColumnVisibilityTest(BrowserTestCase):
     def cells(self, browser, key):
         """The header cell and the cells of all the rows of one column."""
         index = [k for k, _, _ in COLUMNS].index(key)
-        return [browser._header_cells[key]] + [widgets[index + 1] for widgets in browser._widgets.values()]
+        return [browser._header_cells[key]] + [
+            widgets[index + 1] for widgets, row in zip(browser._pool, browser._pool_rows) if row is not None]
 
     def shown(self, browser, key):
         self.app.update()
@@ -938,7 +939,7 @@ class ColumnVisibilityTest(BrowserTestCase):
         browser.toggle_column("synced")
         self.app.update()
 
-        first_row = browser._widgets[id(browser._visible[0])]
+        first_row = browser.widgets_for(browser._visible[0])
         for index, (key, _, _) in enumerate(COLUMNS):
             if key in ("location", "synced"):
                 continue
@@ -1149,7 +1150,7 @@ class ScrollLimitsTest(BrowserTestCase):
                 browser._filter_widgets["name"].winfo_rooty() - browser._filter_canvas.winfo_rooty())
 
     def wheel(self, browser, delta, shift=False):
-        cell = browser._widgets[id(browser._visible[0])][1]
+        cell = browser._pool[0][1]  # any row cell that is currently on screen, wherever the pool has scrolled to
         cell.event_generate("<Shift-MouseWheel>" if shift else "<MouseWheel>", delta=delta, x=3, y=3)
         self.app.update()
 
@@ -1184,12 +1185,12 @@ class ScrollLimitsTest(BrowserTestCase):
         browser = self.open()
         self.app.update()
         self.assertTrue(browser._fits("y"))
-        top = browser._widgets[id(browser._visible[0])][1].winfo_rooty()
+        top = browser.widgets_for(browser._visible[0])[1].winfo_rooty()
 
         for delta in (-10, -30, 25):
             self.wheel(browser, delta)
 
-        self.assertEqual(browser._widgets[id(browser._visible[0])][1].winfo_rooty(), top)
+        self.assertEqual(browser.widgets_for(browser._visible[0])[1].winfo_rooty(), top)
 
     def test_a_table_wider_than_the_window_scrolls_and_stops_at_both_ends_without_a_gap(self):
         browser = self.open(column_widths={"name": 1400, "group": 1400})
@@ -1212,24 +1213,33 @@ class ScrollLimitsTest(BrowserTestCase):
         self.assertEqual(self.offset(browser)[0], 0)
 
     def test_a_list_longer_than_the_window_scrolls_down_and_up_and_stops_at_the_ends(self):
+        """The rows are a pool, not a scrolled canvas (see the class docstring): scrolling moves _first_index, the
+        offset of the pool inside _canvas never changes at all any more."""
         players = [player(f"P{index:03d}", True) for index in range(80)]
         browser = self.open(players=players)
         self.app.update()
         self.assertFalse(browser._fits("y"))
+        last_page = len(browser._visible) - browser._pool_size
 
         for _ in range(60):
             self.wheel(browser, 30)  # up, at the top: nothing happens
+        self.assertEqual(browser._first_index, 0)
         self.assertEqual(self.offset(browser)[1], 0)
+
         browser._scroll_y("moveto", 1.0)
         self.app.update()
-        bottom = browser._body.winfo_rooty() + browser._body.winfo_reqheight()
-        self.assertEqual(bottom, browser._canvas.winfo_rooty() + browser._canvas.winfo_height())
+        self.assertEqual(browser._first_index, last_page)
+        shown = [row for row in browser._pool_rows if row is not None]
+        self.assertEqual(shown[-1].name, "P079")  # the last player really is the last one on screen
+        self.assertEqual(self.offset(browser)[1], 0)
+
         for _ in range(30):
-            self.wheel(browser, -40)  # down, at the bottom
-        self.assertEqual(browser._body.winfo_rooty() + browser._body.winfo_reqheight(), bottom)
+            self.wheel(browser, -40)  # down, further than there is: stays at the bottom
+        self.assertEqual(browser._first_index, last_page)
+
         browser._scroll_y("moveto", 0.0)
         self.app.update()
-        self.assertEqual(self.offset(browser)[1], 0)
+        self.assertEqual(browser._first_index, 0)
 
     def test_a_scrolled_table_that_no_longer_needs_scrolling_goes_back_to_its_corner(self):
         browser = self.open(column_widths={"name": 1400, "group": 1400})
@@ -1277,14 +1287,14 @@ class ScrollLimitsTest(BrowserTestCase):
             for key, widget in zip((k for k, _, _ in COLUMNS), browser._filter_widgets.values()):
                 if widget.winfo_ismapped():
                     self.assertEqual(widget.winfo_rootx(), browser._header_cells[key].winfo_rootx())
-            first_row = browser._widgets[id(browser._visible[0])]
+            first_row = browser.widgets_for(browser._visible[0])
             self.assertEqual(first_row[2].winfo_rootx(), browser._header_cells["status"].winfo_rootx())
 
 
 class TemperatureAndVersionTest(BrowserTestCase):
     def cell(self, browser, name, key):
         row = next(r for r in browser._rows if r.name == name)
-        return browser._widgets[id(row)][1 + [k for k, _, _ in COLUMNS].index(key)].cget("text")
+        return browser.widgets_for(row)[1 + [k for k, _, _ in COLUMNS].index(key)].cget("text")
 
     def test_they_are_the_last_two_columns_and_have_switches_at_the_end_of_the_row(self):
         browser = self.open()
@@ -1730,9 +1740,10 @@ class RefreshIntervalTest(BrowserTestCase):
 
         row = next(r for r in browser._rows if r.name == "Prerov 1")
         self.assertTrue(row.online)
-        cells = [w.cget("text") for w in browser._widgets[id(row)][1:]]
+        cells = [w.cget("text") for w in browser.widgets_for(row)[1:]]
         self.assertEqual((cells[1], cells[7]), ("Online", "opraveno"))
-        self.assertEqual(len(browser._widgets), 4)  # the old rows are gone, not piled up
+        self.assertEqual(len(browser._rows), 4)  # the old rows are gone, not piled up
+        self.assertEqual(sum(r is not None for r in browser._pool_rows), 4)  # and shown, not stale ones
         self.assertRegex(browser.updated_var.get(), r"^Aktualizováno \d\d:\d\d:\d\d$")
 
     def test_after_a_failed_update_the_old_players_stay_and_it_says_when_they_are_from(self):
@@ -2098,7 +2109,7 @@ class TableButtons:
     @staticmethod
     def button(browser, name):
         row = next(row for row in browser._rows if row.name == name)
-        return row, browser._widgets[id(row)][0]
+        return row, browser.widgets_for(row)[0]
 
     @staticmethod
     def press(button):
@@ -2405,28 +2416,28 @@ class AutoRefreshTest(TableButtons, BrowserTestCase):
         browser = self.open(fetch=fetch, snapshot_fetch=MagicMock())
         browser.geometry("1000x400")
         self.app.update()
-        browser._canvas.yview_moveto(0.5)
+        browser._scroll_y("moveto", 0.5)
         self.app.update()
-        before = browser._canvas.yview()[0]
-        self.assertGreater(before, 0.3)
+        before = browser._first_index
+        self.assertGreater(before, 0)
 
         self.clock[0] += 1000
         browser.refresh()
         self.wait_for(lambda: not browser._loading)
         self.app.update()
 
-        self.assertAlmostEqual(browser._canvas.yview()[0], before, delta=0.02)
+        self.assertEqual(browser._first_index, before)
 
     def test_a_filter_change_still_goes_back_to_the_top(self):
         many = [player(f"P{index:02d}") for index in range(60)]
         browser = self.open(fetch=MagicMock(return_value=many), snapshot_fetch=MagicMock())
         browser.geometry("1000x400")
         self.app.update()
-        browser._canvas.yview_moveto(0.5)
+        browser._scroll_y("moveto", 0.5)
         self.app.update()
 
         browser.name_var.set("P")
-        self.wait_for(lambda: len(browser.visible_names()) == 60 and browser._canvas.yview()[0] == 0)
+        self.wait_for(lambda: len(browser.visible_names()) == 60 and browser._first_index == 0)
 
     def test_it_waits_while_a_list_of_choices_is_open(self):
         fetch = MagicMock(return_value=PLAYERS)
@@ -2575,8 +2586,10 @@ class WindowGeometryTest(BrowserTestCase):
 
 class LargeTableTest(BrowserTestCase):
     """
-    Changing a table of hundreds of players used to take tens of seconds (every cell is a window that was moved and
-    redrawn one by one while it was on the screen). It is done with the rows hidden now.
+    A row of widgets for every single player, hidden or not, used to make hundreds of players slow to open, scroll,
+    filter or resize, and thousands of them worse still: it is a fixed pool now (see the class docstring of
+    PlayerBrowser), as many rows of widgets as fit the window, whatever the account has - the scroll position is
+    which one of _visible the pool starts showing, not a real position of anything on the canvas.
     """
 
     def open_large(self, count=310):
@@ -2607,21 +2620,54 @@ class LargeTableTest(BrowserTestCase):
 
         self.assertEqual(fetch.call_count, 1)
 
-    def test_a_column_is_shown_or_hidden_in_seconds_not_in_tens_of_seconds(self):
+    def test_a_column_is_shown_or_hidden_in_a_fraction_of_a_second(self):
         browser, _ = self.open_large()
 
         hide = self.seconds(lambda: browser.toggle_column("location"))
         show = self.seconds(lambda: browser.toggle_column("location"))
 
-        self.assertLess(max(hide, show), 4, f"{hide:.1f} s to hide, {show:.1f} s to show")
+        self.assertLess(max(hide, show), 1.5, f"{hide:.1f} s to hide, {show:.1f} s to show")
 
-    def test_the_text_size_changes_in_seconds_not_in_tens_of_seconds(self):
+    def test_the_text_size_changes_in_a_fraction_of_a_second(self):
         browser, _ = self.open_large()
 
         larger = self.seconds(lambda: browser.set_font_size(14))
         smaller = self.seconds(lambda: browser.set_font_size(12))
 
-        self.assertLess(max(larger, smaller), 4, f"{larger:.1f} s larger, {smaller:.1f} s smaller")
+        self.assertLess(max(larger, smaller), 1.5, f"{larger:.1f} s larger, {smaller:.1f} s smaller")
+
+    def test_the_pool_of_row_widgets_never_grows_with_the_number_of_players(self):
+        """The whole point: a few dozen live widgets however many players the account has, not one row for each."""
+        small, _ = self.open_large(20)
+        small_pool = len(small._pool)
+
+        huge, _ = self.open_large(4000)
+
+        self.assertEqual(len(huge._pool), small_pool)
+        self.assertLess(len(huge._pool), 200)  # comfortably a screenful, nowhere near one row per player
+
+    def test_opening_scrolling_and_resizing_a_huge_account_stays_fast(self):
+        browser, _ = self.open_large(4000)
+
+        opening = self.seconds(lambda: None)  # open_large already measured the open itself; this is the baseline
+        scroll_middle = self.seconds(lambda: browser._scroll_y("moveto", 0.5))
+        scroll_end = self.seconds(lambda: browser._scroll_y("moveto", 1.0))
+        resize = self.seconds(lambda: browser.geometry("1500x850"))
+
+        for label, seconds in (("scroll to the middle", scroll_middle), ("scroll to the end", scroll_end),
+                               ("resize", resize)):
+            with self.subTest(action=label):
+                self.assertLess(seconds, 1.5, f"{label} took {seconds:.1f} s")
+        self.assertLess(opening, 0.1)
+
+    def test_scrolling_shows_the_actual_players_at_that_position(self):
+        browser, _ = self.open_large(500)
+
+        browser._scroll_y("moveto", 1.0)
+
+        shown = [row.name for row in browser._pool_rows if row is not None]
+        self.assertEqual(shown[-1], "Player 499")
+        self.assertEqual(browser.widgets_for(browser._visible[-1])[1].cget("text"), "Player 499")
 
     def test_the_rows_are_hidden_during_a_change_and_shown_after_it(self):
         browser, _ = self.open_large(20)

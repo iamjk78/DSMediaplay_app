@@ -19,11 +19,12 @@ class FontSizeCase(BrowserTestCase):
         return tkfont.Font(root=self.app, font=ttk.Style(self.app).lookup(style, "font")).actual()["size"]
 
     def cells(self, browser):
-        return [cell for widgets in browser._widgets.values() for cell in widgets[1:]]
+        return [cell for widgets, row in zip(browser._pool, browser._pool_rows) if row is not None
+               for cell in widgets[1:]]
 
     def aligned(self, browser):
         self.app.update()
-        first_row = browser._widgets[id(browser._visible[0])]
+        first_row = browser.widgets_for(browser._visible[0])
         for index, (key, _, _) in enumerate(COLUMNS):
             header, widget = browser._header_cells[key], browser._filter_widgets[key]
             if header.winfo_ismapped():
@@ -134,13 +135,13 @@ class FontSizeTest(FontSizeCase):
     def test_the_text_size_makes_the_rows_higher_and_the_header_and_the_filters_follow(self):
         browser = self.open()
         self.app.update()
-        row, header, filters = (browser._widgets[id(browser._visible[0])][1].winfo_height(),
+        row, header, filters = (browser.widgets_for(browser._visible[0])[1].winfo_height(),
                                 browser._header_canvas.winfo_reqheight(), browser._filter_canvas.winfo_reqheight())
 
         browser.set_font_size(20)
         self.app.update()
 
-        self.assertGreater(browser._widgets[id(browser._visible[0])][1].winfo_height(), row)
+        self.assertGreater(browser.widgets_for(browser._visible[0])[1].winfo_height(), row)
         self.assertEqual(browser._header_canvas.winfo_reqheight(), browser._header.winfo_reqheight())
         self.assertGreater(browser._header_canvas.winfo_reqheight(), header)
         self.assertGreaterEqual(browser._filter_canvas.winfo_reqheight(), filters)
@@ -162,7 +163,7 @@ class FontSizeTest(FontSizeCase):
         browser.set_font_size(MAX_FONT_SIZE)
         self.app.update()
 
-        button = browser._widgets[id(browser._visible[0])][0]
+        button = browser.widgets_for(browser._visible[0])[0]
         self.assertGreaterEqual(browser._first_width, button.winfo_reqwidth() + 8)
         self.assertLessEqual(button.winfo_width(), browser._first_width)
         self.aligned(browser)
