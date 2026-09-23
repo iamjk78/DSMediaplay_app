@@ -25,6 +25,9 @@ import webbrowser
 
 # The same for Start and Deploy all: narrow enough for the free space right of the action drop-down
 DEPLOY_PADDING_X = 12
+# Minimum breathing room, in pixels, between the category/action drop-downs and Live-view/Deploy all to their
+# right; see _ensure_gap_from_dropdowns for why this can't just be a bigger padx on the buttons.
+ACTION_ROW_GAP_X = 24
 
 
 def get_download_path():
@@ -546,6 +549,26 @@ class DSMediaplayApp(tk.Tk):
         buttons = [self.start_button, self.deploy_all_button, self.live_view_button, self.outage_button]
         if all(buttons):
             equalize_widths(*buttons)
+            self._ensure_gap_from_dropdowns()
+
+    def _ensure_gap_from_dropdowns(self):
+        """Live-view/Deploy all only reserve their own padx as a floor within whatever width their row already
+        has; a wide enough button (native on Windows, unlike the pixel-measured canvas one on macOS) can already
+        fill that row on its own and leave no real gap before the category/action drop-down, or even touch it.
+        Growing a plain, otherwise-unclaimed column (tried column 2) does not help: Tk's grid steals the extra
+        back from a sibling column that the drop-down's own 3-column span also touches, leaving the drop-down's
+        total footprint - and so the gap - unchanged. The drop-down's own right padx is not up for stealing like
+        that, so growing it is what actually reserves the space; only ever grown, never shrunk back, so a later,
+        smaller deficit is simply a no-op rather than undoing a still-needed earlier gap."""
+        for box, button in ((self.entity_type_combobox, self.live_view_button),
+                            (self.option_choose_action, self.deploy_all_button)):
+            self.update_idletasks()
+            gap = button.winfo_rootx() - (box.winfo_rootx() + box.winfo_width())
+            deficit = ACTION_ROW_GAP_X - gap
+            if deficit > 0:
+                padx = box.grid_info()["padx"]
+                left, right = padx if isinstance(padx, tuple) else (padx, padx)
+                box.grid_configure(padx=(left, right + deficit))
 
     def _selected_connection(self):
         """(url, login, password) of the selected account and login, or None with a hint when no login is selected."""

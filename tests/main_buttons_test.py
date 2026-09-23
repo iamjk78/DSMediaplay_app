@@ -78,8 +78,11 @@ class MainButtonsTest(MainWindowCase):
         outage, live, deploy, _ = self.buttons()
         width = self.app.winfo_width()
 
+        # A guaranteed minimum gap, not just "somewhere to the right": on Windows a native button can be wide
+        # enough to butt straight up against a wide combobox otherwise.
         for button, box in ((live, self.app.entity_type_combobox), (deploy, self.app.option_choose_action)):
-            self.assertGreater(button.winfo_rootx(), box.winfo_rootx() + box.winfo_width())
+            self.assertGreaterEqual(button.winfo_rootx() - (box.winfo_rootx() + box.winfo_width()),
+                                    gui.ACTION_ROW_GAP_X)
         self.assertGreater(outage.winfo_rootx(), self.app.entity_type_combobox.winfo_rootx())
         self.assertEqual(self.app.winfo_reqwidth(), width)
 
