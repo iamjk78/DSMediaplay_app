@@ -6,8 +6,8 @@ import unittest
 from unittest.mock import patch
 
 from gui_app.color_button import GREEN, ColorButton
-from gui_app.tooltip import (GAP_LEFT_OF_POINTER, GAP_RIGHT_OF_POINTER, TOOLTIP_DELAY_MS, WATCH_INTERVAL_MS,
-                             Tooltip)
+from gui_app.tooltip import (GAP_LEFT_OF_POINTER, GAP_RIGHT_OF_POINTER, IGNORE_ACTIVATE_AFTER_SHOW_MS,
+                             MAX_VISIBLE_MS, TOOLTIP_DELAY_MS, WATCH_INTERVAL_MS, Tooltip)
 
 
 class TooltipTest(unittest.TestCase):
@@ -269,6 +269,53 @@ class StuckTooltipTest(unittest.TestCase):
 
         self.button.destroy()
         self.wait(WATCH_INTERVAL_MS * 2)
+
+    def test_it_goes_away_when_the_application_becomes_active_again(self):
+        """
+        E.g. "Help" opens the browser and takes the active application away from this one: the pointer does not
+        move at all, so the pointer check (patched here to always say "still over it", as it would in that case
+        too) never notices; when the user comes back, <Activate> fires on the window and closes it at once.
+        """
+        self.show()
+        self.wait(IGNORE_ACTIVATE_AFTER_SHOW_MS + 30)  # past its own, self-caused <Activate> (see the next test)
+
+        self.root.event_generate("<Activate>")
+
+        self.assertFalse(self.visible())
+
+    def test_showing_it_does_not_close_it_through_its_own_activate(self):
+        """
+        Deiconifying the tooltip's little window is itself measured to fire one or more spurious <Activate> events
+        on the main window right away (worse still with several tooltips on the same window, each of them bound to
+        it): none of those may be mistaken for the user coming back from elsewhere and close the tooltip they belong
+        to. A second, independent Tooltip on the same root stands in for that "several tooltips" case.
+        """
+        another = tk.Button(self.root, text="another")
+        another.pack()
+        Tooltip(another, lambda: "x", delay_ms=30)
+
+        self.show()
+        for _ in range(5):  # as many as a burst of them right after showing
+            self.root.event_generate("<Activate>")
+        self.root.update()
+
+        self.assertTrue(self.visible())
+
+    def test_it_goes_away_on_its_own_after_a_ceiling_however_it_got_stuck(self):
+        with patch("gui_app.tooltip.MAX_VISIBLE_MS", 300):  # more than show()'s own 120 ms wait
+            self.show()
+
+            self.wait(300)
+
+        self.assertFalse(self.visible())
+
+    def test_the_ceiling_does_not_cut_a_normal_appearance_short(self):
+        with patch("gui_app.tooltip.MAX_VISIBLE_MS", 100_000):
+            self.show()
+
+            self.wait(WATCH_INTERVAL_MS * 3)
+
+        self.assertTrue(self.visible())
 
 
 class PointerOverWidgetTest(unittest.TestCase):
