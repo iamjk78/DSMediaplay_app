@@ -9,7 +9,7 @@ import time
 import tkinter as tk
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import requests
 
@@ -1509,6 +1509,33 @@ class ResetFiltersTest(BrowserTestCase):
         self.assertEqual(len(browser.visible_names()), 4)
 
 
+class SetFilterAndSortTest(BrowserTestCase):
+    OUTAGE_PLAYERS = [
+        player("Aktivni 1", False, reported=ago(hours=1)),
+        player("Aktivni 2", False, reported=ago(minutes=5)),
+        player("Aktivni 3", True, reported=ago(minutes=1)),  # online: must not show up
+        player("Jina pobocka", False, reported=ago(minutes=2)),  # offline but not "aktivni": must not show up
+    ]
+
+    def test_sets_the_name_and_status_filters_and_the_sort_and_applies_them(self):
+        browser = self.open(players=self.OUTAGE_PLAYERS)
+
+        browser.set_filter_and_sort(name="aktivni", online=False, sort_column="reported", sort_descending=True)
+
+        self.assertEqual(browser.name_var.get(), "aktivni")
+        self.assertEqual(browser.status_box.get(), "Offline")
+        self.assertEqual(browser.visible_names(), ["Aktivni 2", "Aktivni 1"])
+
+    def test_applying_it_again_overrides_whatever_was_chosen_by_hand(self):
+        browser = self.open(players=self.OUTAGE_PLAYERS)
+        browser.name_var.set("jina")
+        self.choose(browser.status_box, "Online")
+
+        browser.set_filter_and_sort(name="aktivni", online=False, sort_column="reported", sort_descending=True)
+
+        self.assertEqual(browser.visible_names(), ["Aktivni 2", "Aktivni 1"])
+
+
 class RefreshIntervalTest(BrowserTestCase):
     """
     Two downloads start at least 10 s apart. A press that comes earlier is remembered and its update runs 10 s after
@@ -1945,6 +1972,17 @@ class MainWindowTest(BrowserTestCase):
 
             first.destroy.assert_called_once()
             self.assertEqual(browser_class.call_count, 2)
+
+    def test_on_open_is_called_whether_the_window_is_created_or_reused(self):
+        with patch("gui_app.gui.PlayerBrowser") as browser_class:
+            first = browser_class.return_value
+            first.winfo_exists.return_value = True
+            first.connection = ("https://x", "jane")
+            on_open = MagicMock()
+            self.app.open_player_browser("https://x", "jane", "pw", on_open=on_open)
+            self.app.open_player_browser("https://x", "jane", "pw", on_open=on_open)
+
+            self.assertEqual(on_open.call_args_list, [call(first), call(first)])
 
     def test_execute_action_dispatches_show_actions(self):
         self.app.account_data["Demo"] = {"url": "https://x", "names": {"jane": {"login": "jane"}}}

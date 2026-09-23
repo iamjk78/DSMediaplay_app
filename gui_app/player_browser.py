@@ -1068,6 +1068,18 @@ class PlayerBrowser(tk.Toplevel):
         self.apply_filters()
         self.name_entry.focus_set()
 
+    def set_filter_and_sort(self, *, name: str = "", online: Optional[bool] = None, sort_column: str = "name",
+                            sort_descending: bool = False):
+        """Sets the name and online filters and the sort column as if chosen by hand, and applies them."""
+        self.name_var.set(name)
+        for label, value in self._combo_values[self.status_box].items():
+            if value == online:
+                self.status_box.set(label)
+                break
+        self._sort = (sort_column, sort_descending)
+        self._show_sort_arrow()
+        self.apply_filters()
+
     def _sort_by(self, column: str):
         self._sort = (column, not self._sort[1] if self._sort[0] == column else False)
         self._show_sort_arrow()

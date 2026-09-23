@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from gui_app.color_button import (BLUE, GREEN, GREEN_DARK, RED, YELLOW, button_enabled, equalize_widths,
+from gui_app.color_button import (BLUE, GREEN, GREEN_DARK, PURPLE, RED, YELLOW, button_enabled, equalize_widths,
                                   make_color_button, set_button_colors, set_button_enabled)
 from gui_app.icons import set_window_icon
 from gui_app.tooltip import Tooltip
@@ -92,6 +92,7 @@ class DSMediaplayApp(tk.Tk):
         self.start_button = None
         self.deploy_all_button = None
         self.live_view_button = None
+        self.outage_button = None
         self.quit_button = None
         self.select_entity_type_label = None
         self.select_action_label = None
@@ -113,10 +114,11 @@ class DSMediaplayApp(tk.Tk):
         self._login_row = 2
         self._password_row = 3
         self._save_button_row = 4
-        self._entity_type_row = 5
-        self._action_row = 6
-        self._text_box_row = 7
-        self._action_buttons_row = 8
+        self._outage_row = 5
+        self._entity_type_row = 6
+        self._action_row = 7
+        self._text_box_row = 8
+        self._action_buttons_row = 9
 
         self.setup_ui()
         self.fill_default_login_details()
@@ -305,10 +307,16 @@ class DSMediaplayApp(tk.Tk):
                                                           parent=right_buttons, padding_x=DEPLOY_PADDING_X)
         self.start_button.grid(row=0, column=1, padx=pad_x, pady=pad_y, sticky="w")
         self.add_action_tooltip(self.start_button, "tip_start")
+        # Above "Live-view", same font, size and right edge
+        self.outage_button = self.create_emphasised_button("outages", self.outages, PURPLE, size_offset=2,
+                                                            padding_x=DEPLOY_PADDING_X)
+        self.outage_button.grid(row=self._outage_row, column=1, columnspan=4, padx=pad_x, sticky="e")
+        self.add_action_tooltip(self.outage_button, "tip_outages")
         # Right of the drop-downs, in line with the right edge of "Start"; same font and size as it
         self.live_view_button = self.create_emphasised_button("live_view", self.live_view, BLUE, size_offset=2,
                                                               padding_x=DEPLOY_PADDING_X)
-        self.live_view_button.grid(row=self._entity_type_row, column=1, columnspan=4, padx=pad_x, sticky="e")
+        self.live_view_button.grid(row=self._entity_type_row, column=1, columnspan=4, padx=pad_x, pady=(3, 0),
+                                   sticky="e")
         self.add_action_tooltip(self.live_view_button, "tip_live_view")
         self.deploy_all_button = self.create_emphasised_button("deploy_all", self.deploy_all, YELLOW, size_offset=2,
                                                                padding_x=DEPLOY_PADDING_X)
@@ -444,6 +452,8 @@ class DSMediaplayApp(tk.Tk):
             self.deploy_all_button.config(text=self.lang.get_message("deploy_all"))
         if self.live_view_button:
             self.live_view_button.config(text=self.lang.get_message("live_view"))
+        if self.outage_button:
+            self.outage_button.config(text=self.lang.get_message("outages"))
         self._equalize_action_buttons()
 
     def update_all_widgets_font(self):
@@ -525,15 +535,15 @@ class DSMediaplayApp(tk.Tk):
         return self.login_var.get() in names and bool(self.password_var.get())
 
     def update_action_buttons(self):
-        """Start, Live-view and Deploy all are grey until an account, a login and a password are there."""
+        """Start, Live-view, Deploy all and Výpadky are grey until an account, a login and a password are there."""
         enabled = self.can_start_actions()
         for button, colors in ((self.start_button, GREEN), (self.deploy_all_button, YELLOW),
-                               (self.live_view_button, BLUE)):
+                               (self.live_view_button, BLUE), (self.outage_button, PURPLE)):
             if button is not None:
                 set_button_enabled(button, enabled, colors)
 
     def _equalize_action_buttons(self):
-        buttons = [self.start_button, self.deploy_all_button, self.live_view_button]
+        buttons = [self.start_button, self.deploy_all_button, self.live_view_button, self.outage_button]
         if all(buttons):
             equalize_widths(*buttons)
 
@@ -560,20 +570,36 @@ class DSMediaplayApp(tk.Tk):
         if connection:
             self.perform_show_action("show_player_snapshots", *connection, None)
 
+    def outages(self):
+        """The action "Live-view", limited to active players ("aktivni" in the name) that are offline, newest
+        reported first: every click reapplies the filter and sort, even if the window is already open."""
+        connection = self._selected_connection()
+        if not connection:
+            return
+        url, login, password = connection
+        if "" in (login, password):
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
+            return
+        self.open_player_browser(url, login, password, on_open=lambda browser: browser.set_filter_and_sort(
+            name="aktivni", online=False, sort_column="reported", sort_descending=True))
+
     def perform_show_action(self, action, url, login, password, _):
         if "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
             return
         self.open_player_browser(url, login, password)
 
-    def open_player_browser(self, url, login, password):
-        """One window at a time: the same account and login brings the open one to the front."""
+    def open_player_browser(self, url, login, password, on_open=None):
+        """One window at a time: the same account and login brings the open one to the front. `on_open`, when
+        given, is called with the window every time it is shown, whether newly created or brought forward."""
         browser = self._player_browser
         if browser is not None and browser.winfo_exists():
             if browser.connection == (url, login):
                 browser.deiconify()
                 browser.lift()
                 browser.focus_force()
+                if on_open:
+                    on_open(browser)
                 return
             browser.destroy()
         self.sync_from_disk()
@@ -590,6 +616,8 @@ class DSMediaplayApp(tk.Tk):
             save_window_geometry=lambda geometry: self.save_player_window_geometry(account, geometry),
             snapshot_size=accounts.snapshot_window_size(self.all_data, account),
             save_snapshot_size=lambda size: self.save_snapshot_window_size(account, size))
+        if on_open:
+            on_open(self._player_browser)
 
     def save_player_window_geometry(self, account, geometry):
         """The size and position of the player table window are remembered per account too."""

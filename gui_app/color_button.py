@@ -26,6 +26,7 @@ GREEN_DARK = ButtonColors(normal="#2e7d32", hover="#276b2b", pressed="#205a24", 
 
 
 YELLOW = ButtonColors(normal="#fff2b3", hover="#ffea8a", pressed="#ffe066", border="#d1b640")
+PURPLE = ButtonColors(normal="#e4d1f7", hover="#d6bdf2", pressed="#c7a5ec", border="#a97fd1")
 # A button that cannot be used: grey, dark enough text to read but clearly not the coloured one
 DISABLED = ButtonColors(normal="#e6e6e6", hover="#e6e6e6", pressed="#e6e6e6", border="#c4c4c4", text="#8a8a8a")
 BLUE = ButtonColors(normal="#c7dcf7", hover="#b4d0f3", pressed="#9ec2ec", border="#7f9fcc")
