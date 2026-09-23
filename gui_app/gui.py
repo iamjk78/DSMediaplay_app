@@ -16,9 +16,9 @@ from datetime import datetime
 from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
 from gui_app.player_browser import PlayerBrowser
-from util import accounts, credentials, input_templates
+from util import accounts, credentials, input_templates, legacy_import
 from util.actions import action_needs_input
-from util.paths import resource_path
+from util.paths import legacy_login_file, resource_path
 import requests
 import webbrowser
 
@@ -61,6 +61,7 @@ class DSMediaplayApp(tk.Tk):
         if "lang" not in self.all_data:
             self.ask_language()
         self.lang = LanguageManager(language=self.all_data.get("lang", "en"), config_path=language_file)
+        self.import_legacy_accounts()
         self.migrate_plaintext_passwords()
         self.font = tuple(self.all_data.get("font", ["Helvetica", 12]))
         self.account_data = self.all_data["logins"]
@@ -842,6 +843,34 @@ class DSMediaplayApp(tk.Tk):
         if error:
             messagebox.showwarning(self.lang.get_message("warning_title"),
                                    self.lang.get_message("credential_delete_failed", error=str(error)))
+
+    def import_legacy_accounts(self):
+        """
+        One-time, silent import of the accounts, logins and passwords of the old, network-drive-launched version of
+        this app (Windows only; on macOS/Linux there is nothing to find, so this quietly does nothing). An account
+        or a login already present here is left exactly as it is; only what is not here yet is added. Runs at most
+        once per config file, whatever it finds: a flag in it remembers that this ran, so it is never retried and
+        never reintroduces something the user has since removed on purpose.
+
+        A password store that cannot be used aborts the whole import before anything of it is saved (the flag
+        included), so it is tried again, from the untouched original file, the next time the application starts.
+        """
+        if self.all_data.get("legacy_import_done"):
+            return
+        legacy = legacy_import.read_legacy_accounts(legacy_login_file())
+        if legacy is not None:
+            legacy_import.merge_legacy_accounts(self.all_data, legacy)
+        self.all_data["legacy_import_done"] = True
+        try:
+            # The merge above only ever adds plaintext "password" fields (never removes existing ones), so this
+            # also covers any of those already in the file from before this ran, exactly as it would a moment later.
+            credentials.migrate_plaintext_passwords(self.all_data)
+        except credentials.KeyringError as error:
+            del self.all_data["legacy_import_done"]
+            messagebox.showwarning(self.lang.get_message("warning_title"),
+                                   self.lang.get_message("credential_store_error", error=str(error)))
+            return
+        self.save_account_configs()
 
     def migrate_plaintext_passwords(self):
         """One-time move of passwords from an older config file into the OS credential store."""
