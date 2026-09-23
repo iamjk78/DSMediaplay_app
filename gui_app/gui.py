@@ -28,6 +28,9 @@ DEPLOY_PADDING_X = 12
 # Minimum breathing room, in pixels, between the category/action drop-downs and Live-view/Deploy all to their
 # right; see _ensure_gap_from_dropdowns for why this can't just be a bigger padx on the buttons.
 ACTION_ROW_GAP_X = 24
+# create_combobox's own padx, right side: _ensure_gap_from_dropdowns resets to this before each measurement,
+# so a previous, possibly wrong top-up is never compounded by a later one.
+DROPDOWN_PAD_X = 3
 
 
 def get_download_path():
@@ -249,7 +252,7 @@ class DSMediaplayApp(tk.Tk):
         self.fill_default_login_details()
 
     def create_combobox(self, parent, label_key, row, var_name, command, text_var=None, values=None, columnspan=1):
-        pad_x, pad_y = 3, 2
+        pad_x, pad_y = DROPDOWN_PAD_X, 2
         label = ttk.Label(parent, text=self.lang.get_message(label_key), font=self.font)
         label.grid(row=row, column=0, padx=pad_x, pady=pad_y, sticky="w")
         combobox = ttk.Combobox(parent, textvariable=text_var, state="readonly", width=40)
@@ -558,17 +561,31 @@ class DSMediaplayApp(tk.Tk):
         Growing a plain, otherwise-unclaimed column (tried column 2) does not help: Tk's grid steals the extra
         back from a sibling column that the drop-down's own 3-column span also touches, leaving the drop-down's
         total footprint - and so the gap - unchanged. The drop-down's own right padx is not up for stealing like
-        that, so growing it is what actually reserves the space; only ever grown, never shrunk back, so a later,
-        smaller deficit is simply a no-op rather than undoing a still-needed earlier gap."""
+        that, so growing it is what actually reserves the space.
+
+        Uses winfo_x(), position within this window, not winfo_rootx() (position on the screen): the latter is
+        only valid once the window manager has actually placed the window, which on some platforms can still be
+        pending here and reads back as 0 or another placeholder, producing a wild, bogus deficit. Reset to
+        DROPDOWN_PAD_X before every measurement, rather than measuring on top of whatever a previous call may
+        have already added, so this is a fresh, idempotent computation every time, not one that could compound
+        an earlier bad reading call after call."""
         for box, button in ((self.entity_type_combobox, self.live_view_button),
                             (self.option_choose_action, self.deploy_all_button)):
-            self.update_idletasks()
-            gap = button.winfo_rootx() - (box.winfo_rootx() + box.winfo_width())
+            left = box.grid_info()["padx"]
+            left = left[0] if isinstance(left, tuple) else left
+            box.grid_configure(padx=(left, DROPDOWN_PAD_X))
+        self.update_idletasks()
+        for box, button in ((self.entity_type_combobox, self.live_view_button),
+                            (self.option_choose_action, self.deploy_all_button)):
+            gap = button.winfo_x() - (box.winfo_x() + box.winfo_width())
+            # A sanity cap: a real deficit here is at most a couple of button widths, never more - anything
+            # bigger means the measurement above is not trustworthy, so it is safer to leave the default padx
+            # than to apply a runaway one.
             deficit = ACTION_ROW_GAP_X - gap
-            if deficit > 0:
-                padx = box.grid_info()["padx"]
-                left, right = padx if isinstance(padx, tuple) else (padx, padx)
-                box.grid_configure(padx=(left, right + deficit))
+            if 0 < deficit <= 300:
+                left = box.grid_info()["padx"]
+                left = left[0] if isinstance(left, tuple) else left
+                box.grid_configure(padx=(left, DROPDOWN_PAD_X + deficit))
 
     def _selected_connection(self):
         """(url, login, password) of the selected account and login, or None with a hint when no login is selected."""
