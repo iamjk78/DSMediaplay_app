@@ -36,7 +36,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.mock_request = patch('requests.request').start()
 
         self.mock_post.return_value.json.return_value = {"token": "testtoken"}
-        self.mock_request.return_value.json.return_value = {"data": {"objects": []}}
+        self.mock_request.return_value.json.return_value = {"success": True, "data": {"objects": []}}
         self.mock_request.return_value.ok = True
 
     def tearDown(self):
@@ -47,8 +47,29 @@ class CSVTaskTestCase(unittest.TestCase):
             reader = csv.reader(f, delimiter=';')
             return list(reader)
 
+    @staticmethod
+    def _responses_by_endpoint(mapping):
+        """
+        A `requests.request` side effect for tasks that hit several different endpoints (some of them
+        repeatedly, e.g. the "skip test-labeled entities" lookup calls /groups or /files once per label
+        casing). Matches by the URL's suffix; a call to an endpoint not in `mapping` (namely the final
+        DELETE /session) gets a bare success response.
+        """
+        def side_effect(method, url, **kwargs):
+            for suffix, payload in mapping.items():
+                if url.endswith(suffix):
+                    response = MagicMock()
+                    response.ok = True
+                    response.json.return_value = payload
+                    return response
+            response = MagicMock()
+            response.ok = True
+            response.json.return_value = {"success": True}
+            return response
+        return side_effect
+
     def test_group_with_playlists_csv_task(self):
-        self.mock_request.return_value.json.return_value = {"data": [{"name": "Group 1", "playlists": [
+        self.mock_request.return_value.json.return_value = {"success": True, "data": [{"name": "Group 1", "playlists": [
             {"name": "Playlist 1",
              "settings": {"startdate": "2023-07-15T12:00:00Z", "enddate": "2023-07-20T12:00:00Z", "starttime": "08:00",
                           "endtime": "20:00"}},
@@ -73,7 +94,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_players_with_groups_csv_task(self):
-        self.mock_request.return_value.json.return_value = {
+        self.mock_request.return_value.json.return_value = {"success": True, 
             "data": {"objects": [{"name": "Player 1", "group": {"name": "Group 1"}}]}}
         task = PlayersWithGroupsCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -91,7 +112,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_playlists_with_assets_csv_task(self):
-        self.mock_request.return_value.json.return_value = {"data": [{"name": "Playlist 1", "assets": [{"filename": "Asset 1"}]}]}
+        self.mock_request.return_value.json.return_value = {"success": True, "data": [{"name": "Playlist 1", "assets": [{"filename": "Asset 1"}]}]}
         task = PlaylistsWithAssetsCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
@@ -108,7 +129,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_detailed_groups_playlists_csv_task(self):
-        self.mock_request.return_value.json.return_value = {"data": [{"name": "Group 1", "playlists": [
+        self.mock_request.return_value.json.return_value = {"success": True, "data": [{"name": "Group 1", "playlists": [
             {"name": "Playlist 1",
              "settings": {"startdate": "2023-07-15T12:00:00Z", "enddate": "2023-07-20T12:00:00Z", "weekdays": [1, 2, 3],
                           "starttime": "08:00", "endtime": "20:00"}},
@@ -133,7 +154,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_player_locations_csv_task(self):
-        self.mock_request.return_value.json.return_value = {
+        self.mock_request.return_value.json.return_value = {"success": True, 
             "data": {"objects": [{"name": "Player 1", "configLocation": "Location 1"}]}}
         task = PlayerLocationsCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -151,7 +172,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_player_notes_csv_task(self):
-        self.mock_request.return_value.json.return_value = {
+        self.mock_request.return_value.json.return_value = {"success": True, 
             "data": {"objects": [{"name": "Player 1", "notes": "Note 1"}]}}
         task = PlayerNotesCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -169,7 +190,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_locations_plan_csv_task(self):
-        self.mock_request.return_value.json.return_value = {
+        self.mock_request.return_value.json.return_value = {"success": True, 
             "data": [
                 {
                     "configLocation": "Location 1",
@@ -207,15 +228,10 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_player_details_csv_task(self):
-        self.mock_request.side_effect = [
-            MagicMock(json=MagicMock(return_value={"data": {"objects": [{"name": "Player 1", "_id": "12345"}]}})),
-            MagicMock(json=MagicMock(return_value={"data": {"objects": [{"name": "Player 1", "_id": "12345"}]}})),
-            MagicMock(json=MagicMock(return_value={"data": {
-                "name": "Player 1", "tvStatus": "Online", "lastReported": "2023-07-15T12:00:00Z",
-                "lastUpload": "44", "version": "v1.0", "ip": "192.168.0.1", "uptime": "24h",
-                "piTemperature": "75C"}})),
-            MagicMock()
-        ]
+        self.mock_request.return_value.json.return_value = {"success": True, "data": {"objects": [{
+            "name": "Player 1", "tvStatus": "Online", "lastReported": "2023-07-15T12:00:00Z",
+            "lastUpload": "44", "version": "v1.0", "ip": "192.168.0.1", "uptime": "24h",
+            "piTemperature": "75C"}]}}
 
         task = PlayerDetailsCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -234,7 +250,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_player_labels_csv_task(self):
-        self.mock_request.return_value.json.return_value = {
+        self.mock_request.return_value.json.return_value = {"success": True, 
             "data": {"objects": [{"name": "Player 1", "labels": ["Label 1"]}]}}
         task = PlayerLabelsCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -252,7 +268,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_group_settings_csv_task(self):
-        self.mock_request.return_value.json.return_value = {"data": [
+        self.mock_request.return_value.json.return_value = {"success": True, "data": [
             {"name": "Group 1", "resolution": "1920x1080", "orientation": "landscape", "reboot": {
                 "time": "08:00", "enable": "true"
             },
@@ -266,14 +282,15 @@ class CSVTaskTestCase(unittest.TestCase):
         content = self._read_csv_file(tmp_file_path)
         os.remove(tmp_file_path)
         expected_content = [
-            ["Group", "Resolution", "Orientation", "Auto Restart", "Auto Deploy"],
-            ["Group 1", "1920x1080", "landscape", "08:00", "20:00"]
+            ["Group", "Resolution", "Orientation", "Auto Restart", "Auto Deploy", "Combine Default Playlist",
+             "Play All Eligible Playlists", "LCD On", "LCD, Off", "default/mpv/cvlc"],
+            ["Group 1", "1920x1080", "landscape", "08:00", "20:00", "", "", "", "", ""]
         ]
 
         self.assertEqual(content, expected_content)
 
     def test_player_versions_csv_task(self):
-        self.mock_request.return_value.json.return_value = {
+        self.mock_request.return_value.json.return_value = {"success": True, 
             "data": {"objects": [{"name": "Player 1", "version": "v1.0"}]}}
         task = PlayerVersionsCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -291,12 +308,12 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_group_unused_csv_task(self):
-        self.mock_request.side_effect = [
-            MagicMock(json=MagicMock(return_value={"data": [{"name": "Group 1"}, {"name": "Group 2"}]})),
-            MagicMock(json=MagicMock(
-                return_value={"data": {"objects": [{"name": "Player 1", "group": {"name": "Group 1"}}]}})),
-            MagicMock()
-        ]
+        # /groups is hit both by the "skip test-labeled groups" lookup (once per case variant of "test")
+        # and by get_group_names(); /players is hit once by get_players_groups().
+        self.mock_request.side_effect = self._responses_by_endpoint({
+            "/groups": {"success": True, "data": [{"name": "Group 1"}, {"name": "Group 2"}]},
+            "/players": {"success": True, "data": {"objects": [{"name": "Player 1", "group": {"name": "Group 1"}}]}},
+        })
 
         task = GroupUnusedCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -314,12 +331,12 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_playlist_unused_csv_task(self):
-        self.mock_request.side_effect = [
-            MagicMock(json=MagicMock(return_value={"data": [{"name": "Playlist 1"}, {"name": "Playlist 2"}]})),
-            MagicMock(
-                json=MagicMock(return_value={"data": [{"name": "Group 1", "playlists": [{"name": "Playlist 1"}]}]})),
-            MagicMock()
-        ]
+        # /playlists is hit both by the "skip test-labeled playlists" lookup and by get_playlist_names();
+        # /groups is hit once by get_groups_playlists().
+        self.mock_request.side_effect = self._responses_by_endpoint({
+            "/playlists": {"success": True, "data": [{"name": "Playlist 1"}, {"name": "Playlist 2"}]},
+            "/groups": {"success": True, "data": [{"name": "Group 1", "playlists": [{"name": "Playlist 1"}]}]},
+        })
 
         task = PlaylistUnusedCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -337,11 +354,12 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_asset_unused_csv_task(self):
-        self.mock_request.side_effect = [
-            MagicMock(json=MagicMock(return_value={"data": {"dbdata": [{"name": "Asset 1"}, {"name": "Asset 2"}]}})),
-            MagicMock(json=MagicMock(return_value={"data": [{"assets": [{"filename": "Asset 1"}]}]})),
-            MagicMock()
-        ]
+        # /files is hit both by the "skip test-labeled assets" lookup and by get_all_assets();
+        # /playlists is hit once by get_used_assets().
+        self.mock_request.side_effect = self._responses_by_endpoint({
+            "/files": {"success": True, "data": {"dbdata": [{"name": "Asset 1"}, {"name": "Asset 2"}]}},
+            "/playlists": {"success": True, "data": [{"assets": [{"filename": "Asset 1"}]}]},
+        })
 
         task = AssetUnusedCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 
@@ -359,7 +377,7 @@ class CSVTaskTestCase(unittest.TestCase):
         self.assertEqual(content, expected_content)
 
     def test_asset_details_csv_task(self):
-        self.mock_request.return_value.json.return_value = {"data": {"dbdata": [
+        self.mock_request.return_value.json.return_value = {"success": True, "data": {"dbdata": [
             {"name": "Asset 1", "type": "video", "duration": '120', "size": '500',
              "resolution": {"width": '1920', "height": '1080'},
              "validity": {"startdate": "2023-07-15T12:00:00Z", "enddate": "2023-07-20T12:00:00Z"},
@@ -373,14 +391,14 @@ class CSVTaskTestCase(unittest.TestCase):
         content = self._read_csv_file(tmp_file_path)
         os.remove(tmp_file_path)
         expected_content = [
-            ["Name", "Type", "Duration", "Size", "Resolution", "Validity Period", "Playlists", "Labels"],
+            ["Name", "Type", "Duration", "Size", "Resolution", "Validity Period", "Playlists", "Categories"],
             ["Asset 1", "video", '120', '500', "1920x1080", "15.07.2023 - 20.07.2023", "Playlist 1", "Label 1"]
         ]
 
         self.assertEqual(content, expected_content)
 
     def test_player_overview_csv_task(self):
-        self.mock_request.return_value.json.return_value = {"data": {"objects": [
+        self.mock_request.return_value.json.return_value = {"success": True, "data": {"objects": [
             {"name": "Player 1", "group": {"name": "Group 1"}, "version": "v1.0", "ip": "192.168.0.1",
              "lastReported": "2023-07-15T12:00:00Z", "configLocation": "Location 1", "piTemperature": "75C",
              "labels": ["Label 1"], "currentPlaylist": "Playlist 1"}]}}
@@ -393,9 +411,10 @@ class CSVTaskTestCase(unittest.TestCase):
         content = self._read_csv_file(tmp_file_path)
         os.remove(tmp_file_path)
         expected_content = [
-            ["Player Name", "Group", "Version", "IP Address", "Last Report", "Location", "Temperature", "Labels",
-             "Current Playlist"],
-            ["Player 1", "Group 1", "v1.0", "192.168.0.1", "15.07.2023", "Location 1", "75C", "Label 1", "Playlist 1"]
+            ["Player Name", "Group", "Version", "IP Address", "Last Report", "Location", "Temperature", "Categories",
+             "Note", "Current Playlist"],
+            ["Player 1", "Group 1", "v: v1.0", "192.168.0.1", "15.07.2023", "Location 1", "75C", "Label 1", "",
+             "Playlist 1"]
         ]
 
         self.assertEqual(content, expected_content)

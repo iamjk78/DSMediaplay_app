@@ -26,6 +26,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_player_names.return_value = ["player1", "player2"]
         mock_server.get_group_names.return_value = ["group1", "group2"]
 
@@ -34,17 +35,20 @@ class TestProcessors(unittest.TestCase):
                                          lang=MagicMock())
 
         input_text = "player1\tgroup1\nplayer2\tgroup2"
-        processor.load(input_text)
-
-        expected_data = {"player1": "group1", "player2": "group2"}
-        self.assertEqual(processor.data, expected_data)
-
-        mock_server.set_group_to_player.return_value = {"data": {"name": "group1"}}
+        # set_group_to_player(group, player) echoes the player back as the server's "name", matching how
+        # run() looks the assignment up in self.data (keyed by player name).
+        mock_server.set_group_to_player.side_effect = lambda group, player: {"data": {"name": player}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
 
-        mock_server.set_group_to_player.assert_called_with("group1", "player1")
-        logger.info.assert_any_call("Success: Assigned group 'group1' to player 'player1'")
+            expected_data = {"player1": "group1", "player2": "group2"}
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
+
+        mock_server.set_group_to_player.assert_any_call("group1", "player1")
+        mock_server.set_group_to_player.assert_any_call("group2", "player2")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -52,6 +56,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_group_names.return_value = ["group1"]
         mock_server.get_playlist_names.return_value = ["playlist1", "playlist2"]
 
@@ -59,24 +64,26 @@ class TestProcessors(unittest.TestCase):
         processor = DetailedPlaylistProcessor(logger, url='http://example.com', login='user', password='pass',
                                               lang=MagicMock())
 
-        input_text = "group1\tplaylist1\t01.01.2022\t31.12.2022\tmo,tu\t08:00\t18:00"
-        processor.load(input_text)
-
-        expected_data = {
-            "group1": [
-                ("playlist1", "2022-01-01T00:00:00.000Z", "2022-12-31T00:00:00.000Z", [2, 3], "08:00", "18:00")
-            ]
-        }
-        self.assertEqual(processor.data, expected_data)
-
+        # group, blank default playlist, then a 6-field chunk (playlist, start date, end date, weekdays,
+        # start time, end time) for the dated assignment.
+        input_text = "group1\t\tplaylist1\t01.01.2022\t31.12.2022\tmo,tu\t08:00\t18:00"
         mock_server.set_playlist_to_group_detailed.return_value = {"data": {"name": "group1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "group1": [
+                    ("playlist1", "2022-01-01T00:00:00.000Z", "2022-12-31T00:00:00.000Z", [2, 3], "08:00", "18:00")
+                ]
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_playlist_to_group_detailed.assert_called_with("group1", [
             ("playlist1", "2022-01-01T00:00:00.000Z", "2022-12-31T00:00:00.000Z", [2, 3], "08:00", "18:00")
         ])
-        logger.info.assert_any_call("Success: Assigned playlist 'playlist1' to group 'group1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -84,30 +91,35 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_group_names.return_value = ["group1"]
         mock_server.get_playlist_names.return_value = ["playlist1"]
 
         logger = MagicMock()
         processor = PlaylistProcessor(logger, url='http://example.com', login='user', password='pass', lang=MagicMock())
 
-        input_text = "group1\tplaylist1\t01.01.2022\t31.12.2022\t08:00\t18:00"
-        processor.load(input_text)
-
-        expected_data = {
-            "group1": [
-                ("playlist1", "2022-01-01T00:00:00.000Z", "2022-12-31T00:00:00.000Z", "08:00", "18:00")
-            ]
-        }
-        self.assertEqual(processor.data, expected_data)
-
+        # 2 tab-separated fields (group, default playlist) plus a 5-field chunk (playlist, start date,
+        # end date, start time, end time) for a dated assignment of the same playlist.
+        input_text = "group1\tplaylist1\tplaylist1\t01.01.2022\t31.12.2022\t08:00\t18:00"
         mock_server.set_playlist_to_group.return_value = {"data": {"name": "group1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "group1": [
+                    ("playlist1", None, None, None, None),
+                    ("playlist1", "2022-01-01T00:00:00.000Z", "2022-12-31T00:00:00.000Z", "08:00", "18:00")
+                ]
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_playlist_to_group.assert_called_with("group1", [
+            ("playlist1", None, None, None, None),
             ("playlist1", "2022-01-01T00:00:00.000Z", "2022-12-31T00:00:00.000Z", "08:00", "18:00")
         ])
-        logger.info.assert_any_call("Success: Assigned playlist 'playlist1' to group 'group1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -115,6 +127,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_playlist_names.return_value = ["playlist1"]
 
         logger = MagicMock()
@@ -122,19 +135,19 @@ class TestProcessors(unittest.TestCase):
                                              lang=MagicMock())
 
         input_text = "playlist1\tasset1\tasset2"
-        processor.load(input_text)
-
-        expected_data = {
-            "playlist1": ["asset1", "asset2"]
-        }
-        self.assertEqual(processor.data, expected_data)
-
         mock_server.set_assets_to_playlist.return_value = {"data": {"name": "playlist1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "playlist1": ["asset1", "asset2"]
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_assets_to_playlist.assert_called_with("playlist1", ["asset1", "asset2"])
-        logger.info.assert_any_call("Success: Assigned assets to playlist 'playlist1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -142,6 +155,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_player_names.return_value = ["player1"]
 
         logger = MagicMock()
@@ -149,19 +163,19 @@ class TestProcessors(unittest.TestCase):
                                         lang=MagicMock())
 
         input_text = "player1\tnote1"
-        processor.load(input_text)
-
-        expected_data = {
-            "player1": "note1"
-        }
-        self.assertEqual(processor.data, expected_data)
-
         mock_server.set_player_note.return_value = {"data": {"name": "player1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "player1": "note1"
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_player_note.assert_called_with("player1", "note1")
-        logger.info.assert_any_call("Success: Assigned note to player 'player1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -169,6 +183,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_player_names.return_value = ["player1"]
         mock_server.get_location_names.return_value = ["location1"]
 
@@ -177,19 +192,19 @@ class TestProcessors(unittest.TestCase):
                                                   lang=MagicMock())
 
         input_text = "player1\tlocation1"
-        processor.load(input_text)
-
-        expected_data = {
-            "player1": "location1"
-        }
-        self.assertEqual(processor.data, expected_data)
-
-        mock_server.set_player_configLocation.return_value = {"data": {"name": "player1"}}
+        mock_server.set_player_config_location.return_value = {"data": {"name": "player1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
 
-        mock_server.set_player_configLocation.assert_called_with("player1", "location1")
-        logger.info.assert_any_call("Success: Assigned config location 'location1' to player 'player1'")
+            expected_data = {
+                "player1": "location1"
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
+
+        mock_server.set_player_config_location.assert_called_with("player1", "location1")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -197,6 +212,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_location_names.return_value = ["location1"]
 
         logger = MagicMock()
@@ -204,27 +220,27 @@ class TestProcessors(unittest.TestCase):
                                            lang=MagicMock())
 
         input_text = "location1\t08:00\t18:00\t08:00\t18:00\t08:00\t18:00\t08:00\t18:00\t08:00\t18:00\t08:00\t18:00\t08:00\t18:00"
-        processor.load(input_text)
-
-        expected_data = {
-            "location1": {
-                "Monday": {"on": "08:00", "off": "18:00"},
-                "Tuesday": {"on": "08:00", "off": "18:00"},
-                "Wednesday": {"on": "08:00", "off": "18:00"},
-                "Thursday": {"on": "08:00", "off": "18:00"},
-                "Friday": {"on": "08:00", "off": "18:00"},
-                "Saturday": {"on": "08:00", "off": "18:00"},
-                "Sunday": {"on": "08:00", "off": "18:00"}
-            }
-        }
-        self.assertEqual(processor.data, expected_data)
-
         mock_server.set_location.return_value = {"data": {"configLocation": "location1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "location1": {
+                    "Monday": {"on": "08:00", "off": "18:00"},
+                    "Tuesday": {"on": "08:00", "off": "18:00"},
+                    "Wednesday": {"on": "08:00", "off": "18:00"},
+                    "Thursday": {"on": "08:00", "off": "18:00"},
+                    "Friday": {"on": "08:00", "off": "18:00"},
+                    "Saturday": {"on": "08:00", "off": "18:00"},
+                    "Sunday": {"on": "08:00", "off": "18:00"}
+                }
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_location.assert_called_with("location1", expected_data["location1"])
-        logger.info.assert_any_call("Success: Assigned times to location 'location1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -232,6 +248,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_player_names.return_value = ["player1"]
         mock_server.get_labels.return_value = ["label1", "label2"]
 
@@ -240,19 +257,19 @@ class TestProcessors(unittest.TestCase):
                                           lang=MagicMock())
 
         input_text = "player1\tlabel1\tlabel2"
-        processor.load(input_text)
-
-        expected_data = {
-            "player1": ["label1", "label2"]
-        }
-        self.assertEqual(processor.data, expected_data)
-
         mock_server.set_player_labels.return_value = {"data": {"name": "player1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "player1": ["label1", "label2"]
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_player_labels.assert_called_with("player1", ["label1", "label2"])
-        logger.info.assert_any_call("Success: Assigned labels to player 'player1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -260,6 +277,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_group_names.return_value = ["group1"]
 
         logger = MagicMock()
@@ -267,21 +285,22 @@ class TestProcessors(unittest.TestCase):
                                            lang=MagicMock())
 
         input_text = "group1\t1080p\tlandscape\t03:00\t04:00\ttrue\ttrue\t06:00\t22:00"
-        processor.load(input_text)
-
-        expected_data = {
-            "group1": ["1080p", "landscape", "03:00", "04:00", True, True, "06:00", "22:00"]
-        }
-        self.assertEqual(processor.data, expected_data)
-
         mock_server.set_group_settings.return_value = {"data": {"name": "group1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "group1": ["1080p", "landscape", "03:00", "04:00", True, True, "06:00", "22:00", ""]
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_group_settings.assert_called_with(
-            "group1", "1080p", "landscape", "03:00", "04:00", True, True, "06:00", "22:00"
+            "group1", "1080p", "landscape", "1970-01-01T02:00:00.000Z", "1970-01-01T03:00:00.000Z",
+            True, True, "06:00", "22:00", ""
         )
-        logger.info.assert_any_call("Success: Assigned settings to group 'group1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -289,6 +308,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_playlist_names.return_value = ["playlist1"]
 
         logger = MagicMock()
@@ -296,19 +316,19 @@ class TestProcessors(unittest.TestCase):
                                               lang=MagicMock())
 
         input_text = "playlist1\t300"
-        processor.load(input_text)
-
-        expected_data = {
-            "playlist1": "300"
-        }
-        self.assertEqual(processor.data, expected_data)
-
         mock_server.set_playlist_settings.return_value = {"data": {"name": "playlist1"}}
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "playlist1": "300"
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.set_playlist_settings.assert_called_with("playlist1", "300")
-        logger.info.assert_any_call("Success: Assigned domination time to playlist 'playlist1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     @patch('api_testing.request_calls.requests.post')
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
@@ -316,6 +336,7 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
 
         mock_server = MagicMock()
+        mock_server.__enter__.return_value = mock_server
         mock_server.get_group_names.return_value = ["group1"]
 
         logger = MagicMock()
@@ -323,19 +344,19 @@ class TestProcessors(unittest.TestCase):
                                              lang=MagicMock())
 
         input_text = "group1\tkeyword"
-        processor.load(input_text)
-
-        expected_data = {
-            "group1": "keyword"
-        }
-        self.assertEqual(processor.data, expected_data)
-
         mock_server.remove_playlists_by_keyword_from_group.return_value = ["playlist1", "playlist2"]
         with patch.object(processor, '_try_server_login', return_value=mock_server):
-            processor.run()
+            processor.load(input_text)
+
+            expected_data = {
+                "group1": "keyword"
+            }
+            self.assertEqual(processor.data, expected_data)
+
+            list(processor.run())
 
         mock_server.remove_playlists_by_keyword_from_group.assert_called_with("group1", "keyword")
-        logger.info.assert_any_call("Success: Removed playlists from group 'group1'")
+        logger.info.assert_any_call(processor.lang.get_message.return_value)
 
     def test_legible_to_iso(self):
         self.assertEqual(legible_to_iso("01.01.2022"), "2022-01-01T00:00:00.000Z")
@@ -354,7 +375,8 @@ class TestProcessors(unittest.TestCase):
         mock_post.return_value = self.valid_token_response
         mock_server = ServerApi(url='http://example.com', login='user', password='pass')
 
-        with patch.object(ServerApi, '__enter__', return_value=mock_server):
+        with patch.object(ServerApi, '__enter__', return_value=mock_server), \
+                patch.object(ServerApi, '__exit__', return_value=False):
             self.assertTrue(try_login("http://example.com", "user", "pass"))
 
         with patch.object(ServerApi, '__enter__', side_effect=LoginError):

@@ -1016,7 +1016,8 @@ class PlaylistProcessor(AssignProcessor):
         group_playlists = {}
         loaded_groups = set()
         for i, line in enumerate(input_lines):
-            split_line = self._pad_list(line.split("\t"), 5)
+            raw_line = line.split("\t")
+            split_line = raw_line + [""] * ((len(raw_line) - 2) % 5)
             group = split_line[0]
             if not self._validate_entity(group, names['group_names'], i + 1):
                 continue
@@ -1035,7 +1036,7 @@ class PlaylistProcessor(AssignProcessor):
                 continue
             data_filtered = self._empty_cells_cleanup(5, split_line[2:])
             for data in data_filtered:
-                playlist_data = self._validate_playlist_data(i + 1, group, [data], names['playlist_names'])
+                playlist_data = self._validate_playlist_data(i + 1, group, data, names['playlist_names'])
                 if playlist_data:
                     playlists.append(playlist_data)
 
