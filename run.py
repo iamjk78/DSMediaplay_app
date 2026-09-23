@@ -1,3 +1,15 @@
+import sys
+
+# Must run before Tk is loaded (the "gui_app.gui" import below does that): without it, Windows treats the process
+# as DPI-unaware and scales the whole window as a bitmap above 100% display scaling, so native widgets (comboboxes)
+# and the canvas-free buttons end up sized against different, mismatched pixel grids and overlap.
+if sys.platform == "win32":
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # PROCESS_SYSTEM_DPI_AWARE
+    except (AttributeError, OSError):
+        pass
+
 import argparse
 import threading
 from gui_app.gui import DSMediaplayApp
