@@ -62,6 +62,16 @@ def flatten(xss: List[Any]):
     return [x for xs in xss for x in xs]
 
 
+# /players is read in pages of this size, asked for explicitly instead of trusting the server's default one
+PLAYERS_PER_PAGE = 500
+MAX_PLAYER_PAGES = 1000
+
+
+def player_key(player: Dict[str, Any]) -> str:
+    """Tells players apart when a page is compared with the ones read before."""
+    return player.get("_id") or json.dumps(player, sort_keys=True, default=str)
+
+
 # Rows of a playlist can hold the name of an asset or of another playlist in these zones, next to the main file
 ZONE_FIELDS = ("side", "bottom", "zone4", "zone5", "zone6")
 
@@ -266,8 +276,7 @@ class ServerApi:
         list of str
             A list of player names.
         """
-        response = self._make_request("get", "/players")
-        return [obj.get("name", "") for obj in response.get("data", {}).get("objects", [])]
+        return [obj.get("name", "") for obj in self.get_player_objects()]
 
     def get_asset_names(self) -> List[str]:
         response = self._make_request("get", "/files")
@@ -282,8 +291,7 @@ class ServerApi:
         list of str
             A list of player names.
         """
-        response = self._make_request("get", "/players")
-        return [obj.get("name", "") for obj in response.get("data", {}).get("objects", []) if not obj.get("playlistOn", True)]
+        return [obj.get("name", "") for obj in self.get_player_objects() if not obj.get("playlistOn", True)]
 
     def get_disconnected_players(self) -> List[str]:
         """
@@ -294,15 +302,13 @@ class ServerApi:
         list of str
             A list of player names.
         """
-        response = self._make_request("get", "/players")
-        return [obj.get("name", "") for obj in response.get("data", {}).get("objects", []) if not obj.get("isConnected", None)]
+        return [obj.get("name", "") for obj in self.get_player_objects() if not obj.get("isConnected", None)]
 
     def get_online_players(self) -> List[str]:
 
-        response = self._make_request("get", "/players")
         return [
             obj.get("name", "")
-            for obj in response.get("data", {}).get("objects", [])
+            for obj in self.get_player_objects()
             if obj.get("isConnected", True) and obj.get("playlistOn", True)
         ]
 
@@ -310,11 +316,6 @@ class ServerApi:
         """
         Retrieves players (optionally filtered by a list of groups) with the fields needed
         to drive a sequential per-player deploy: id, group id/name and connection status.
-
-        The first request is sent without page/per_page (same as every other call to
-        /players in this module) so that servers which don't support those params keep
-        working exactly as before. Additional pages are only requested if the response
-        itself reports more than one page.
 
         Parameters
         ----------
@@ -327,23 +328,15 @@ class ServerApi:
             Each dict has keys: name, _id, group_id, group_name, isConnected.
         """
         players = []
-        page = 1
-        while True:
-            params = {"page": page} if page > 1 else {}
-            response = self._make_request("get", "/players", params=params)
-            data = response.get("data", {})
-            for obj in data.get("objects", []):
-                group = obj.get("group") or {}
-                players.append({
-                    "name": obj.get("name", ""),
-                    "_id": obj.get("_id", ""),
-                    "group_id": group.get("_id", ""),
-                    "group_name": group.get("name", ""),
-                    "isConnected": obj.get("isConnected", False)
-                })
-            if page >= data.get("pages", 1):
-                break
-            page += 1
+        for obj in self.get_player_objects():
+            group = obj.get("group") or {}
+            players.append({
+                "name": obj.get("name", ""),
+                "_id": obj.get("_id", ""),
+                "group_id": group.get("_id", ""),
+                "group_name": group.get("name", ""),
+                "isConnected": obj.get("isConnected", False)
+            })
 
         if group_names is not None:
             players = [player for player in players if player["group_name"] in group_names]
@@ -420,13 +413,9 @@ class ServerApi:
         NameResolutionError
             If the name wasn't present among all names of players.
         """
-        response = self._make_request("get", "/players")
-        for obj in response.get("data", {}).get("objects", []):
+        for obj in self.get_player_objects():
             if name == obj.get("name", ""):
                 return obj["_id"]
-        filtered = [entity["_id"] for entity in response.get("data", []) if name == entity.get("name", "")]
-        if len(filtered) == 1:
-            return filtered[0]
         raise NameResolutionError(name)
 
     def get_asset_id_by_name(self, name: str) -> str:
@@ -687,10 +676,9 @@ class ServerApi:
         list of tuples
             A list of tuples containing player names and their group names.
         """
-        response = self._make_request("get", "/players")
         return [
-            (obj.get("name", ""), obj.get("group", {}).get("name", "")) 
-            for obj in response.get("data", {}).get("objects", [])
+            (obj.get("name", ""), (obj.get("group") or {}).get("name", ""))  # a player without a group: null
+            for obj in self.get_player_objects()
         ]
 
     def get_all_playlists_details(self) -> List[Tuple[str, List[str]]]:
@@ -914,8 +902,7 @@ class ServerApi:
         list of tuples
             A list of tuples containing player names and their configuration locations.
         """
-        response = self._make_request("get", "/players")
-        return [(obj.get("name", ""), obj.get("configLocation", "ERROR")) for obj in response.get("data", {}).get("objects", [])]
+        return [(obj.get("name", ""), obj.get("configLocation", "ERROR")) for obj in self.get_player_objects()]
 
     def set_player_config_location(self, player_name: str, config_location: str) -> json:
         """
@@ -947,8 +934,7 @@ class ServerApi:
         list of tuples
             A list of tuples containing player names and their notes.
         """
-        response = self._make_request("get", "/players")
-        return [(obj["name"], obj.get("notes", "")) for obj in response["data"]["objects"]]
+        return [(obj["name"], obj.get("notes", "")) for obj in self.get_player_objects()]
 
     def get_labels(self) -> List[str]:
         """
@@ -963,8 +949,7 @@ class ServerApi:
         return [obj.get("name", "") for obj in response.get("data", [])]
 
     def get_additional_playlists(self) -> List[Tuple[str, List[str]]]:
-        response = self._make_request("get", "/players")
-        return [(obj.get("name", ""), obj.get("playlists", [])) for obj in response.get("data", {}).get("objects", [])]
+        return [(obj.get("name", ""), obj.get("playlists", [])) for obj in self.get_player_objects()]
 
     def set_player_additional_playlist(self, player_name: str, additional_playlists: List[str]) -> json:
         player_id = self.get_player_id_by_name(player_name)
@@ -1002,8 +987,7 @@ class ServerApi:
         list of tuples
             A list of tuples containing player names and their labels.
         """
-        response = self._make_request("get", "/players")
-        return [(obj.get("name", ""), obj.get("labels", [])) for obj in response.get("data", {}).get("objects", [])]
+        return [(obj.get("name", ""), obj.get("labels", [])) for obj in self.get_player_objects()]
 
     def get_assets_labels(self) -> List[Tuple[str, List[str]]]:
         """
@@ -1160,7 +1144,7 @@ class ServerApi:
             A tuple containing player details: (name, online_status, last_connection, last_sync,
             sw_version, ip_address, uptime, last_temperature)
         """
-        data = self._make_request("get", f"/players/").get("data", {}).get("objects", [])
+        data = self.get_player_objects()
 
         return [(
             obj["name"],
@@ -1489,10 +1473,9 @@ class ServerApi:
         return self._make_request("post", "/labels/", json=request_body)
 
     def get_players_by_label(self, label_name: str) -> List[str]:
-        response = self._make_request("get", "/players")
         return [
             obj.get("name", "")
-            for obj in response.get("data", {}).get("objects", []) if label_name in obj.get("labels", [])
+            for obj in self.get_player_objects() if label_name in obj.get("labels", [])
         ]
 
     def get_groups_by_label(self, label_name: str) -> List[str]:
@@ -1526,8 +1509,7 @@ class ServerApi:
         list of tuples
             A list of tuples containing player names and their software versions.
         """
-        response = self._make_request("get", "/players/")
-        return [(obj["name"], obj.get("version", "N/A")) for obj in response.get("data", {}).get("objects", [])]
+        return [(obj["name"], obj.get("version", "N/A")) for obj in self.get_player_objects()]
 
     def player_update(self, name: str) -> json:
         """
@@ -1683,30 +1665,40 @@ class ServerApi:
         list of dict
             A list of dictionaries containing player details.
         """
-        response = self._make_request("get", "/players")
         player_details = []
-        for obj in response["data"]["objects"]:
+        for obj in self.get_player_objects():
             player_details.append({
                 "name": obj.get("name", ""),
-                "group": obj.get("group", {}).get("name", ""),
+                "group": (obj.get("group") or {}).get("name", ""),
                 "version": obj.get("version", ""),
                 "ip": obj.get("ip", ""),
                 "last_report": obj.get("lastReported", ""),
                 "location": obj.get("configLocation", ""),
                 "notes": obj.get("notes", ""),
-                "temperature": obj.get("piTemperature", "").strip(),
+                "temperature": (obj.get("piTemperature") or "").strip(),
                 "current_playlist": obj.get("currentPlaylist", ""),
                 "labels": obj.get("labels", [])
             })
         return player_details
 
     def get_player_objects(self) -> List[Dict[str, Any]]:
-        """All players of the account exactly as the server returns them, following its pages if there are several."""
-        data = self._make_request("get", "/players").get("data", {})
-        players = list(data.get("objects", []))
-        for page in range(2, int(data.get("pages") or 1) + 1):
-            data = self._make_request("get", "/players", params={"page": page}).get("data", {})
-            players += data.get("objects", [])
+        """
+        All players of the account exactly as the server returns them: the one place that reads /players.
+
+        The server numbers the pages from 0, and its "pages" field says nothing about how many there are (it is 1
+        for every page that has players), so that field is not used: pages are read until one brings no player
+        that is new, which also ends the loop for a server that ignores the page number.
+        """
+        players = []
+        seen = set()
+        for page in range(MAX_PLAYER_PAGES):
+            params = {"page": page, "per_page": PLAYERS_PER_PAGE}
+            objects = self._make_request("get", "/players", params=params).get("data", {}).get("objects", [])
+            new = [obj for obj in objects if player_key(obj) not in seen]
+            if not new:
+                break
+            seen.update(player_key(obj) for obj in new)
+            players += new
         return players
 
     def get_all_players(self) -> Dict[str, Dict[str, Union[str, bool, List[str], Dict[str, str]]]]:
@@ -1718,10 +1710,8 @@ class ServerApi:
         dict
             A dictionary where keys are player names and values are dictionaries containing player details.
         """
-        response = self._make_request("get", "/players")
-
         players = {}
-        for obj in response["data"]["objects"]:
+        for obj in self.get_player_objects():
             player_data = {
                 "TZ": obj.get("TZ", ""),
                 "cpuSerialNumber": obj.get("cpuSerialNumber", ""),
@@ -1774,8 +1764,7 @@ class ServerApi:
         return self._make_request("post", f"/players/{player_id}", json=details)
 
     def get_not_playing_players(self):
-        response = self._make_request("get", "/players")
-        return [obj.get("name", "") for obj in response.get("data", {}).get("objects", []) if not obj.get("tvStatus")]
+        return [obj.get("name", "") for obj in self.get_player_objects() if not obj.get("tvStatus")]
 
     def get_unused_labels(self):
         all_labels = self.get_labels()

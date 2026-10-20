@@ -1909,22 +1909,146 @@ class PlayerBrowserErrorTest(BrowserTestCase):
             time.sleep(0.01)
 
 
+def paging_server(players, ignore_page=False, default_page_size=None):
+    """
+    A ServerApi over a fake server that behaves like the real one, as measured on a demo account: /players
+    numbers its pages from 0, honours per_page, and its "pages" field is 1 for any page that has players (0 for
+    an empty one) whatever the real number of pages is. Asked for no page size it answers everything, unless
+    `default_page_size` says that its default page is smaller than the account: the demo account is too small
+    to show whether that happens, and code that relies on the default would then silently lose players.
+    """
+    server = ServerApi.__new__(ServerApi)
+    calls = []
+
+    def make_request(method, endpoint, params=None, **kwargs):
+        calls.append(dict(params or {}))
+        assert (method, endpoint) == ("get", "/players"), (method, endpoint)
+        params = params or {}
+        per_page = params.get("per_page", default_page_size or len(players) or 1)
+        page = 0 if ignore_page else params.get("page", 0)
+        chunk = players[page * per_page:(page + 1) * per_page]
+        return {"success": True, "data": {"objects": chunk, "page": page, "pages": 1 if chunk else 0,
+                                          "count": len(chunk)}}
+
+    server._make_request = MagicMock(side_effect=make_request)
+    server.calls = calls
+    return server
+
+
+def fake_players(count):
+    return [{"_id": f"id{i}", "name": f"P{i}", "group": {"_id": f"g{i}", "name": f"Group{i}"},
+             "configLocation": f"Loc{i}", "notes": f"note{i}", "labels": [f"Label{i}"], "playlists": [f"PL{i}"],
+             "version": f"1.{i}", "isConnected": True, "playlistOn": True, "tvStatus": True}
+            for i in range(count)]
+
+
 class ServerPlayersTest(unittest.TestCase):
-    def test_all_pages_are_fetched(self):
-        server = ServerApi.__new__(ServerApi)
-        pages = {None: {"data": {"objects": [{"name": "a"}], "pages": 3}},
-                 2: {"data": {"objects": [{"name": "b"}], "pages": 3}},
-                 3: {"data": {"objects": [{"name": "c"}], "pages": 3}}}
-        server._make_request = MagicMock(side_effect=lambda method, endpoint, params=None: pages[(params or {}).get("page")])
+    def test_all_pages_are_fetched_whatever_the_server_says_about_the_number_of_pages(self):
+        players = fake_players(1203)
+        server = paging_server(players, default_page_size=500)
 
-        self.assertEqual([p["name"] for p in server.get_player_objects()], ["a", "b", "c"])
+        self.assertEqual(server.get_player_objects(), players)
 
-    def test_a_single_page_needs_one_request(self):
-        server = ServerApi.__new__(ServerApi)
-        server._make_request = MagicMock(return_value={"data": {"objects": [{"name": "a"}]}})
+    def test_pages_are_numbered_from_zero_with_an_explicit_size_and_end_with_an_empty_one(self):
+        with patch("api_testing.request_calls.PLAYERS_PER_PAGE", 4):
+            server = paging_server(fake_players(10))
 
-        self.assertEqual(server.get_player_objects(), [{"name": "a"}])
-        server._make_request.assert_called_once()
+            server.get_player_objects()
+
+        self.assertEqual(server.calls, [{"page": 0, "per_page": 4}, {"page": 1, "per_page": 4},
+                                        {"page": 2, "per_page": 4}, {"page": 3, "per_page": 4}])
+
+    def test_a_server_that_ignores_the_page_number_does_not_loop_forever_or_duplicate_players(self):
+        players = fake_players(5)
+        server = paging_server(players, ignore_page=True)
+
+        self.assertEqual(server.get_player_objects(), players)
+        self.assertEqual(len(server.calls), 2)
+
+    def test_players_without_an_id_are_told_apart_by_their_content(self):
+        players = [{"name": "a"}, {"name": "b"}]
+        server = paging_server(players)
+
+        self.assertEqual(server.get_player_objects(), players)
+
+    def test_an_account_without_players_gives_an_empty_list(self):
+        self.assertEqual(paging_server([]).get_player_objects(), [])
+
+    def test_a_small_account_costs_one_request_and_one_empty_page(self):
+        server = paging_server(fake_players(3))
+
+        server.get_player_objects()
+
+        self.assertEqual(len(server.calls), 2)
+
+
+class EveryReaderOfPlayersSeesAllPagesTest(unittest.TestCase):
+    """The player on the last page was invisible to all but two readers: now none of them stops at the first page."""
+
+    def setUp(self):
+        patcher = patch("api_testing.request_calls.PLAYERS_PER_PAGE", 4)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.players = fake_players(10)  # P9 is alone on the third page
+        self.server = paging_server(self.players, default_page_size=4)
+
+    def test_the_lists_of_names_and_ids_include_the_player_on_the_last_page(self):
+        self.assertIn("P9", self.server.get_player_names())
+        self.assertEqual(self.server.get_player_id_by_name("P9"), "id9")
+        self.assertIn("P9", [p["name"] for p in self.server.get_players_for_deploy()])
+
+    def test_a_player_that_does_not_exist_is_reported_as_such(self):
+        from api_testing.request_calls import NameResolutionError
+
+        with self.assertRaises(NameResolutionError):
+            self.server.get_player_id_by_name("Nobody")
+
+    def test_deploy_to_selected_groups_includes_a_player_of_the_last_page(self):
+        self.assertEqual([p["name"] for p in self.server.get_players_for_deploy(["Group9"])], ["P9"])
+
+    def test_every_player_attribute_reader_includes_the_last_page(self):
+        readers = {
+            "get_player_locations": lambda rows: ("P9", "Loc9") in rows,
+            "get_player_notes": lambda rows: ("P9", "note9") in rows,
+            "get_player_labels": lambda rows: ("P9", ["Label9"]) in rows,
+            "get_additional_playlists": lambda rows: ("P9", ["PL9"]) in rows,
+            "get_versions": lambda rows: ("P9", "1.9") in rows,
+            "get_players_groups": lambda rows: ("P9", "Group9") in rows,
+            "get_players_details": lambda rows: any(row[0] == "P9" for row in rows),
+            "get_player_details_overview": lambda rows: any(row["name"] == "P9" for row in rows),
+            "get_all_players": lambda rows: "P9" in rows,
+            "get_online_players": lambda rows: "P9" in rows,
+        }
+        for name, includes_last in readers.items():
+            with self.subTest(reader=name):
+                self.assertTrue(includes_last(getattr(self.server, name)()))
+
+    def test_a_group_used_only_by_a_player_of_the_last_page_is_not_unused(self):
+        self.server.get_group_names = MagicMock(return_value=["Group0", "Group9", "Nobody's"])
+
+        self.assertEqual(self.server.get_unused_groups(), ["Nobody's"])
+
+    def test_a_location_and_a_label_used_only_on_the_last_page_are_not_unused(self):
+        self.server.get_locations = MagicMock(return_value=[{"Loc9": []}, {"Free": []}])
+        self.server.get_labels = MagicMock(return_value=["Label9", "Free"])
+        self.server.get_group_labels = MagicMock(return_value=[])
+        self.server.get_assets_labels = MagicMock(return_value=[])
+        responses = {"/playlists": {"data": []}, "/locations": {"data": []}}
+        original = self.server._make_request.side_effect
+        self.server._make_request.side_effect = (
+            lambda method, endpoint, **kwargs: responses[endpoint] if endpoint in responses
+            else original(method, endpoint, **kwargs))
+
+        self.assertEqual(self.server.get_unused_locations(), ["Free"])
+        self.assertEqual(self.server.get_unused_labels(), ["Free"])
+
+    def test_a_player_without_a_group_does_not_break_the_readers(self):
+        players = [{"_id": "a", "name": "NoGroup", "group": None, "piTemperature": None}]
+        server = paging_server(players)
+
+        self.assertEqual(server.get_players_groups(), [("NoGroup", "")])
+        self.assertEqual(server.get_player_details_overview()[0]["group"], "")
+        self.assertEqual(server.get_player_details_overview()[0]["temperature"], "")
 
 
 class MainWindowTest(BrowserTestCase):
