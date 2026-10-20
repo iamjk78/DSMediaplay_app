@@ -1,3 +1,4 @@
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, scrolledtext
 from gui_app.icons import set_window_icon
@@ -5,6 +6,9 @@ import logging
 from util.thread_manager import ThreadManager
 from gui_app.logger import TextHandler, OptionalLevelFormatter
 from processor.input_processing import FormatException, ProcessorFactory, InternalException
+
+
+CONFIRM_LIST_LIMIT = 15
 
 
 class LoggingTextBoxFactory:
@@ -120,6 +124,12 @@ class LoggingTextBox(tk.Toplevel):
         )
         try:
             self.input_processor.load(self._raw_data)
+            to_confirm = self.input_processor.items_to_confirm()
+            if to_confirm and not self._confirm_removal(to_confirm):
+                self.logger.info(self.lang.get_message("operation_cancelled"))
+                self.update_activity_circle("C")
+                self.setup_buttons()
+                return
             for _ in self.input_processor.run():
                 # Check if the thread is stopped
                 if self.thread_manager.stop_event.is_set():
@@ -138,6 +148,38 @@ class LoggingTextBox(tk.Toplevel):
             self.display_error()
         except InternalException:
             self.display_error()
+
+    def _confirm_removal(self, items: list) -> bool:
+        """
+        Asks, before anything is deleted for good, whether to go on; the answer of a modal dialog that the
+        main thread shows while this (the worker) thread waits. The default answer is "No".
+        """
+        shown = items[:CONFIRM_LIST_LIMIT]
+        lines = [f"• {item}" for item in shown]
+        if len(items) > len(shown):
+            lines.append(self.lang.get_message("confirm_remove_more", count=len(items) - len(shown)))
+        text = self.lang.get_message("confirm_remove_text", count=len(items), items="\n".join(lines))
+        answer = []
+        answered = threading.Event()
+
+        def ask():
+            try:
+                answer.append(messagebox.askyesno(self.lang.get_message("confirm_remove_title"), text,
+                                                  icon="warning", default="no", parent=self))
+            finally:
+                answered.set()
+
+        try:
+            self.after(0, ask)
+        except tk.TclError:  # the window is gone
+            return False
+        while not answered.wait(0.5):
+            try:
+                if not self.winfo_exists():  # closed before the dialog was shown: nobody is going to answer
+                    return False
+            except tk.TclError:
+                return False
+        return bool(answer and answer[0])
 
     def setup_ui(self):
         self.setup_text_area()
@@ -211,9 +253,10 @@ class LoggingTextBox(tk.Toplevel):
     def create_circle(self, x, y, r, **kwargs):
         return self._activity_canvas.create_oval(x - r, y - r, x + r, y + r, **kwargs)
 
-    def update_activity_circle(self, color: {"R", "G", "O"}):
+    def update_activity_circle(self, color: {"R", "G", "O", "C"}):
         colors = {"R": ("red", self.lang.get_message("error")), "G": ("green", self.lang.get_message("done")),
-                  "O": ("orange", self.lang.get_message("working"))}
+                  "O": ("orange", self.lang.get_message("working")),
+                  "C": ("gray", self.lang.get_message("cancelled"))}
         self._activity_canvas.itemconfig(self._activity_icon, fill=colors[color][0])
         self.indication_label.config(text=colors[color][1])
 

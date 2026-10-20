@@ -62,6 +62,23 @@ def flatten(xss: List[Any]):
     return [x for xs in xss for x in xs]
 
 
+# Rows of a playlist can hold the name of an asset or of another playlist in these zones, next to the main file
+ZONE_FIELDS = ("side", "bottom", "zone4", "zone5", "zone6")
+
+
+def require_keyword(keyword: str) -> str:
+    """An empty keyword is contained in every name, so removing "by keyword" with it would remove everything."""
+    if not keyword or not keyword.strip():
+        raise ValueError("The keyword must not be empty")
+    return keyword
+
+
+def zone_references(playlist: Dict[str, Any]) -> List[str]:
+    """Names (of assets or playlists) that the rows of a playlist use in its zones."""
+    return [row[field] for row in playlist.get("assets") or [] for field in ZONE_FIELDS
+            if isinstance(row.get(field), str) and row[field]]
+
+
 class ServerApiError(Exception):
     """Base class for ServerApi class related errors."""
     pass
@@ -811,6 +828,7 @@ class ServerApi:
         list of str
             A list of removed playlist names.
         """
+        require_keyword(keyword)
         group_id = self.get_group_id_by_name(group)
         group_details = self.get_group_details(group_id)
 
@@ -845,6 +863,7 @@ class ServerApi:
         list of str
             A list of removed asset filenames.
         """
+        require_keyword(keyword)
         all_playlists = self.get_all_playlists_details()
 
         for name, assets in all_playlists:
@@ -1548,9 +1567,12 @@ class ServerApi:
             A list of unused playlist names.
         """
         all_playlist = self.get_playlist_names()
-        group_playlists = self.get_groups_playlists()
-        filter_playlist = [obj[0] for _, lst in group_playlists.items() for obj in lst]
-        return list(filter(lambda x: x not in filter_playlist, all_playlist))
+        used = {obj[0] for _, lst in self.get_groups_playlists().items() for obj in lst}
+        for player in self.get_player_objects():  # additional playlists of a player belong to no group
+            used.update(player.get("playlists") or [])
+        for playlist in self._make_request("get", "/playlists").get("data", []):  # a playlist in a zone of another
+            used.update(zone_references(playlist))
+        return [name for name in all_playlist if name not in used]
 
     def delete_group(self, name: str):
         group_id = self.get_group_id_by_name(name)
@@ -1590,6 +1612,10 @@ class ServerApi:
         used_assets = []
         for playlist in response.get("data", []):
             used_assets.extend(asset.get("filename", "") for asset in playlist.get("assets", []))
+            used_assets.extend(zone_references(playlist))
+        for group in self._make_request("get", "/groups").get("data", []):
+            if group.get("logo"):
+                used_assets.append(group["logo"])
         return used_assets
 
     def get_unused_assets(self) -> List[str]:
@@ -1756,7 +1782,12 @@ class ServerApi:
         player_labels = flatten([label for _, label in self.get_player_labels()])
         group_labels = flatten([label for _, label in self.get_group_labels()])
         asset_labels = flatten([label for _, label in self.get_assets_labels()])
-        return list(filter(lambda x: x not in set(flatten([player_labels, group_labels, asset_labels])), all_labels))
+        playlist_labels = flatten([playlist.get("labels") or []
+                                   for playlist in self._make_request("get", "/playlists").get("data", [])])
+        location_labels = flatten([location.get("labels") or []
+                                   for location in self._make_request("get", "/locations").get("data", [])])
+        used = set(flatten([player_labels, group_labels, asset_labels, playlist_labels, location_labels]))
+        return [label for label in all_labels if label not in used]
 
     def delete_label(self, name: str):
         label_id = self.get_label_id_by_name(name)
@@ -1966,6 +1997,9 @@ class ServerApi:
         Dict[str, List[str]]
             Slovník, kde klíčem je název skupiny a hodnotou seznam odstraněných playlistů.
         """
+        if isinstance(playlists_to_remove, str):
+            raise TypeError("playlists_to_remove must be a list of names: a single string would match substrings")
+        names_to_remove = set(playlists_to_remove)
         removed_playlists = {}
 
         groups_playlists = self.get_groups_playlists_details()
@@ -1975,7 +2009,7 @@ class ServerApi:
             removed = []
 
             for playlist in playlists:
-                if playlist["playlist_name"] in playlists_to_remove:
+                if playlist["playlist_name"] in names_to_remove:
                     removed.append(playlist["playlist_name"])
                 else:
                     new_playlists.append(playlist)

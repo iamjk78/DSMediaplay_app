@@ -200,6 +200,10 @@ class InputProcessor(ABC):
     def run(self) -> Generator[None, None, None]:
         pass
 
+    def items_to_confirm(self) -> Optional[List[str]]:
+        """What this action is about to delete for good, to be shown to the user before `run`; None = nothing to ask."""
+        return None
+
     def _write_log(self, key_word: str, **kwargs):
         self._logger.info(self.lang.get_message(key_word, **kwargs))
 
@@ -229,6 +233,9 @@ class InputProcessor(ABC):
 
     def _write_incorrect_format(self, line_number: int):
         self._logger.error(self.lang.get_message("incorrect_format", line_number=line_number))
+
+    def _write_empty_keyword(self, line_number: int):
+        self._logger.error(self.lang.get_message("empty_keyword", line_number=line_number))
 
     def _write_name_fail(self, line_number: int, name: str):
         self._logger.warning(self.lang.get_message("name_fail", line_number=line_number, name=name))
@@ -546,6 +553,9 @@ class RemoveProcessor(EntityValidationProcessor):
     def skip_check(self, entity):
         return entity in self.skip_names
 
+    def _prepare(self, server: ServerApi):
+        """Called with the logged-in server right before the first entity is removed."""
+
     def run(self) -> Generator[None, None, None]:
         entity_name = None
         try:
@@ -555,6 +565,7 @@ class RemoveProcessor(EntityValidationProcessor):
                     return
                 method = self._label_method(server)
                 self.skip_names = self.get_labeled_test(method)
+                self._prepare(server)
                 for entity_name in self.data:
                     if self.skip_check(entity_name):
                         self._write_skipping(entity_name)
@@ -619,6 +630,10 @@ class RemoveByKeywordProcessor(RemoveProcessor, ABC):
                 continue
 
             entity_name, keyword = split_line[0], split_line[1]
+            if not keyword.strip():  # "" is contained in every name: it would remove everything
+                self._wrong_init_counter += 1
+                self._write_empty_keyword(i + 1)
+                continue
             if not self._validate_entity(entity_name, names[self.entity_type], i + 1):
                 continue
 
@@ -1689,6 +1704,10 @@ class RemovePlaylistsProcessor(RemoveProcessor):
                 continue
 
             group, keyword = split_line[0], split_line[1]
+            if not keyword.strip():  # a missing column is padded to "", which is contained in every playlist name
+                self._wrong_init_counter += 1
+                self._write_empty_keyword(i + 1)
+                continue
             if not self._validate_entity(group, names['group_names'], i + 1):
                 continue
 
@@ -1733,7 +1752,7 @@ class RemovePlaylistsByListProcessor(RemoveProcessor):
     entity_type = "group_names"
 
     def _remove_method(self, server, playlist_name: str) -> Response:
-        removed_playlists = server.remove_playlists_from_groups(playlist_name)
+        removed_playlists = server.remove_playlists_from_groups([playlist_name])
         return Response(200, {"removed_playlists": removed_playlists})
 
     def _label_method(self, server: ServerApi):
@@ -1936,8 +1955,52 @@ class CreateLabelProcessor(CreateProcessor):
         return Response(200, response)
 
 
-class RemoveUnusedGroupsProcessor(RemoveProcessor):
+class RemoveUnusedProcessor(RemoveProcessor, ABC):
+    """
+    Deletes entities that nothing uses any more, for good. Only what the server itself reports as unused is deleted:
+    a list typed in can be an old CSV, so it is checked against the server when loaded and once more right before
+    the deleting starts (the user is asked in between), and anything used by now is left alone.
+    """
+
+    @abstractmethod
+    def _unused_method(self, server: ServerApi) -> List[str]:
+        pass
+
+    def load(self, input_text: str):
+        super().load(input_text)
+        try:
+            server = self._try_server_login()
+            if not server:
+                self._write_no_server_returned()
+                raise InternalException()
+            unused = set(self._unused_method(server))
+        except requests.exceptions.RequestException:
+            self._write_internal_error("could not check which of the names are unused")
+            raise InternalException()
+        for entity in self.data:
+            if entity not in unused:
+                self._wrong_init_counter += 1
+                self._write_log_warning("not_unused", name=entity)
+        if self._wrong_init_counter > 0:
+            self._write_wrong_format(self._wrong_init_counter)
+            raise FormatException
+
+    def items_to_confirm(self) -> Optional[List[str]]:
+        return list(self.data)
+
+    def _prepare(self, server: ServerApi):
+        unused = set(self._unused_method(server))
+        for entity in self.data:
+            if entity not in unused:
+                self._write_log_warning("not_unused_now", name=entity)
+        self.data = [entity for entity in self.data if entity in unused]
+
+
+class RemoveUnusedGroupsProcessor(RemoveUnusedProcessor):
     entity_type = 'group_names'
+
+    def _unused_method(self, server: ServerApi) -> List[str]:
+        return server.get_unused_groups()
 
     def _remove_method(self, server, entity_name: str) -> Response:
         response = server.delete_group(entity_name)
@@ -1947,8 +2010,11 @@ class RemoveUnusedGroupsProcessor(RemoveProcessor):
         return server.get_groups_by_label
 
 
-class RemoveUnusedPlaylistsProcessor(RemoveProcessor):
+class RemoveUnusedPlaylistsProcessor(RemoveUnusedProcessor):
     entity_type = 'playlist_names'
+
+    def _unused_method(self, server: ServerApi) -> List[str]:
+        return server.get_unused_playlists()
 
     def _remove_method(self, server, entity_name: str) -> Response:
         response = server.delete_playlist(entity_name)
@@ -1958,8 +2024,11 @@ class RemoveUnusedPlaylistsProcessor(RemoveProcessor):
         return server.get_playlists_by_label
 
 
-class RemoveUnusedAssetsProcessor(RemoveProcessor):
+class RemoveUnusedAssetsProcessor(RemoveUnusedProcessor):
     entity_type = 'asset_names'
+
+    def _unused_method(self, server: ServerApi) -> List[str]:
+        return server.get_unused_assets()
 
     def _remove_method(self, server, entity_name: str) -> Response:
         response = server.delete_asset(entity_name)
@@ -1969,9 +2038,12 @@ class RemoveUnusedAssetsProcessor(RemoveProcessor):
         return server.get_assets_by_label
 
 
-class RemoveUnusedLabelsProcessor(RemoveProcessor):
+class RemoveUnusedLabelsProcessor(RemoveUnusedProcessor):
     entity_type = 'label_names'
     test_pattern = re.compile(r"[tT][eE][sS][tT]")
+
+    def _unused_method(self, server: ServerApi) -> List[str]:
+        return server.get_unused_labels()
 
     def _remove_method(self, server, entity_name: str) -> Response:
         response = server.delete_label(entity_name)
@@ -1988,8 +2060,11 @@ class RemoveUnusedLabelsProcessor(RemoveProcessor):
         return bool(re.match(self.test_pattern, entity))
 
 
-class RemoveUnusedLocationsProcessor(RemoveProcessor):
+class RemoveUnusedLocationsProcessor(RemoveUnusedProcessor):
     entity_type = 'existing_locations'
+
+    def _unused_method(self, server: ServerApi) -> List[str]:
+        return server.get_unused_locations()
 
     def _remove_method(self, server, entity_name: str) -> Response:
         response = server.delete_location(entity_name)
