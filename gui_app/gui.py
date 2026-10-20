@@ -748,7 +748,8 @@ class DSMediaplayApp(tk.Tk):
         if processor_type.startswith("deploy_"):
             extra_settings = {
                 "batch_size": self.all_data.get("deploy_batch_size", 10),
-                "batch_interval": self.all_data.get("deploy_batch_interval", 3)
+                "batch_interval": self.all_data.get("deploy_batch_interval", 3),
+                "account_name": self.option_choose_administration.get()
             }
         elif processor_type == "player_snapshot":
             extra_settings = {"output_dir": os.path.join(get_download_path(), "DSMediaplay_snapshots")}

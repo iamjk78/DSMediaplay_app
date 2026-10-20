@@ -121,7 +121,8 @@ class MainButtonsTest(MainWindowCase):
 
     # ---- what they do
 
-    def test_deploy_all_starts_the_same_action_as_the_menu_entry_without_asking_anything(self):
+    def test_deploy_all_starts_the_same_action_as_the_menu_entry_and_asks_nothing_in_the_main_window(self):
+        # The question comes later, in the log window, once the number of players is known (DeployConfirmationTest)
         self.log_in()
         with patch.object(self.app, "open_action_log_box") as start, \
                 patch.object(gui.messagebox, "askyesno", side_effect=AssertionError("no confirmation")), \
@@ -150,7 +151,7 @@ class MainButtonsTest(MainWindowCase):
 
         kwargs = factory.call_args.kwargs
         self.assertEqual(kwargs["processor_type"], "deploy_all_players")
-        self.assertEqual(kwargs["extra_settings"], {"batch_size": 7, "batch_interval": 5})
+        self.assertEqual(kwargs["extra_settings"], {"batch_size": 7, "batch_interval": 5, "account_name": "Demo"})
 
     def test_live_view_opens_the_player_window_of_the_selected_account(self):
         self.log_in()

@@ -5,6 +5,7 @@ from itertools import count
 from time import sleep
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
 import requests.exceptions
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
                                        WEEK_DAYS, snapshot_file_stem, snapshot_reason)
@@ -179,6 +180,17 @@ class ProcessorFactory:
         return processor_class(logger, url=url, login=login, password=password, lang=lang, **kwargs)
 
 
+@dataclass(frozen=True)
+class Confirmation:
+    """What the user is asked, before an action that cannot be undone starts."""
+    title: str
+    text: str
+
+
+# How many of the names an action is about to delete or the groups it deploys to are listed in a question
+CONFIRM_LIST_LIMIT = 15
+
+
 class InputProcessor(ABC):
     def __init__(self, log_handler, *, url: str, login: str, password: str, lang):
         self._logger = log_handler
@@ -200,9 +212,16 @@ class InputProcessor(ABC):
     def run(self) -> Generator[None, None, None]:
         pass
 
-    def items_to_confirm(self) -> Optional[List[str]]:
-        """What this action is about to delete for good, to be shown to the user before `run`; None = nothing to ask."""
+    def confirmation(self) -> Optional[Confirmation]:
+        """The question to ask the user between `load` and `run`; None = this action asks nothing."""
         return None
+
+    def _list_for_question(self, names: List[str]) -> str:
+        """The names for a question, one per line; a long list is cut and the rest is only counted."""
+        lines = [f"• {name}" for name in names[:CONFIRM_LIST_LIMIT]]
+        if len(names) > CONFIRM_LIST_LIMIT:
+            lines.append(self.lang.get_message("confirm_more", count=len(names) - CONFIRM_LIST_LIMIT))
+        return "\n".join(lines)
 
     def _write_log(self, key_word: str, **kwargs):
         self._logger.info(self.lang.get_message(key_word, **kwargs))
@@ -1985,8 +2004,13 @@ class RemoveUnusedProcessor(RemoveProcessor, ABC):
             self._write_wrong_format(self._wrong_init_counter)
             raise FormatException
 
-    def items_to_confirm(self) -> Optional[List[str]]:
-        return list(self.data)
+    def confirmation(self) -> Optional[Confirmation]:
+        if not self.data:
+            return None
+        return Confirmation(
+            self.lang.get_message("confirm_remove_title"),
+            self.lang.get_message("confirm_remove_text", count=len(self.data),
+                                  items=self._list_for_question(list(self.data))))
 
     def _prepare(self, server: ServerApi):
         unused = set(self._unused_method(server))
@@ -2490,10 +2514,12 @@ class DeployAllPlayersProcessor(EntityValidationProcessor):
     """
     MAX_ATTEMPTS = 3
 
-    def __init__(self, *args, batch_size: int = 10, batch_interval: int = 3, **kwargs):
+    def __init__(self, *args, batch_size: int = 10, batch_interval: int = 3, account_name: str = "", **kwargs):
         super().__init__(*args, **kwargs)
         self.batch_size = batch_size
         self.batch_interval = batch_interval
+        self.account_name = account_name
+        self._online = self._offline = None  # how many players the deploy would reach, once it is known
 
     def load(self, input_text: str):
         self._write_start_loading()
@@ -2503,7 +2529,30 @@ class DeployAllPlayersProcessor(EntityValidationProcessor):
             return
 
         self.data = {"groups": None}
+        self._plan_deploy(server)
         self._write_load_finish()
+
+    def _plan_deploy(self, server: ServerApi):
+        """Counts the players the deploy is about to reach, for the question the user is asked first."""
+        try:
+            players = server.get_players_for_deploy(self.data["groups"])
+            self._online = sum(1 for player in players if player["isConnected"])
+            self._offline = sum(1 for player in players if not player["isConnected"])
+        except Exception as e:
+            self._write_internal_error(e)
+            raise InternalException()
+
+    def confirmation(self) -> Optional[Confirmation]:
+        if not self._online:  # nothing to deploy to (or the plan was never made): run() reports it
+            return None
+        groups = self.data["groups"]
+        scope = (self.lang.get_message("confirm_deploy_scope_groups", groups=", ".join(sorted(groups)))
+                 if groups else self.lang.get_message("confirm_deploy_scope_all"))
+        account = self.account_name or urlparse(self._login_info["url"]).hostname or ""
+        return Confirmation(
+            self.lang.get_message("confirm_deploy_title"),
+            self.lang.get_message("confirm_deploy_text", account=account, scope=scope,
+                                  online=self._online, offline=self._offline))
 
     def run(self) -> Generator[None, None, None]:
         try:
@@ -2615,4 +2664,5 @@ class DeploySelectedGroupsProcessor(DeployAllPlayersProcessor):
             raise FormatException
 
         self.data = {"groups": list(group_names)}
+        self._plan_deploy(server)
         self._write_load_finish()

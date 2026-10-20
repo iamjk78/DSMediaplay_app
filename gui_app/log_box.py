@@ -5,10 +5,7 @@ from gui_app.icons import set_window_icon
 import logging
 from util.thread_manager import ThreadManager
 from gui_app.logger import TextHandler, OptionalLevelFormatter
-from processor.input_processing import FormatException, ProcessorFactory, InternalException
-
-
-CONFIRM_LIST_LIMIT = 15
+from processor.input_processing import Confirmation, FormatException, ProcessorFactory, InternalException
 
 
 class LoggingTextBoxFactory:
@@ -124,8 +121,8 @@ class LoggingTextBox(tk.Toplevel):
         )
         try:
             self.input_processor.load(self._raw_data)
-            to_confirm = self.input_processor.items_to_confirm()
-            if to_confirm and not self._confirm_removal(to_confirm):
+            confirmation = self.input_processor.confirmation()
+            if confirmation and not self._confirm(confirmation):
                 self.logger.info(self.lang.get_message("operation_cancelled"))
                 self.update_activity_circle("C")
                 self.setup_buttons()
@@ -149,23 +146,18 @@ class LoggingTextBox(tk.Toplevel):
         except InternalException:
             self.display_error()
 
-    def _confirm_removal(self, items: list) -> bool:
+    def _confirm(self, confirmation: Confirmation) -> bool:
         """
-        Asks, before anything is deleted for good, whether to go on; the answer of a modal dialog that the
-        main thread shows while this (the worker) thread waits. The default answer is "No".
+        Asks, before something that cannot be undone starts, whether to go on; the answer of a modal dialog that
+        the main thread shows while this (the worker) thread waits. The default answer is "No".
         """
-        shown = items[:CONFIRM_LIST_LIMIT]
-        lines = [f"• {item}" for item in shown]
-        if len(items) > len(shown):
-            lines.append(self.lang.get_message("confirm_remove_more", count=len(items) - len(shown)))
-        text = self.lang.get_message("confirm_remove_text", count=len(items), items="\n".join(lines))
         answer = []
         answered = threading.Event()
 
         def ask():
             try:
-                answer.append(messagebox.askyesno(self.lang.get_message("confirm_remove_title"), text,
-                                                  icon="warning", default="no", parent=self))
+                answer.append(messagebox.askyesno(confirmation.title, confirmation.text, icon="warning",
+                                                  default="no", parent=self))
             finally:
                 answered.set()
 
