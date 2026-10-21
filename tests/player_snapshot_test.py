@@ -46,7 +46,9 @@ class DownloadSnapshotTest(unittest.TestCase):
         result, own, foreign = self.download(f"{SERVER}/snapshots/a.png")
 
         self.assertEqual(result, (PNG, ".png"))
-        self.assertEqual(own.call_args.kwargs["params"], {"token": "secret-token"})
+        self.assertEqual(own.call_args.kwargs["headers"], {"x-access-token": "secret-token"})
+        self.assertNotIn("params", own.call_args.kwargs)
+        self.assertNotIn("secret-token", own.call_args.args[1])  # the token is not in the address
         foreign.assert_not_called()
 
     def test_a_relative_address_is_resolved_against_the_server(self):

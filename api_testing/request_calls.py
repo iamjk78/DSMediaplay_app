@@ -9,6 +9,10 @@ from dataclasses import dataclass
 
 LOGIN_TIMEOUT = 30  # seconds; without it a network black hole would freeze the window forever
 SNAPSHOT_TIMEOUT = 60  # seconds; the server asks the player for the screenshot and waits for it
+# (connect, read) seconds of every other request; without a timeout one request that never answers holds a whole
+# deploy (and its STOP button) for good
+REQUEST_TIMEOUT = (10, 60)
+TOKEN_HEADER = "x-access-token"
 SNAPSHOT_MAX_BYTES = 20 * 1024 * 1024
 IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF8", ".gif"))
 
@@ -112,17 +116,45 @@ class NameResolutionError(ServerApiError):
     name: str
 
 
+def without_secrets(value: Any) -> Any:
+    """A copy of request parameters without the session token, so that they can be shown or logged."""
+    if isinstance(value, dict):
+        return {key: without_secrets(item) for key, item in value.items()
+                if str(key).lower() not in (TOKEN_HEADER, "token", "password")}
+    return value
+
+
 @dataclass
 class ResponseError(ServerApiError):
     """
-    Response returned non-200 code.
+    The server refused a request: a non-200 code, or an answer that says it was not successful.
+
+    The text of this error is shown to the user and written to the log, so it carries what went wrong (the status,
+    the request and the server's own message) and never the session token.
 
     Attributes
     ----------
     params : dict
-        The parameters of the failed request.
+        The parameters of the failed request, without the token.
+    status : int, optional
+        The HTTP status of the answer.
+    request : str
+        "METHOD /endpoint" of the failed request.
+    message : str
+        The server's own description of the failure, if it gave one.
     """
     params: dict
+    status: Optional[int] = None
+    request: str = ""
+    message: str = ""
+
+    def __post_init__(self):
+        self.params = without_secrets(self.params)
+        self.args = (str(self),)  # the default text of an exception is made of the arguments it was created with
+
+    def __str__(self):
+        parts = [part for part in (f"HTTP {self.status}" if self.status else "", self.request, self.message) if part]
+        return "The server refused the request" + (": " + ", ".join(parts) if parts else "")
 
 
 class SnapshotError(ServerApiError):
@@ -255,16 +287,19 @@ class ServerApi:
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> json:
         url = f"{self._url}{endpoint}"
-        headers = {"Content-Type": "application/json"}
-        kwargs.setdefault("headers", headers)
-        kwargs.setdefault("params", {}).update({"token": self._session_token})
+        # The token travels in a header, not in the address: an address ends up in error texts, logs and proxies
+        kwargs["headers"] = {"Content-Type": "application/json", TOKEN_HEADER: self._session_token,
+                             **kwargs.get("headers", {})}
+        kwargs.setdefault("timeout", REQUEST_TIMEOUT)
         response = self._request(method, url, **kwargs)
 
+        failure = {"params": kwargs.get("params") or {}, "status": response.status_code,
+                   "request": f"{method.upper()} {endpoint}"}
         if not response.ok:
-            raise ResponseError(kwargs)
+            raise ResponseError(**failure)
         response_json = response.json()
         if not response_json.get("success", False):
-            raise ResponseError(kwargs)
+            raise ResponseError(**failure, message=str(response_json.get("stat_message") or ""))
         return response_json
 
     def get_player_names(self) -> List[str]:
@@ -558,7 +593,7 @@ class ServerApi:
         request_body = {
             "_id": group_id,
             "name": group,
-            "playAllEligiblePlaylists": "true",
+            "playAllEligiblePlaylists": "true",  # on purpose: the CMS depends on it, do not make it optional
             "playlists": playlists
         }
         return self._make_request("post", f"/groups/{group_id}", json=request_body)
@@ -1934,7 +1969,7 @@ class ServerApi:
 
         try:
             if target.hostname == server.hostname:
-                response = self._request("get", address, params={"token": self._session_token},
+                response = self._request("get", address, headers={TOKEN_HEADER: self._session_token},
                                          timeout=SNAPSHOT_TIMEOUT)
             else:
                 response = requests.get(address, timeout=SNAPSHOT_TIMEOUT)

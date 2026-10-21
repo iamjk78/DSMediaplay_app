@@ -16,9 +16,10 @@ from gui_app import gui
 from gui_app.log_box import LoggingTextBox
 from util.language import LanguageManager
 from processor.input_processing import (
-    CONFIRM_LIST_LIMIT, Confirmation, DeployAllPlayersProcessor, DeploySelectedGroupsProcessor, FormatException, InternalException, RemoveAllUnusedPlaylistsProcessor, RemoveAssetsProcessor,
-    RemovePlaylistsByListProcessor, RemovePlaylistsProcessor, RemoveUnusedAssetsProcessor,
-    RemoveUnusedLabelsProcessor, RemoveUnusedPlaylistsProcessor,
+    CONFIRM_LIST_LIMIT, Confirmation, DeployAllPlayersProcessor, DeploySelectedGroupsProcessor, FormatException,
+    InternalException, RemoveAllUnusedPlaylistsProcessor, RemoveAssetsProcessor, RemoveGroupsByKeywordProcessor,
+    RemoveLabelsByKeywordProcessor, RemovePlaylistsByListProcessor, RemovePlaylistsProcessor,
+    RemoveUnusedAssetsProcessor, RemoveUnusedLabelsProcessor, RemoveUnusedPlaylistsProcessor,
 )
 
 MESSAGES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "messages.json")
@@ -105,6 +106,44 @@ class EmptyKeywordTest(unittest.TestCase):
 
     def test_require_keyword_returns_a_real_keyword_unchanged(self):
         self.assertEqual(require_keyword(" a "), " a ")
+
+
+class RemoveByKeywordSuccessTest(unittest.TestCase):
+    """Removing assets by keyword used to log its first success with a message that does not exist and stop there."""
+
+    def test_assets_are_removed_from_every_playlist_and_each_success_is_logged(self):
+        removed = {"PL_A": ["a.mp4"], "PL_B": ["b.mp4"]}
+        server = MagicMock()
+        server.get_playlist_names.return_value = ["PL_A", "PL_B"]
+        server.remove_assets_by_keyword_from_playlist.side_effect = lambda playlist, keyword: removed[playlist]
+        processor, logger, patcher = make_processor(RemoveAssetsProcessor, server, real_text=True)
+        self.addCleanup(patcher.stop)
+
+        processor.load("PL_A\tx\nPL_B\ty")
+        list(processor.run())
+
+        self.assertEqual(server.remove_assets_by_keyword_from_playlist.call_count, 2)
+        logged = " ".join(str(call.args[0]) for call in logger.info.call_args_list)
+        self.assertIn("a.mp4", logged)
+        self.assertIn("b.mp4", logged)
+        self.assertIn("odstraněny assety", logged)
+        logger.error.assert_not_called()
+
+    def test_every_remove_by_keyword_processor_has_a_success_message_that_exists_in_both_languages(self):
+        # what each of them reports: the labels one has only the general message, which names the entity
+        expected = {RemoveAssetsProcessor: "removed-thing", RemoveGroupsByKeywordProcessor: "removed-thing",
+                    RemoveLabelsByKeywordProcessor: "entity"}
+        for processor_class, reported in expected.items():
+            for language in ("cz", "en"):
+                with self.subTest(processor=processor_class.__name__, language=language):
+                    logger = MagicMock()
+                    lang = LanguageManager(language=language, config_path=MESSAGES)
+                    processor = processor_class(logger, url="http://example.com", login="u", password="p", lang=lang)
+
+                    processor._write_success_remove(3, "entity", ["removed-thing"])
+
+                    self.assertIn(reported, logger.info.call_args.args[0])
+                    self.assertIn("3", logger.info.call_args.args[0])
 
 
 class RemovePlaylistsByNameTest(unittest.TestCase):

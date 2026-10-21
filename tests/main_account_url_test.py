@@ -97,7 +97,9 @@ class ServerApiUsesTheMainAccountTest(unittest.TestCase):
             api.download_snapshot(f"{MAIN}/media/s.png")
 
         own.assert_called_once()
-        self.assertEqual(own.call_args.kwargs["params"], {"token": "abc"})
+        self.assertEqual(own.call_args.kwargs["headers"], {"x-access-token": "abc"})
+        self.assertNotIn("params", own.call_args.kwargs)
+        self.assertNotIn("abc", own.call_args.args[1])  # the token is not in the address
         foreign.assert_not_called()
 
 

@@ -99,6 +99,7 @@ class SettingsWindow(tk.Toplevel):
         self.master.update_font((selected_font, selected_size))
         self.master.refresh_ui()
         self.master.all_data["lang"] = selected_language
+        self.master.all_data["font"] = [selected_font, selected_size]
         self.master.all_data["deploy_batch_size"] = 10
         self.master.all_data["deploy_batch_interval"] = 3
         self.master.save_account_configs()
@@ -113,6 +114,7 @@ class SettingsWindow(tk.Toplevel):
         self.master.update_font((selected_font, selected_size))
         self.master.refresh_ui()
         self.master.all_data["lang"] = selected_language
+        self.master.all_data["font"] = [selected_font, selected_size]
         self.master.all_data["deploy_batch_size"] = self.deploy_batch_size_var.get()
         self.master.all_data["deploy_batch_interval"] = self.deploy_batch_interval_var.get()
         self.master.save_account_configs()

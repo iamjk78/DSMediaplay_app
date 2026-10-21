@@ -203,10 +203,16 @@ class LoggingTextBox(tk.Toplevel):
     def save_text(self):
         file_path = filedialog.asksaveasfilename(defaultextension=".txt",
                                                  filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
-        with open(file_path, "w") as file:
-            log_content = self.log_text.get("1.0", tk.END).strip()
-            file.write(log_content)
-        messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("file_saved"))
+        if not file_path:  # the dialog was cancelled
+            return
+        try:
+            with open(file_path, "w", encoding="utf-8") as file:
+                file.write(self.log_text.get("1.0", tk.END).strip())
+        except OSError:
+            messagebox.showwarning(self.lang.get_message("warning_title"), self.lang.get_message("file_save_error"))
+            return
+        messagebox.showinfo(self.lang.get_message("info_title"),
+                            self.lang.get_message("file_saved", file_path=file_path))
 
     def configure_grid(self):
         self.grid_rowconfigure(0, weight=1)

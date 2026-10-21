@@ -622,6 +622,8 @@ class RemoveProcessor(EntityValidationProcessor):
 
 class RemoveByKeywordProcessor(RemoveProcessor, ABC):
     entity_type = None  # Must be set in subclasses
+    # The message of a success in assets/messages.json and the names it gives to the entity and to what was removed
+    success_message: Tuple[str, str, str] = ("success_remove_entity", "entity", "removed_items")
 
     @abstractmethod
     def _remove_method(self, server, entity_name: str, keyword: str) -> Response:
@@ -685,9 +687,9 @@ class RemoveByKeywordProcessor(RemoveProcessor, ABC):
             raise InternalException()
 
     def _write_success_remove(self, line_num: int, entity_name: str, removed_items: List[str]):
+        key, entity_field, items_field = self.success_message
         self._logger.info(self.lang.get_message(
-            f"success_remove_{self.entity_type}_items",
-            line_num=line_num, entity=entity_name, removed_items=removed_items))
+            key, line_num=line_num, **{entity_field: entity_name, items_field: removed_items}))
 
 
 class RenameProcessor(EntityValidationProcessor, ABC):
@@ -1286,7 +1288,7 @@ class PlayerSnapshotProcessor(EntityValidationProcessor):
             raise InternalException()
 
     def _save_snapshot(self, server: ServerApi, player: str):
-        # Only a reason is logged, never the exception text: a ResponseError carries the request incl. the token
+        # Only a reason is logged, never the exception text
         try:
             image, extension = server.download_snapshot(server.take_player_snapshot(player)["url"])
         except (SnapshotError, ResponseError, NameResolutionError, requests.exceptions.RequestException, KeyError,
@@ -2203,6 +2205,7 @@ class LocationRenameProcessor(RenameProcessor):
 
 class RemoveGroupsByKeywordProcessor(RemoveByKeywordProcessor):
     entity_type = "group_names"
+    success_message = ("success_remove_playlists_from_group", "group", "removed_playlists")
 
     def _remove_method(self, server, entity_name: str, keyword: str) -> Response:
         response = server.remove_playlists_by_keyword_from_group(entity_name, keyword)
@@ -2214,6 +2217,7 @@ class RemoveGroupsByKeywordProcessor(RemoveByKeywordProcessor):
 
 class RemoveAssetsProcessor(RemoveByKeywordProcessor):
     entity_type = "playlist_names"
+    success_message = ("success_remove_assets_from_playlist", "playlist", "removed_assets")
 
     def _remove_method(self, server, entity_name: str, keyword: str) -> Response:
         response = server.remove_assets_by_keyword_from_playlist(entity_name, keyword)
