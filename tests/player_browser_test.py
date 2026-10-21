@@ -17,7 +17,7 @@ from api_testing.request_calls import LoginError, ResponseError, ServerApi
 from gui_app import gui
 from gui_app.color_button import GREEN, RED, ColorButton, button_interactive
 from gui_app.snapshot_viewer import DEFAULT_WINDOW_SIZE
-from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR,
+from gui_app.player_browser import (COLUMNS, EDGE_ZONE, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, RESIZE_CURSOR, ROW_PADY,
                                     SEPARATOR_COLOR, SEPARATOR_WIDTH, SNAPSHOT_COLUMN_MINSIZE, SORT_CURSOR, TOGGLE_COLUMNS,
                                     PlayerBrowser, valid_hidden, valid_widths, valid_window_geometry)
 from util.language import LanguageManager
@@ -1149,6 +1149,16 @@ class ScrollLimitsTest(BrowserTestCase):
                 browser._header_cells["name"].winfo_rooty() - browser._header_canvas.winfo_rooty(),
                 browser._filter_widgets["name"].winfo_rooty() - browser._filter_canvas.winfo_rooty())
 
+    @staticmethod
+    def space_below_last_player(browser):
+        """Pixels between the bottom of the row of the last player and the bottom edge of the table: a negative
+        number is how much of that row is cut off (or, when it is large, entirely out of sight)."""
+        widgets = browser.widgets_for(browser._visible[-1])
+        if widgets is None:
+            return -10 ** 6  # not even in the pool
+        row_bottom = max(widget.winfo_rooty() + widget.winfo_height() for widget in widgets[:2])
+        return browser._canvas.winfo_rooty() + browser._canvas.winfo_height() - row_bottom
+
     def wheel(self, browser, delta, shift=False):
         cell = browser._pool[0][1]  # any row cell that is currently on screen, wherever the pool has scrolled to
         cell.event_generate("<Shift-MouseWheel>" if shift else "<MouseWheel>", delta=delta, x=3, y=3)
@@ -1219,7 +1229,7 @@ class ScrollLimitsTest(BrowserTestCase):
         browser = self.open(players=players)
         self.app.update()
         self.assertFalse(browser._fits("y"))
-        last_page = len(browser._visible) - browser._pool_size
+        last_page = len(browser._visible) - browser._whole_rows
 
         for _ in range(60):
             self.wheel(browser, 30)  # up, at the top: nothing happens
@@ -1230,7 +1240,8 @@ class ScrollLimitsTest(BrowserTestCase):
         self.app.update()
         self.assertEqual(browser._first_index, last_page)
         shown = [row for row in browser._pool_rows if row is not None]
-        self.assertEqual(shown[-1].name, "P079")  # the last player really is the last one on screen
+        self.assertEqual(shown[-1].name, "P079")  # the last player really is the last one that is shown
+        self.assertGreaterEqual(self.space_below_last_player(browser), 0)  # ... and it is entirely on the screen
         self.assertEqual(self.offset(browser)[1], 0)
 
         for _ in range(30):
@@ -1240,6 +1251,92 @@ class ScrollLimitsTest(BrowserTestCase):
         browser._scroll_y("moveto", 0.0)
         self.app.update()
         self.assertEqual(browser._first_index, 0)
+
+    def test_the_last_player_is_entirely_visible_whatever_the_height_of_the_window(self):
+        """The pool used to have more rows than fit and the rows were taller than it thought, so the last five or so
+        players could never be scrolled into view."""
+        browser = self.open(players=[player(f"P{index:03d}", True) for index in range(120)])
+        for height in (330, 450, 520, 700, 910):
+            with self.subTest(height=height):
+                browser.geometry(f"1300x{height}")
+                self.app.update()
+                browser._scroll_y("moveto", 1.0)
+                self.app.update()
+
+                self.assertEqual(browser.visible_names()[-1], "P119")
+                self.assertGreaterEqual(self.space_below_last_player(browser), 0)
+
+    def test_a_list_only_a_little_longer_than_the_window_can_still_be_scrolled_to_its_end(self):
+        probe = self.open(players=[player("P000", True)])
+        probe.geometry("1300x450")
+        self.app.update()
+        whole, pool = probe._whole_rows, probe._pool_size
+        probe.destroy()
+
+        for count in (whole, whole + 1, whole + 2, pool, pool + 1):
+            with self.subTest(players=count):
+                browser = self.open(players=[player(f"P{index:03d}", True) for index in range(count)])
+                browser.geometry("1300x450")
+                self.app.update()
+                browser._scroll_y("moveto", 1.0)
+                self.app.update()
+
+                self.assertEqual(browser._fits("y"), count <= whole)
+                self.assertGreaterEqual(self.space_below_last_player(browser), 0)
+                browser.destroy()
+
+    def test_the_scroll_bar_reaches_the_bottom_exactly_when_the_last_player_is_in_view(self):
+        browser = self.open(players=[player(f"P{index:03d}", True) for index in range(120)])
+        browser.geometry("1300x450")
+        self.app.update()
+
+        browser._scroll_y("moveto", 1.0)
+        self.app.update()
+
+        first, last = browser._scrollbar.get()
+        self.assertAlmostEqual(last, 1.0)
+        self.assertAlmostEqual(last - first, browser._whole_rows / 120)
+
+        browser._scroll_y("moveto", 0.0)  # the thumb is as long as the part of the list that is entirely in view
+        self.app.update()
+        first, last = browser._scrollbar.get()
+        self.assertAlmostEqual(first, 0.0)
+        self.assertAlmostEqual(last, browser._whole_rows / 120)
+
+    def test_a_page_is_as_many_rows_as_are_entirely_visible(self):
+        browser = self.open(players=[player(f"P{index:03d}", True) for index in range(120)])
+        browser.geometry("1300x450")
+        self.app.update()
+
+        browser._scroll_y("scroll", 1, "pages")
+
+        self.assertEqual(browser._first_index, browser._whole_rows)
+
+    def test_the_height_of_a_row_is_that_of_its_tallest_widget(self):
+        browser = self.open(players=[player(f"P{index:03d}", True) for index in range(5)])
+        self.app.update()
+        button, first_cell = browser._pool[0][0], browser._pool[0][1]
+
+        self.assertGreaterEqual(browser._row_height(), button.winfo_reqheight() + 2 * ROW_PADY)
+        self.assertGreater(button.winfo_reqheight(), first_cell.winfo_reqheight())  # why a cell is not enough
+        self.assertEqual(browser._row_height(), browser._body.grid_bbox(0, 1)[3])  # what the grid really uses
+
+    def test_the_last_player_stays_in_view_after_the_window_is_made_smaller_and_after_the_font_is_made_larger(self):
+        browser = self.open(players=[player(f"P{index:03d}", True) for index in range(120)])
+        browser.geometry("1300x800")
+        self.app.update()
+        browser.geometry("1300x400")  # the pool made for the large window is not taken away again
+        self.app.update()
+
+        browser._scroll_y("moveto", 1.0)
+        self.app.update()
+        self.assertGreaterEqual(self.space_below_last_player(browser), 0)
+
+        browser.change_font_size(4)
+        self.app.update()
+        browser._scroll_y("moveto", 1.0)
+        self.app.update()
+        self.assertGreaterEqual(self.space_below_last_player(browser), 0)
 
     def test_a_scrolled_table_that_no_longer_needs_scrolling_goes_back_to_its_corner(self):
         browser = self.open(column_widths={"name": 1400, "group": 1400})

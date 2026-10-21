@@ -173,6 +173,7 @@ class PlayerBrowser(tk.Toplevel):
         self._pool: List[List[tk.Widget]] = []  # the row widgets on screen, reused for whatever row scrolls into them
         self._pool_rows: List[Optional[PlayerRow]] = []  # which row (if any) each pool slot currently shows
         self._pool_size = 0
+        self._whole_rows = 1  # how many rows are entirely inside the canvas; the one beyond them is cut off
         self._first_index = 0  # index into _visible of the row the pool's first slot currently shows
         self._sort = ("name", False)
         self._results: "queue.Queue" = queue.Queue()
@@ -668,10 +669,10 @@ class PlayerBrowser(tk.Toplevel):
 
     def _fits(self, axis: str) -> bool:
         """The table has nothing to scroll in this direction: sideways, it is not wider than the window; up and
-        down, the pool already shows the whole (filtered) list, so there is no further row to scroll to."""
+        down, every (filtered) player is already entirely on the screen, so there is no further row to scroll to."""
         if axis == "x":
             return self._body.winfo_reqwidth() <= self._canvas.winfo_width()
-        return len(self._visible) <= self._pool_size
+        return len(self._visible) <= self._whole_rows
 
     def _settle_views(self):
         """A Tk canvas that is larger than its content can still be scrolled, which pushes the content away from the
@@ -698,13 +699,15 @@ class PlayerBrowser(tk.Toplevel):
         if args[0] == "moveto":
             first = round(float(args[1]) * len(self._visible))
         elif args[0] == "scroll":
-            first = self._first_index + int(args[1]) * (self._pool_size if args[2] == "pages" else 1)
+            first = self._first_index + int(args[1]) * (self._whole_rows if args[2] == "pages" else 1)
         else:
             return
         self._set_first_index(first)
 
     def _set_first_index(self, first: int):
-        first = min(max(first, 0), max(0, len(self._visible) - self._pool_size))
+        # The last position puts the last player in the last row that is entirely on the screen. The pool has slots
+        # beyond those (the partly visible row and a spare one): they are empty then, never where the last player is.
+        first = min(max(first, 0), max(0, len(self._visible) - self._whole_rows))
         if first != self._first_index:
             self._first_index = first
             self._render_pool()
@@ -906,16 +909,20 @@ class PlayerBrowser(tk.Toplevel):
             button, first_cell, *_ = row
             button.grid(row=0, column=0, padx=CELL_PADDING, pady=ROW_PADY)
             first_cell.grid(row=0, column=self._cell_column(0), sticky="ew", padx=CELL_PADDING, pady=ROW_PADY)
-        self._pool_size = max(len(self._pool), self._rows_that_fit())
+        row_height = self._row_height()
+        canvas_height = max(self._canvas.winfo_height(), 1)
+        self._whole_rows = max(1, canvas_height // row_height)
+        self._pool_size = max(len(self._pool), math.ceil(canvas_height / row_height) + POOL_OVERSCAN)
         while len(self._pool) < self._pool_size:
             self._pool.append(self._new_pool_row(len(self._pool)))
             self._pool_rows.append(None)
 
-    def _rows_that_fit(self) -> int:
-        """How many rows the canvas has room for at its current height, at least one and never a partial one."""
+    def _row_height(self) -> int:
+        """The height of a row of the table: that of its tallest widget (the button is taller than a cell) and its
+        padding. The same number decides how many rows are there and how far the list can be scrolled."""
         self.update_idletasks()
-        row_height = self._pool[0][1].winfo_reqheight() + 2 * ROW_PADY
-        return max(1, math.ceil(max(self._canvas.winfo_height(), 1) / row_height) + POOL_OVERSCAN)
+        button, *cells = self._pool[0]
+        return max(button.winfo_reqheight(), *(cell.winfo_reqheight() for cell in cells)) + 2 * ROW_PADY
 
     def _new_pool_row(self, index: int) -> List[tk.Widget]:
         """One reusable slot in the window of rows on screen: the button first, then one cell for each column."""
@@ -967,7 +974,7 @@ class PlayerBrowser(tk.Toplevel):
         """Fills the pool with the slice of _visible that starts at _first_index; empties whatever is left of it."""
         self._ensure_pool()
         total = len(self._visible)
-        self._first_index = min(max(self._first_index, 0), max(0, total - self._pool_size))
+        self._first_index = min(max(self._first_index, 0), max(0, total - self._whole_rows))
         shown = 0
         for offset in range(self._pool_size):
             index = self._first_index + offset
@@ -984,10 +991,10 @@ class PlayerBrowser(tk.Toplevel):
 
     def _update_scrollbar(self):
         total = len(self._visible)
-        if total <= self._pool_size:
+        if total <= self._whole_rows:
             self._scrollbar.set(0.0, 1.0)
         else:
-            self._scrollbar.set(self._first_index / total, min(1.0, (self._first_index + self._pool_size) / total))
+            self._scrollbar.set(self._first_index / total, min(1.0, (self._first_index + self._whole_rows) / total))
 
     def widgets_for(self, row: PlayerRow) -> Optional[List[tk.Widget]]:
         """The button and the cells currently showing `row`, if it is scrolled into view; None if it is not."""

@@ -1,5 +1,5 @@
 requests==2.34.2
-pillow==12.3.0
+pillow==13.0.0
 urllib3==2.8.0
 future~=1.0.0
 schedule~=1.2.2
