@@ -245,6 +245,29 @@ class SortTest(unittest.TestCase):
                 self.assertEqual(len(sort_rows(ROWS, column)), 4)
 
 
+class MissingValuesSortLastTest(unittest.TestCase):
+    """A player with nothing in a column (never reported, no temperature...) is last in both directions."""
+
+    def test_descending_does_not_bring_what_is_missing_to_the_top(self):
+        for column in ("synced", "reported", "temperature", "version"):
+            for descending in (False, True):
+                with self.subTest(column=column, descending=descending):
+                    self.assertEqual([row.name for row in sort_rows(ROWS, column, descending)][-1], "Sklad")
+
+    def test_the_players_that_have_a_value_are_in_opposite_orders_in_the_two_directions(self):
+        for column in ("synced", "reported", "temperature", "version"):
+            with self.subTest(column=column):
+                up = [row.name for row in sort_rows(ROWS, column)][:-1]
+                down = [row.name for row in sort_rows(ROWS, column, True)][:-1]
+                self.assertEqual(down, up[::-1])
+
+    def test_the_other_columns_still_reverse_completely(self):
+        for column in ("name", "status", "group", "location", "note"):
+            with self.subTest(column=column):
+                self.assertEqual([row.name for row in sort_rows(ROWS, column, True)],
+                                 [row.name for row in sort_rows(ROWS, column)][::-1])
+
+
 class TemperatureAndVersionTest(unittest.TestCase):
     def test_the_temperature_is_read_from_the_texts_the_server_sends(self):
         cases = {"47": 47.0, "47.2": 47.2, "47,5": 47.5, "temp=47.2'C": 47.2, "-5": -5.0, " 60 ": 60.0, 52: 52.0,
@@ -304,7 +327,7 @@ class TemperatureAndVersionTest(unittest.TestCase):
 
     def test_they_sort_and_what_is_missing_comes_last(self):
         self.assertEqual([r.name for r in sort_rows(ROWS, "temperature")], ["Lobby Praha", "Přerov 1", "Přerov 2", "Sklad"])
-        self.assertEqual([r.name for r in sort_rows(ROWS, "temperature", True)][0], "Sklad")
+        self.assertEqual([r.name for r in sort_rows(ROWS, "temperature", True)][-1], "Sklad")
         self.assertEqual([r.name for r in sort_rows(ROWS, "version")], ["Lobby Praha", "Přerov 2", "Přerov 1", "Sklad"])
 
 

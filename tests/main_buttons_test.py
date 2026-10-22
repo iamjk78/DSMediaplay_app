@@ -170,6 +170,7 @@ class MainButtonsTest(MainWindowCase):
         opened.assert_called_once()
         args, kwargs = opened.call_args
         self.assertEqual(args, (URL, "jane", "secret"))
+        self.assertTrue(kwargs["refresh_if_open"])  # a window that was open already may show old data
         browser = MagicMock()
         kwargs["on_open"](browser)
         browser.set_filter_and_sort.assert_called_once_with(name="aktivni", online=False, sort_column="reported",

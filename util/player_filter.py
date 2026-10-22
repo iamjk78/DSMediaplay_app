@@ -199,5 +199,14 @@ SORT_KEYS: Dict[str, Callable[[PlayerRow], Any]] = {
 }
 
 
+# The columns whose sort key starts with "there is nothing here": those players always come last, whichever way
+# the column is sorted (reversing the whole key would bring them to the top of a descending sort)
+MISSING_LAST = ("synced", "reported", "temperature", "version")
+
+
 def sort_rows(rows: Iterable[PlayerRow], column: str, descending: bool = False) -> List[PlayerRow]:
-    return sorted(rows, key=SORT_KEYS[column], reverse=descending)
+    key = SORT_KEYS[column]
+    if column not in MISSING_LAST:
+        return sorted(rows, key=key, reverse=descending)
+    ordered = sorted(rows, key=lambda row: key(row)[1:], reverse=descending)
+    return sorted(ordered, key=lambda row: key(row)[0])  # stable: what has a value stays in its order, first

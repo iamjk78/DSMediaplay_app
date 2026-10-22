@@ -1064,20 +1064,31 @@ class PlayerBrowser(tk.Toplevel):
             self.after_cancel(self._filter_after_id)
         self._filter_after_id = self.after(NAME_FILTER_DELAY_MS, self.apply_filters)
 
-    def reset_filters(self):
-        """Clears the texts and the ticks and puts every drop-down back on "(all)"."""
+    def _clear_filters(self):
+        """Clears the texts and the ticks and puts every drop-down back on "(all)"; does not show the result."""
         self.name_var.set("")
         self.note_var.set("")
         for box in (self.status_box, self.synced_box, self.reported_box, self.temperature_box):
             box.set(next(iter(self._combo_values[box])))
         for box in (self.group_box, self.location_box, self.label_box, self.version_box):
             box.clear()
+
+    def reset_filters(self):
+        """Clears the texts and the ticks and puts every drop-down back on "(all)"."""
+        self._clear_filters()
         self.apply_filters()
         self.name_entry.focus_set()
 
     def set_filter_and_sort(self, *, name: str = "", online: Optional[bool] = None, sort_column: str = "name",
                             sort_descending: bool = False):
-        """Sets the name and online filters and the sort column as if chosen by hand, and applies them."""
+        """
+        Shows exactly this view, as if chosen by hand: every other filter is cleared (one left over from before
+        could hide the very players looked for), the column it is sorted by is shown (a table sorted by a column
+        that cannot be seen would give no arrow to say so) and the filters and the order are applied.
+        """
+        if sort_column in self._hidden:
+            self.toggle_column(sort_column)
+        self._clear_filters()
         self.name_var.set(name)
         for label, value in self._combo_values[self.status_box].items():
             if value == online:

@@ -2,9 +2,11 @@
 import json
 import os
 import tempfile
+import threading
+import time
 import tkinter as tk
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from gui_app import gui
 from gui_app.log_box import LoggingTextBox
@@ -123,6 +125,122 @@ class SettingsFontTest(WindowCase):
             window.restore_default()
 
         self.assertEqual(self.saved()["font"], ["Helvetica", 12])
+
+
+class CloseLogWindowTest(WindowCase):
+    """The window of a running operation used to close and leave the operation running, unwatched and unstoppable."""
+
+    def open_box(self):
+        with patch("gui_app.log_box.ThreadManager.start_thread"):
+            box = LoggingTextBox("remove_unused_playlists", url="http://example.com", login="u", password="p",
+                                 data="", master=self.app)
+        self.addCleanup(close, box)
+        box.unbind("<Visibility>")  # showing the window would start the real operation
+        return box
+
+    def pump(self, seconds=0.0):
+        end = time.monotonic() + seconds
+        self.app.update()
+        while time.monotonic() < end:
+            self.app.update()
+            time.sleep(0.01)
+
+    def test_closing_a_window_whose_operation_is_not_running_asks_nothing(self):
+        box = self.open_box()
+
+        with patch("gui_app.log_box.messagebox.askyesno") as ask:
+            box._close()
+            self.pump()
+
+        ask.assert_not_called()
+        self.assertFalse(box.winfo_exists())
+
+    def test_refusing_to_stop_leaves_the_window_and_the_operation_alone(self):
+        box = self.open_box()
+        box.thread_manager.is_running = True
+
+        with patch("gui_app.log_box.messagebox.askyesno", return_value=False) as ask:
+            box._close()
+            self.pump()
+
+        self.assertTrue(box.winfo_exists())
+        self.assertFalse(box.thread_manager.stop_event.is_set())
+        self.assertEqual(ask.call_args.kwargs["default"], "no")
+
+    def test_agreeing_stops_the_operation_and_the_window_closes_only_when_it_has_ended(self):
+        box = self.open_box()
+        box.thread_manager.is_running = True
+
+        with patch("gui_app.log_box.messagebox.askyesno", return_value=True):
+            box._close()
+        self.pump(0.7)  # the operation is still finishing its batch: the window waits for it
+
+        self.assertTrue(box.thread_manager.stop_event.is_set())
+        self.assertTrue(box.winfo_exists())
+        self.assertEqual(box.indication_label.cget("text"), "Zastavuji…")
+        box.thread_manager.is_running = False
+        self.pump(0.7)
+        self.assertFalse(box.winfo_exists())
+
+    def test_the_cross_of_the_window_and_the_close_button_ask_the_same_question(self):
+        for how in ("cross", "button"):
+            with self.subTest(how=how):
+                box = self.open_box()
+                box.thread_manager.is_running = True
+                with patch("gui_app.log_box.messagebox.askyesno", return_value=False) as ask:
+                    if how == "cross":
+                        box.tk.call(box.protocol("WM_DELETE_WINDOW"))
+                    else:
+                        next(b for b in reversed(box.winfo_children())
+                             if isinstance(b, tk.Button) and b.cget("text") == "Zavřít").invoke()
+
+                ask.assert_called_once()
+                self.assertTrue(box.winfo_exists())
+
+    def test_a_running_operation_is_really_stopped_by_closing_its_window(self):
+        steps = []
+
+        def run():
+            for _ in range(1000):
+                time.sleep(0.01)
+                steps.append(1)
+                yield
+
+        processor = MagicMock()
+        processor.confirmation.return_value = None
+        processor.run.side_effect = run
+        with patch("gui_app.log_box.ProcessorFactory.create_processor", return_value=processor):
+            box = LoggingTextBox("remove_unused_playlists", url="http://example.com", login="u", password="p",
+                                 data="", master=self.app)
+            self.addCleanup(close, box)
+            box.thread_manager.start_thread()
+            deadline = time.monotonic() + 15
+
+            def watch():
+                if not box.winfo_exists() or time.monotonic() > deadline:
+                    self.app.quit()
+                else:
+                    self.app.after(20, watch)
+
+            with patch("gui_app.log_box.messagebox.askyesno", return_value=True):
+                self.app.after(300, box._close)
+                self.app.after(20, watch)
+                self.app.mainloop()  # like in the application: the worker thread reaches Tk through it
+
+        self.assertFalse(box.winfo_exists(), "the window is still there")
+        self.assertFalse(box.thread_manager.is_running)
+        self.assertTrue(0 < len(steps) < 1000, steps)
+
+    def test_a_stop_asked_for_while_the_input_is_loaded_prevents_even_the_first_step(self):
+        box = self.open_box()
+        processor = MagicMock()
+        processor.confirmation.return_value = None
+        processor.load.side_effect = lambda text: box.thread_manager.stop_event.set()
+        with patch("gui_app.log_box.ProcessorFactory.create_processor", return_value=processor):
+            box.run_input_processing()
+
+        processor.run.assert_not_called()
+        self.assertEqual(box.indication_label.cget("text"), "Zrušeno")
 
 
 if __name__ == "__main__":

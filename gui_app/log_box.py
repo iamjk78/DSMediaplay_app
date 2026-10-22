@@ -8,6 +8,9 @@ from gui_app.logger import TextHandler, OptionalLevelFormatter
 from processor.input_processing import Confirmation, FormatException, ProcessorFactory, InternalException
 
 
+STOP_POLL_MS = 200  # how often a window that has been asked to close looks whether its operation has ended
+
+
 class LoggingTextBoxFactory:
     @staticmethod
     def create_log_box(processor_type: str, master: "DSMediaplayApp", url: str, login: str, password: str, data: str,
@@ -94,6 +97,7 @@ class LoggingTextBox(tk.Toplevel):
         self.setup_ui()
         self.setup_logging()
         self.thread_manager = ThreadManager(self.run, self.logger, self._login_info, self._raw_data)
+        self.protocol("WM_DELETE_WINDOW", self._close)
         self.bind("<Visibility>", self.start_action)
         self.setup_buttons()
 
@@ -124,6 +128,11 @@ class LoggingTextBox(tk.Toplevel):
             confirmation = self.input_processor.confirmation()
             if confirmation and not self._confirm(confirmation):
                 self.logger.info(self.lang.get_message("operation_cancelled"))
+                self.update_activity_circle("C")
+                self.setup_buttons()
+                return
+            if self.thread_manager.stop_event.is_set():  # asked for while the input was loaded: not even a first step
+                self.logger.info(self.lang.get_message("operation_stopped"))
                 self.update_activity_circle("C")
                 self.setup_buttons()
                 return
@@ -194,7 +203,7 @@ class LoggingTextBox(tk.Toplevel):
         stop_button = tk.Button(self, text="STOP", font=self._font, command=self._stop_action)
         stop_button.grid(row=self._buttons_row, column=1, sticky="ew", padx=pad_x, pady=pad_y)
 
-        close_button = tk.Button(self, text=self.lang.get_message("close"), font=self._font, command=self.destroy)
+        close_button = tk.Button(self, text=self.lang.get_message("close"), font=self._font, command=self._close)
         close_button.grid(row=self._buttons_row, column=2, sticky="ew", padx=pad_x, pady=pad_y)
 
         save_button = tk.Button(self, text=self.lang.get_message("save"), font=self._font, command=self.save_text)
@@ -251,12 +260,36 @@ class LoggingTextBox(tk.Toplevel):
     def create_circle(self, x, y, r, **kwargs):
         return self._activity_canvas.create_oval(x - r, y - r, x + r, y + r, **kwargs)
 
-    def update_activity_circle(self, color: {"R", "G", "O", "C"}):
+    def update_activity_circle(self, color: {"R", "G", "O", "C", "S"}):
         colors = {"R": ("red", self.lang.get_message("error")), "G": ("green", self.lang.get_message("done")),
                   "O": ("orange", self.lang.get_message("working")),
-                  "C": ("gray", self.lang.get_message("cancelled"))}
+                  "C": ("gray", self.lang.get_message("cancelled")),
+                  "S": ("orange", self.lang.get_message("stopping"))}
         self._activity_canvas.itemconfig(self._activity_icon, fill=colors[color][0])
         self.indication_label.config(text=colors[color][1])
+
+    def _close(self):
+        """
+        Closing the window while the operation still runs would leave it running with nobody to watch it or to stop it
+        (and nothing to hold back a second one). So the user is asked, and the operation is stopped first: the window
+        goes when it has really finished, which for a deploy is the end of the batch that is being sent.
+        """
+        if not self.thread_manager.is_running:
+            self.destroy()
+            return
+        if not messagebox.askyesno(self.lang.get_message("confirm_stop_title"),
+                                   self.lang.get_message("confirm_stop_text"), icon="warning", default="no",
+                                   parent=self):
+            return
+        self.thread_manager.stop()
+        self.update_activity_circle("S")
+        self._destroy_when_stopped()
+
+    def _destroy_when_stopped(self):
+        if self.thread_manager.is_running:
+            self.after(STOP_POLL_MS, self._destroy_when_stopped)
+        else:
+            self.destroy()
 
     def _stop_action(self):
         self.thread_manager.stop()

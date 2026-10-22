@@ -63,7 +63,10 @@ class DSMediaplayApp(tk.Tk):
         self.version = "1.0"
         self.config_file = logins_file
         self._file_stamp = None  # (mtime, size) of the config file as this app last read or wrote it
-        self.all_data = self.load_account_configs()
+        try:
+            self.all_data = self.load_account_configs()
+        except (OSError, ValueError):
+            self.all_data = self.recover_unreadable_config(language_file)
         if "lang" not in self.all_data:
             self.ask_language()
         self.lang = LanguageManager(language=self.all_data.get("lang", "en"), config_path=language_file)
@@ -620,8 +623,9 @@ class DSMediaplayApp(tk.Tk):
         if "" in (login, password):
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("login_info"))
             return
-        self.open_player_browser(url, login, password, on_open=lambda browser: browser.set_filter_and_sort(
-            name="aktivni", online=False, sort_column="reported", sort_descending=True))
+        self.open_player_browser(url, login, password, refresh_if_open=True,
+                                 on_open=lambda browser: browser.set_filter_and_sort(
+                                     name="aktivni", online=False, sort_column="reported", sort_descending=True))
 
     def perform_show_action(self, action, url, login, password, _):
         if "" in [login, password]:
@@ -629,15 +633,18 @@ class DSMediaplayApp(tk.Tk):
             return
         self.open_player_browser(url, login, password)
 
-    def open_player_browser(self, url, login, password, on_open=None):
+    def open_player_browser(self, url, login, password, on_open=None, refresh_if_open=False):
         """One window at a time: the same account and login brings the open one to the front. `on_open`, when
-        given, is called with the window every time it is shown, whether newly created or brought forward."""
+        given, is called with the window every time it is shown, whether newly created or brought forward;
+        `refresh_if_open` makes a window that was already open fetch the players again (what it shows can be old)."""
         browser = self._player_browser
         if browser is not None and browser.winfo_exists():
             if browser.connection == (url, login):
                 browser.deiconify()
                 browser.lift()
                 browser.focus_force()
+                if refresh_if_open:
+                    browser.refresh()
                 if on_open:
                     on_open(browser)
                 return
@@ -777,6 +784,8 @@ class DSMediaplayApp(tk.Tk):
             return {"default": ["", ""], "logins": {}}
         with open(self.config_file, "r", encoding='utf-8') as file:
             data = json.load(file)
+        if not isinstance(data, dict):
+            raise ValueError("the account list is not a JSON object")
         data.setdefault("logins", {})
         data.setdefault("default", ["", ""])
         self._file_stamp = stamp
@@ -829,6 +838,36 @@ class DSMediaplayApp(tk.Tk):
     def on_focus_in(self, event):
         if event.widget is self:  # the window itself came to the front, e.g. after Edit JSON or a text editor
             self.sync_from_disk()
+
+    def recover_unreadable_config(self, language_file: str) -> dict:
+        """
+        The account list is damaged (or cannot be read). Nothing is thrown away: the user is asked whether to keep a
+        copy of the file next to it and go on with an empty list (the passwords stay in the credential store, so
+        adding the accounts again is all that is left to do), or to quit and look at the file. The language of the
+        user is not known here (it is in that file), so the question is asked in both.
+        """
+        backup = f"{self.config_file}.unreadable-{datetime.now():%Y%m%d-%H%M%S}"
+        languages = [LanguageManager(language=code, config_path=language_file) for code in ("cz", "en")]
+
+        def say(key: str, separator: str = "\n\n", **values) -> str:
+            return separator.join(lang.get_message(key, **values) for lang in languages)
+
+        title = say("config_unreadable_title", " / ")
+        self.withdraw()
+        keep_going = messagebox.askyesno(title, say("config_unreadable_text", file=self.config_file, backup=backup),
+                                         icon="error", default="yes")
+        if keep_going:
+            try:
+                os.replace(self.config_file, backup)
+            except OSError as error:
+                messagebox.showerror(title, say("config_unreadable_backup_failed", error=error))
+                keep_going = False
+        if not keep_going:
+            self.destroy()
+            raise SystemExit(1)
+        self.deiconify()
+        self._file_stamp = None
+        return {"default": ["", ""], "logins": {}}
 
     def ask_language(self):
         """First start only: the choice is stored in the config, so it is never asked again."""
@@ -1053,7 +1092,11 @@ class DSMediaplayApp(tk.Tk):
             self.update_input_button()  # blinks again when the window was closed without any input
 
     def reload_account_configs(self):
-        self.all_data = self.load_account_configs()
+        try:
+            data = self.load_account_configs()
+        except (OSError, ValueError):  # damaged meanwhile: the app keeps what it has, and the next save is a good file
+            return
+        self.all_data = data
         self.account_data = self.all_data["logins"]
         self.default = self.all_data["default"]
 

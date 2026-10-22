@@ -1477,7 +1477,7 @@ class TemperatureAndVersionTest(BrowserTestCase):
         browser._header_cells["temperature"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
         self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 1", "Prerov 2", "Sklad"])  # 47.2, 63, 81, none
         browser._header_cells["temperature"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
-        self.assertEqual(browser.visible_names()[0], "Sklad")
+        self.assertEqual(browser.visible_names(), ["Prerov 2", "Prerov 1", "Lobby", "Sklad"])  # a player without a value stays last
         browser._header_cells["version"].event_generate("<ButtonPress-1>", x=2, y=2, rootx=5000, rooty=10)
         self.assertEqual(browser.visible_names(), ["Lobby", "Prerov 2", "Prerov 1", "Sklad"])  # 5.3.1, 5.3.1, 5.10.2, none
 
@@ -1631,6 +1631,53 @@ class SetFilterAndSortTest(BrowserTestCase):
         browser.set_filter_and_sort(name="aktivni", online=False, sort_column="reported", sort_descending=True)
 
         self.assertEqual(browser.visible_names(), ["Aktivni 2", "Aktivni 1"])
+
+    def test_a_filter_left_over_from_before_does_not_hide_the_players_looked_for(self):
+        players = self.OUTAGE_PLAYERS + [player("Aktivni 5", False, group="Obchod", reported=ago(minutes=9),
+                                                notes="rozbitá", version="5.3.1"),
+                                         player("Lobby", True, group="Kancelar", reported=ago(seconds=20))]
+        browser = self.open(players=players)
+        self.tick(browser, browser.group_box, "Kancelar")  # nobody of the outage is in this group
+        self.type_into(browser, browser.note_var, "nic takového")
+        self.choose(browser.reported_box, "< 1 minuta")
+        self.assertEqual(browser.visible_names(), [])
+
+        browser.set_filter_and_sort(name="aktivni", online=False, sort_column="reported", sort_descending=True)
+
+        self.assertEqual(browser.visible_names(), ["Aktivni 2", "Aktivni 5", "Aktivni 1"])
+        self.assertEqual((browser.note_var.get(), browser.reported_box.get()), ("", "(vše)"))
+        self.assertEqual(browser.group_box.checked(), frozenset())
+
+    def test_a_player_that_never_reported_comes_last_not_first_in_the_newest_first_order(self):
+        players = self.OUTAGE_PLAYERS + [player("Aktivni 4", False, reported=0)]  # never reported
+        browser = self.open(players=players)
+
+        browser.set_filter_and_sort(name="aktivni", online=False, sort_column="reported", sort_descending=True)
+
+        self.assertEqual(browser.visible_names(), ["Aktivni 2", "Aktivni 1", "Aktivni 4"])
+
+    def test_the_sort_column_is_shown_when_it_was_hidden_so_that_the_sort_can_be_seen(self):
+        saved = []
+        browser = self.open(players=self.OUTAGE_PLAYERS, hidden_columns=["reported", "note"],
+                            save_hidden_columns=saved.append)
+        self.assertIn("reported", browser._hidden)
+
+        browser.set_filter_and_sort(name="aktivni", online=False, sort_column="reported", sort_descending=True)
+
+        self.assertNotIn("reported", browser._hidden)
+        self.assertEqual(browser._sort, ("reported", True))
+        self.assertIn("▼", browser._header_cells["reported"].cget("text"))
+        self.assertTrue(browser._header_cells["reported"].winfo_ismapped())
+        self.assertNotIn("reported", saved[-1])  # the choice of columns is remembered like any other change of it
+        self.assertEqual(browser.visible_names(), ["Aktivni 2", "Aktivni 1"])
+
+    def test_a_column_that_is_shown_already_is_left_alone(self):
+        saved = []
+        browser = self.open(players=self.OUTAGE_PLAYERS, save_hidden_columns=saved.append)
+
+        browser.set_filter_and_sort(name="aktivni", online=False, sort_column="reported", sort_descending=True)
+
+        self.assertEqual(saved, [])
 
 
 class RefreshIntervalTest(BrowserTestCase):
@@ -2204,6 +2251,19 @@ class MainWindowTest(BrowserTestCase):
             self.app.open_player_browser("https://x", "jane", "pw", on_open=on_open)
 
             self.assertEqual(on_open.call_args_list, [call(first), call(first)])
+
+    def test_a_window_that_was_open_is_refreshed_on_request_a_new_one_is_not(self):
+        with patch("gui_app.gui.PlayerBrowser") as browser_class:
+            window = browser_class.return_value
+            window.winfo_exists.return_value = True
+            window.connection = ("https://x", "jane")
+
+            self.app.open_player_browser("https://x", "jane", "pw", refresh_if_open=True)  # it is created: loads anyway
+            window.refresh.assert_not_called()
+            self.app.open_player_browser("https://x", "jane", "pw", refresh_if_open=True)  # already open: old data
+            window.refresh.assert_called_once()
+            self.app.open_player_browser("https://x", "jane", "pw")  # Live-view only brings it to the front
+            window.refresh.assert_called_once()
 
     def test_execute_action_dispatches_show_actions(self):
         self.app.account_data["Demo"] = {"url": "https://x", "names": {"jane": {"login": "jane"}}}
