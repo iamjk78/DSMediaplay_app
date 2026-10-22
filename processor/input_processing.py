@@ -287,7 +287,7 @@ class InputProcessor(ABC):
         self._logger.error(self.lang.get_message("no_server_returned"))
 
     def _write_invalid_time_format(self, line_num: int, invalid_time: str):
-        self._logger.warning(self.lang.get_message("invalid_time_format", line_num=line_num, invalid_time=invalid_time))
+        self._logger.warning(self.lang.get_message("invalid_time_format", line_num=line_num, time_str=invalid_time))
 
     def _write_not_new_name(self, line_num: int, name: str):
         self._logger.error(self.lang.get_message("not_new", line_num=line_num, name=name))
@@ -1435,7 +1435,7 @@ class LocationTimesProcessor(AssignProcessor):
         return times
 
     def _write_invalid_time(self, line_number: int, day: str, invalid_time: str):
-        self._logger.error(self.lang.get_message("invalid_time",
+        self._logger.error(self.lang.get_message("invalid_day_time",
                                                  line_number=line_number,
                                                  day=day,
                                                  invalid_time=invalid_time))
@@ -1685,8 +1685,8 @@ class PlaylistSettingsProcessor(AssignProcessor):
     #       self._logger.info(
     #           self.lang.get_message("success_assign_playlist", playlist=playlist, domination_time=domination_time))
 
-    def _write_error_assign(self, playlist: str, code: int):
-        self._logger.error(self.lang.get_message("error_assign_playlist", playlist=playlist, code=code))
+    def _write_error_assign(self, line_num: int, code: int):
+        self._logger.error(self.lang.get_message("error_assign_playlist", line_num=line_num, code=code))
 
 
 class RemovePlaylistsProcessor(RemoveProcessor):

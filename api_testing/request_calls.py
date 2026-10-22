@@ -598,6 +598,39 @@ class ServerApi:
         }
         return self._make_request("post", f"/groups/{group_id}", json=request_body)
 
+    def _keep_what_the_group_has(self, group_id: str, written: List[Tuple[Dict, Dict]],
+                                 managed: Tuple[str, ...]) -> List[Dict]:
+        """
+        The tables and the CSV know only a few settings of a playlist in a group (dates, days of the week, times).
+        The server keeps more of them (ads, audio, dominance, "skip for schedule", the type of the playlist) and takes
+        in a write exactly what it is sent, so a playlist written from a table alone lost all of them.
+
+        Every playlist written (the entry to send and what the table says about it) is therefore matched (by name, in
+        order, as a group can hold one twice) with the one the group has now: if the table says the same as the group
+        already does, the group's own entry is sent back untouched; if not, the settings the table owns (`managed`)
+        are replaced and all the others stay.
+        """
+        current = {}
+        for existing in self.get_group_details(group_id).get("playlists", []):
+            current.setdefault(existing.get("name", ""), []).append(existing)
+
+        result = []
+        for built, shown in written:
+            candidates = current.get(built["name"])
+            if not candidates:
+                result.append(built)
+                continue
+            existing = candidates.pop(0)
+            settings = existing.get("settings") or {}
+            switches_agree = all((str(settings.get(switch)).lower() == "true") == (switch in built["settings"])
+                                 for switch in ("durationEnable", "timeEnable") if switch in managed)
+            if switches_agree and all((settings.get(key) or None) == (value or None) for key, value in shown.items()):
+                result.append(existing)
+                continue
+            kept = {key: value for key, value in settings.items() if key not in managed}
+            result.append({**existing, "settings": {**kept, **built["settings"]}})
+        return result
+
     def set_playlist_to_group(self, group: str,
                               playlists: List[Tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]]) \
             -> json:
@@ -617,8 +650,8 @@ class ServerApi:
             The response from the server.
         """
         group_id = self.get_group_id_by_name(group)
-        group_playlists = [
-            {
+        written = [
+            ({
                 "name": playlist_name,
                 "settings": {
                     **({"durationEnable": "true", "startdate": start_date, "enddate": end_date}
@@ -626,10 +659,11 @@ class ServerApi:
                     **({"timeEnable": "true", "starttime": start_time, "endtime": end_time}
                        if start_time and end_time else {})
                 }
-            }
+            }, {"startdate": start_date, "enddate": end_date, "starttime": start_time, "endtime": end_time})
             for playlist_name, start_date, end_date, start_time, end_time in playlists
         ]
-        return self._set_group_playlists(group_id, group, group_playlists)
+        managed = ("durationEnable", "startdate", "enddate", "timeEnable", "starttime", "endtime")
+        return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed))
 
     def set_playlist_to_group_detailed(self, group: str,
                                        playlists: List[Tuple[str, Optional[str], Optional[str], Optional[List[int]], Optional[str], Optional[str]]]) -> json:
@@ -649,7 +683,7 @@ class ServerApi:
             The response from the server.
         """
         group_id = self.get_group_id_by_name(group)
-        group_playlists = []
+        written = []
 
         for playlist_name, startdate, enddate, weekdays, starttime, endtime in playlists:
             playlist = {
@@ -672,9 +706,11 @@ class ServerApi:
                 playlist["settings"]["starttime"] = starttime or "0:00"
                 playlist["settings"]["endtime"] = endtime or "23:59"
 
-            group_playlists.append(playlist)
+            written.append((playlist, {"startdate": startdate, "enddate": enddate, "weekdays": weekdays,
+                                       "starttime": starttime, "endtime": endtime}))
 
-        return self._set_group_playlists(group_id, group, group_playlists)
+        managed = ("durationEnable", "startdate", "enddate", "weekdays", "timeEnable", "starttime", "endtime")
+        return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed))
 
     def set_group_to_player(self, group: str, player: str) -> json:
         """
@@ -2026,28 +2062,13 @@ class ServerApi:
         names_to_remove = set(playlists_to_remove)
         removed_playlists = {}
 
-        groups_playlists = self.get_groups_playlists_details()
-
-        for group_name, playlists in groups_playlists.items():
-            new_playlists = []
-            removed = []
-
-            for playlist in playlists:
-                if playlist["playlist_name"] in names_to_remove:
-                    removed.append(playlist["playlist_name"])
-                else:
-                    new_playlists.append(playlist)
-
+        for group in self._make_request("get", "/groups").get("data", []):
+            kept = [playlist for playlist in group.get("playlists", []) if playlist.get("name", "") not in names_to_remove]
+            removed = [playlist.get("name", "") for playlist in group.get("playlists", [])
+                       if playlist.get("name", "") in names_to_remove]
             if removed:
-                body = [(
-                    playlist.get("playlist_name", ""), playlist.get("start_date", None),
-                    playlist.get("end_date", None),
-                    playlist.get("days_of_week", None),
-                    playlist.get("start_time", None),
-                    playlist.get("end_time", None)
-                    ) for playlist in new_playlists]
-                resp = self.set_playlist_to_group_detailed(group_name, body)
-                removed_playlists[group_name] = removed
+                self._set_group_playlists(group["_id"], group.get("name", ""), kept)  # the others exactly as they are
+                removed_playlists[group.get("name", "")] = removed
 
         return removed_playlists
 

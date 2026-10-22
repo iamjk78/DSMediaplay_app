@@ -127,9 +127,7 @@ class SettingsFontTest(WindowCase):
         self.assertEqual(self.saved()["font"], ["Helvetica", 12])
 
 
-class CloseLogWindowTest(WindowCase):
-    """The window of a running operation used to close and leave the operation running, unwatched and unstoppable."""
-
+class LogWindowCase(WindowCase):
     def open_box(self):
         with patch("gui_app.log_box.ThreadManager.start_thread"):
             box = LoggingTextBox("remove_unused_playlists", url="http://example.com", login="u", password="p",
@@ -144,6 +142,9 @@ class CloseLogWindowTest(WindowCase):
         while time.monotonic() < end:
             self.app.update()
             time.sleep(0.01)
+
+class CloseLogWindowTest(LogWindowCase):
+    """The window of a running operation used to close and leave the operation running, unwatched and unstoppable."""
 
     def test_closing_a_window_whose_operation_is_not_running_asks_nothing(self):
         box = self.open_box()
@@ -241,6 +242,61 @@ class CloseLogWindowTest(WindowCase):
 
         processor.run.assert_not_called()
         self.assertEqual(box.indication_label.cget("text"), "Zrušeno")
+
+
+class EndOfTheOperationTest(LogWindowCase):
+    """What the window says when the operation has ended: done, stopped half way, or broken."""
+
+    def run_with(self, processor):
+        box = self.open_box()
+        with patch("gui_app.log_box.ProcessorFactory.create_processor", return_value=processor):
+            with self.assertLogs(box.logger, "INFO") as logged:
+                box.run_input_processing()
+        return box, "\n".join(logged.output)
+
+    @staticmethod
+    def processor(steps, stop_after=None, box_holder=None):
+        processor = MagicMock()
+        processor.confirmation.return_value = None
+
+        def run():
+            for number in range(1, steps + 1):
+                if number == stop_after:  # the user presses Stop while this step is being done
+                    box_holder[0].thread_manager.stop_event.set()
+                yield  # the step is done
+
+        processor.run.side_effect = run
+        return processor
+
+    def test_an_operation_that_went_through_everything_says_it_is_done(self):
+        box, log = self.run_with(self.processor(3))
+
+        self.assertIn(box.lang.get_message("operation_successful"), log)
+        self.assertEqual(box.indication_label.cget("text"), box.lang.get_message("done"))
+
+    def test_an_operation_that_was_stopped_half_way_says_so_and_how_far_it_got(self):
+        holder = []
+        box = self.open_box()
+        holder.append(box)
+        processor = self.processor(10, stop_after=3, box_holder=holder)
+        with patch("gui_app.log_box.ProcessorFactory.create_processor", return_value=processor):
+            with self.assertLogs(box.logger, "INFO") as logged:
+                box.run_input_processing()
+
+        log = "\n".join(logged.output)
+        self.assertIn(box.lang.get_message("operation_stopped_after", steps=3), log)
+        self.assertNotIn(box.lang.get_message("operation_successful"), log)
+        self.assertEqual(box.indication_label.cget("text"), box.lang.get_message("stopped"))
+
+    def test_anything_a_processor_lets_out_ends_in_the_error_state_not_in_working_for_ever(self):
+        processor = MagicMock()
+        processor.load.side_effect = KeyError("line_num")
+
+        box, log = self.run_with(processor)
+
+        self.assertIn(box.lang.get_message("internal_error", error_msg="'line_num'"), log)
+        self.assertEqual(box.indication_label.cget("text"), box.lang.get_message("error"))
+        self.assertNotIn(box.lang.get_message("operation_successful"), log)
 
 
 if __name__ == "__main__":

@@ -147,16 +147,16 @@ class RemoveByKeywordSuccessTest(unittest.TestCase):
 
 
 class RemovePlaylistsByNameTest(unittest.TestCase):
-    PLAYLISTS = {
-        "G1": [{"playlist_name": "Promo"}, {"playlist_name": "Promo2026"}, {"playlist_name": "2026"},
-               {"playlist_name": "o"}],
-        "G2": [{"playlist_name": "Promo2026"}, {"playlist_name": "Other"}],
-    }
+    GROUPS = [
+        {"_id": "1", "name": "G1", "playlists": [{"name": "Promo"}, {"name": "Promo2026"}, {"name": "2026"},
+                                                  {"name": "o"}]},
+        {"_id": "2", "name": "G2", "playlists": [{"name": "Promo2026"}, {"name": "Other"}]},
+    ]
 
     def make_api(self):
         api = ServerApi.__new__(ServerApi)
-        api.get_groups_playlists_details = MagicMock(return_value=self.PLAYLISTS)
-        api.set_playlist_to_group_detailed = MagicMock()
+        api._make_request = MagicMock(return_value={"data": self.GROUPS})
+        api._set_group_playlists = MagicMock()
         return api
 
     def test_a_name_matches_only_exactly_not_as_a_part_of_other_names(self):
@@ -165,8 +165,8 @@ class RemovePlaylistsByNameTest(unittest.TestCase):
         removed = api.remove_playlists_from_groups(["Promo2026"])
 
         self.assertEqual(removed, {"G1": ["Promo2026"], "G2": ["Promo2026"]})
-        kept = {call.args[0]: [row[0] for row in call.args[1]]
-                for call in api.set_playlist_to_group_detailed.call_args_list}
+        kept = {call.args[1]: [row["name"] for row in call.args[2]]
+                for call in api._set_group_playlists.call_args_list}
         self.assertEqual(kept, {"G1": ["Promo", "2026", "o"], "G2": ["Other"]})
 
     def test_a_single_name_instead_of_a_list_is_refused(self):
@@ -175,7 +175,7 @@ class RemovePlaylistsByNameTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             api.remove_playlists_from_groups("Promo2026")
 
-        api.set_playlist_to_group_detailed.assert_not_called()
+        api._set_group_playlists.assert_not_called()
 
     def test_the_processor_hands_the_server_a_list_of_one_name(self):
         processor, _, patcher = make_processor(RemovePlaylistsByListProcessor, MagicMock())

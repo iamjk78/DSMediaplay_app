@@ -136,11 +136,15 @@ class LoggingTextBox(tk.Toplevel):
                 self.update_activity_circle("C")
                 self.setup_buttons()
                 return
+            steps = 0
             for _ in self.input_processor.run():
+                steps += 1
                 # Check if the thread is stopped
                 if self.thread_manager.stop_event.is_set():
-                    self.logger.info(self.lang.get_message("operation_stopped"))
-                    break
+                    self.logger.info(self.lang.get_message("operation_stopped_after", steps=steps))
+                    self.update_activity_circle("T")
+                    self.setup_buttons()
+                    return
 
                 # Check if the thread is paused
                 if self.thread_manager.is_paused():
@@ -150,9 +154,10 @@ class LoggingTextBox(tk.Toplevel):
             self.setup_buttons()
             self.display_success()
 
-        except FormatException:
+        except (FormatException, InternalException):
             self.display_error()
-        except InternalException:
+        except Exception as error:  # whatever else a processor lets out: the window must not stay "working" for ever
+            self.logger.error(self.lang.get_message("internal_error", error_msg=str(error)))
             self.display_error()
 
     def _confirm(self, confirmation: Confirmation) -> bool:
@@ -260,11 +265,12 @@ class LoggingTextBox(tk.Toplevel):
     def create_circle(self, x, y, r, **kwargs):
         return self._activity_canvas.create_oval(x - r, y - r, x + r, y + r, **kwargs)
 
-    def update_activity_circle(self, color: {"R", "G", "O", "C", "S"}):
+    def update_activity_circle(self, color: {"R", "G", "O", "C", "S", "T"}):
         colors = {"R": ("red", self.lang.get_message("error")), "G": ("green", self.lang.get_message("done")),
                   "O": ("orange", self.lang.get_message("working")),
                   "C": ("gray", self.lang.get_message("cancelled")),
-                  "S": ("orange", self.lang.get_message("stopping"))}
+                  "S": ("orange", self.lang.get_message("stopping")),
+                  "T": ("gray", self.lang.get_message("stopped"))}
         self._activity_canvas.itemconfig(self._activity_icon, fill=colors[color][0])
         self.indication_label.config(text=colors[color][1])
 
