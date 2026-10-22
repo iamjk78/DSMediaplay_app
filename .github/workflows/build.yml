@@ -34,9 +34,20 @@ jobs:
       # Only set when a release is being published; it becomes the installer version
       RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # the check below asks whether the commit is on main
 
-      - uses: actions/setup-python@v5
+      # First, so that nothing is built (2-4 minutes, and an installer with a version nobody checked) for a release that
+      # would be refused at the end
+      - name: Check the release tag and where it is built from
+        if: env.RELEASE_TAG != ''
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "Invalid release tag: $RELEASE_TAG"; exit 1; }
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "A release is built only from a commit that is on main"; exit 1; }
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
           cache: pip
@@ -80,7 +91,7 @@ jobs:
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install innosetup --no-progress -y
+        run: choco install innosetup --version 6.7.1 --no-progress -y  # pinned: what is installed here ends up in the installer
 
       - name: Build the installer
         if: runner.os == 'Windows'
@@ -159,14 +170,38 @@ jobs:
           Remove-Item $marker
 
       # GitHub wraps every artifact in a zip; a release asset is the file itself, so releases carry the bare installer.
-      # macOS keeps its own zip because artifact uploads drop file permissions and symlinks that the .app needs.
+      # macOS has a disk image (the usual way to install there) and, next to it, its own zip because artifact uploads drop
+      # file permissions and symlinks that the .app needs.
       - name: Package (macOS)
         if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent dist/DSMediaplay_app.app DSMediaplay_app-macos.zip
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent dist/DSMediaplay_app.app DSMediaplay_app-macos.zip
+          version="${RELEASE_TAG#v}"
+          version="${version:-0.0.0-dev}"
+          staging=$(mktemp -d)
+          ditto dist/DSMediaplay_app.app "$staging/DSMediaplay_app.app"
+          ln -s /Applications "$staging/Applications"   # the folder to drag the application to
+          hdiutil create -volname "DSMediaplay_app" -srcfolder "$staging" -ov -format UDZO "DSMediaplay_app-$version-macos.dmg"
+          rm -rf "$staging"
+
+      - name: Test the disk image (it is sound, holds the application, which starts from it)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          image=$(ls DSMediaplay_app-*-macos.dmg)
+          hdiutil verify "$image"
+          mount=$(mktemp -d)
+          hdiutil attach "$image" -mountpoint "$mount" -nobrowse -readonly
+          trap 'hdiutil detach "$mount" -force >/dev/null 2>&1 || true' EXIT
+          [ -d "$mount/DSMediaplay_app.app" ] || { echo "The disk image does not hold the application"; exit 1; }
+          [ -L "$mount/Applications" ] || { echo "The disk image has no link to the Applications folder"; exit 1; }
+          codesign --verify --deep --strict "$mount/DSMediaplay_app.app"
+          bash packaging/smoke_test.sh "$mount/DSMediaplay_app.app/Contents/MacOS/DSMediaplay_app"
 
       - name: Upload (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: DSMediaplay_app-windows
           path: dist-installer/DSMediaplay_app-Setup-*.exe
@@ -174,21 +209,63 @@ jobs:
 
       - name: Upload (macOS)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: DSMediaplay_app-macos
-          path: DSMediaplay_app-macos.zip
+          path: |
+            DSMediaplay_app-*-macos.dmg
+            DSMediaplay_app-macos.zip
           if-no-files-found: error
 
+  test:
+    # The tests open real windows, so they run where there is a desktop: on Linux they would skip most of themselves
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON((inputs.platform || 'all') == 'all' && '["windows","macos"]' || format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ matrix.platform == 'windows' && 'windows-latest' || 'macos-latest' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Tests
+        run: python -m pytest -q -p no:cacheprovider
+
+  audit:
+    # Known vulnerabilities in what goes into the application and into its build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Audit the dependencies
+        run: |
+          python -m pip install pip-audit==2.10.1
+          python -m pip_audit -r requirements-build.txt
+
   release:
-    # Runs for a tag push or when a release tag is given; only after every requested platform built successfully
-    needs: build
+    # Runs for a tag push or when a release tag is given; only after every requested platform was built and tested
+    needs: [build, test, audit]
     if: inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
 
@@ -200,7 +277,8 @@ jobs:
           set -euo pipefail
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "Invalid release tag: $TAG"; exit 1; }
           shopt -s nullglob
-          files=(artifacts/DSMediaplay_app-windows/DSMediaplay_app-Setup-*.exe artifacts/DSMediaplay_app-macos/DSMediaplay_app-macos*.zip)
+          files=(artifacts/DSMediaplay_app-windows/DSMediaplay_app-Setup-*.exe artifacts/DSMediaplay_app-macos/DSMediaplay_app-*-macos.dmg
+                 artifacts/DSMediaplay_app-macos/DSMediaplay_app-macos*.zip)
           [ "${#files[@]}" -gt 0 ] || { echo "No release files found"; exit 1; }
           gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "DSMediaplay_app $TAG" --generate-notes

@@ -32,8 +32,11 @@ Changing a customer's URL invalidates its stored passwords (they are keyed by lo
 GitHub Actions (`Build` workflow, run manually or by pushing a `v*` tag) builds the Windows installer
 (`DSMediaplay_app-Setup-<version>.exe`, Inno Setup) and the macOS app with PyInstaller and attaches them to the run as artifacts.
 Running it manually with a `release_tag` (e.g. `v1.0.0`), or pushing a `v*` tag, also publishes a GitHub release
-with the installer and/or `DSMediaplay_app-macos.zip`. On Windows the workflow installs the installer silently, starts the
-installed app, installs over it again (a running instance included) and uninstalls it again before the build counts as successful. Locally:
+with the installer and/or the macOS disk image `DSMediaplay_app-<version>-macos.dmg` (drag the app to *Applications*; the workflow mounts it and starts the app from it) and `DSMediaplay_app-macos.zip`. On Windows the workflow installs the installer silently, starts the
+installed app, installs over it again (a running instance included) and uninstalls it again before the build counts as successful.
+The tests (`pip install -r requirements-dev.txt`, `python -m pytest`) run on Windows and macOS and the dependencies are audited
+for known vulnerabilities; a release is published only when the build, the tests and the audit all pass, and only from a commit
+on `main`. Every build starts the application with `--self-test` (window, texts and credential store) before it counts as working. Locally:
 
 ```bash
 pip install -r requirements-build.txt
