@@ -297,7 +297,7 @@ class ScalingTest(ViewerTestCase):
     def test_the_image_follows_the_window_at_once_and_is_sharpened_when_it_stops(self):
         viewer = self.open_wide_image()
 
-        viewer.geometry("1000x700")
+        viewer.geometry("1000x550")
         self.app.update()  # no waiting: the image is already scaled to the new size
         self.assert_fits_with_proportions(viewer)
         self.assertIsNotNone(viewer._sharpen_id)
@@ -307,7 +307,7 @@ class ScalingTest(ViewerTestCase):
 
     def test_a_new_snapshot_is_scaled_to_the_current_window_size(self):
         viewer = self.open(MagicMock(side_effect=[(png((400, 200)), ".png"), (png((200, 400)), ".png")]))
-        viewer.geometry("1000x700")
+        viewer.geometry("1000x550")
         self.app.update()
 
         viewer.take_snapshot()
@@ -345,9 +345,9 @@ class WindowSizeTest(ViewerTestCase):
         self.assertEqual(self.size(viewer), DEFAULT_WINDOW_SIZE)
 
     def test_it_opens_in_the_size_it_is_asked_for(self):
-        viewer = self.open(size=(1100, 700))
+        viewer = self.open(size=(1100, 550))
 
-        self.assertEqual(self.size(viewer), (1100, 700))
+        self.assertEqual(self.size(viewer), (1100, 550))
 
     def test_a_size_larger_than_the_screen_is_cut_down_to_it(self):
         viewer = self.open(size=(9000, 9000))
@@ -357,7 +357,7 @@ class WindowSizeTest(ViewerTestCase):
 
     def test_opening_reports_nothing(self):
         reported = MagicMock()
-        self.open(size=(1100, 700), on_resized=reported)
+        self.open(size=(1100, 550), on_resized=reported)
         self.pump(0.4)
 
         reported.assert_not_called()
@@ -366,23 +366,23 @@ class WindowSizeTest(ViewerTestCase):
         reported = MagicMock()
         viewer = self.open(on_resized=reported)
 
-        for geometry in ("1000x650", "1050x680", "1150x720"):  # the pointer keeps moving
+        for geometry in ("1000x510", "1050x540", "1150x570"):  # the pointer keeps moving
             viewer.geometry(geometry)
             self.app.update()
         self.wait_for(lambda: reported.called)
         self.pump(0.2)
 
-        reported.assert_called_once_with((1150, 720))
+        reported.assert_called_once_with((1150, 570))
 
     def test_a_window_closed_right_after_a_resize_still_reports_it(self):
         reported = MagicMock()
         viewer = self.open(on_resized=reported)
-        viewer.geometry("1000x650")
+        viewer.geometry("1000x510")
         self.app.update()
 
         viewer.destroy()
 
-        reported.assert_called_once_with((1000, 650))
+        reported.assert_called_once_with((1000, 510))
 
     def test_a_saved_size_is_used_only_when_it_makes_sense(self):
         self.assertEqual(valid_window_size([1100, 700]), (1100, 700))

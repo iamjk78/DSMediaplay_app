@@ -902,8 +902,7 @@ class ColumnVisibilityTest(BrowserTestCase):
     def test_a_click_hides_the_column_with_its_line_and_filter_and_turns_the_button_light_red(self):
         browser = self.open()
 
-        browser.column_buttons["group"].event_generate("<ButtonPress-1>", x=5, y=5)
-        browser.column_buttons["group"].event_generate("<ButtonRelease-1>", x=5, y=5)
+        press(browser.column_buttons["group"])
         self.app.update()
 
         self.assertTrue(self.hidden(browser, "group"))
@@ -2620,22 +2619,22 @@ class SnapshotButtonTest(TableButtons, BrowserTestCase):
         self.wait_for(lambda: not first.busy)
 
         with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 400):
-            first.geometry("1100x700")
+            first.geometry("1100x550")
             self.wait_for(lambda: saved.called)
         self.press(self.button(browser, "Sklad")[1])
         self.app.update()
         second = browser._viewers["id-Sklad"]
 
-        saved.assert_called_once_with((1100, 700))
-        self.assertEqual((second.winfo_width(), second.winfo_height()), (1100, 700))
+        saved.assert_called_once_with((1100, 550))
+        self.assertEqual((second.winfo_width(), second.winfo_height()), (1100, 550))
 
     def test_the_size_that_was_saved_before_is_used_from_the_start(self):
-        browser = self.open_with_snapshots(snapshot_size=[1000, 650])
+        browser = self.open_with_snapshots(snapshot_size=[1000, 510])
         self.press(self.button(browser, "Lobby")[1])
         self.app.update()
         viewer = browser._viewers["id-Lobby"]
 
-        self.assertEqual((viewer.winfo_width(), viewer.winfo_height()), (1000, 650))
+        self.assertEqual((viewer.winfo_width(), viewer.winfo_height()), (1000, 510))
 
     def test_a_damaged_saved_size_is_ignored(self):
         browser = self.open_with_snapshots(snapshot_size=[5, "x"])
@@ -2665,14 +2664,14 @@ class SnapshotButtonTest(TableButtons, BrowserTestCase):
         self.app.update()
         viewer = browser._viewers["id-Lobby"]
         with patch("gui_app.snapshot_viewer.RESIZE_REPORT_DELAY_MS", 400):
-            viewer.geometry("1100x700")
+            viewer.geometry("1100x550")
             self.wait_for(lambda: saved.called)
-            viewer.geometry("1000x650")
-            viewer.geometry("1100x700")
+            viewer.geometry("1000x510")
+            viewer.geometry("1100x550")
             self.app.update()
             self.wait_for(lambda: viewer._report_id is None)
 
-        saved.assert_called_once_with((1100, 700))
+        saved.assert_called_once_with((1100, 550))
 
     def test_the_windows_are_shifted_so_that_none_hides_another(self):
         browser = self.open_with_snapshots()
@@ -2853,13 +2852,13 @@ class WindowGeometryTest(BrowserTestCase):
         self.assertEqual(browser.winfo_height(), 600)
 
     def test_it_opens_where_and_how_large_it_was_left(self):
-        browser = self.open(window_geometry=[1300, 640, 120, 130])
+        browser = self.open(window_geometry=[1300, 500, 120, 130])
         self.pump(0.2)
 
-        self.assertEqual(browser.geometry(), "1300x640+120+130")
+        self.assertEqual(browser.geometry(), "1300x500+120+130")
 
     def test_a_saved_width_too_small_for_the_buttons_is_widened(self):
-        browser = self.open(window_geometry=[300, 640, 120, 130])  # 300 is the least a saved window can be
+        browser = self.open(window_geometry=[300, 500, 120, 130])  # 300 is the least a saved window can be
         self.pump(0.2)
 
         self.assertGreater(browser.winfo_width(), 300)
@@ -2873,7 +2872,7 @@ class WindowGeometryTest(BrowserTestCase):
         self.assertLess(browser.winfo_height(), browser.winfo_screenheight())
 
     def test_a_damaged_saved_geometry_is_ignored(self):
-        for raw in ("1300x640+1+1", [1300, 640], [1300, 640, "x", 3], [5, 640, 1, 1], [True, 640, 1, 1], {}):
+        for raw in ("1300x500+1+1", [1300, 500], [1300, 500, "x", 3], [5, 500, 1, 1], [True, 500, 1, 1], {}):
             with self.subTest(raw=raw):
                 self.assertIsNone(valid_window_geometry(raw))
         browser = self.open(window_geometry=[5, "x", 1])
@@ -2886,13 +2885,13 @@ class WindowGeometryTest(BrowserTestCase):
         browser = self.open(save_window_geometry=saved)
         self.pump(0.2)
 
-        for geometry in ("1300x650+150+110", "1350x660+160+120", "1400x680+170+130"):  # the pointer keeps moving
+        for geometry in ("1300x510+150+110", "1350x520+160+120", "1400x540+170+130"):  # the pointer keeps moving
             browser.geometry(geometry)
             self.app.update()
         self.wait_for(lambda: saved.called)
         self.pump(0.2)
 
-        saved.assert_called_once_with((1400, 680, 170, 130))
+        saved.assert_called_once_with((1400, 540, 170, 130))
 
     def test_moving_alone_is_reported_too(self):
         saved = MagicMock()
@@ -2907,38 +2906,38 @@ class WindowGeometryTest(BrowserTestCase):
 
     def test_opening_reports_nothing(self):
         saved = MagicMock()
-        self.open(window_geometry=[1300, 640, 120, 130], save_window_geometry=saved)
+        self.open(window_geometry=[1300, 500, 120, 130], save_window_geometry=saved)
         self.pump(0.4)
 
         saved.assert_not_called()
 
     def test_the_same_place_is_not_saved_again(self):
         saved = MagicMock()
-        browser = self.open(window_geometry=[1300, 640, 120, 130], save_window_geometry=saved)
+        browser = self.open(window_geometry=[1300, 500, 120, 130], save_window_geometry=saved)
         self.pump(0.2)
 
-        browser.geometry("1300x650+150+110")
+        browser.geometry("1300x510+150+110")
         self.wait_for(lambda: saved.called)
-        browser.geometry("1300x640+120+130")
+        browser.geometry("1300x500+120+130")
         self.wait_for(lambda: saved.call_count == 2)
-        browser.geometry("1300x640+120+130")
+        browser.geometry("1300x500+120+130")
         self.pump(0.3)
 
-        self.assertEqual([call.args[0] for call in saved.call_args_list], [(1300, 650, 150, 110), (1300, 640, 120, 130)])
+        self.assertEqual([call.args[0] for call in saved.call_args_list], [(1300, 510, 150, 110), (1300, 500, 120, 130)])
 
     def test_a_window_closed_right_after_being_moved_still_reports_it(self):
         saved = MagicMock()
         browser = self.open(save_window_geometry=saved)
         self.pump(0.2)
-        browser.geometry("1300x650+150+110")
+        browser.geometry("1300x510+150+110")
         self.app.update()
 
         browser.destroy()
 
-        saved.assert_called_once_with((1300, 650, 150, 110))
+        saved.assert_called_once_with((1300, 510, 150, 110))
 
     def test_a_change_of_the_text_size_does_not_lose_the_place(self):
-        browser = self.open(window_geometry=[1300, 640, 120, 130])
+        browser = self.open(window_geometry=[1300, 500, 120, 130])
         self.pump(0.2)
 
         browser.set_font_size(14)
