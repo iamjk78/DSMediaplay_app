@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import tkinter as tk
+from tkinter import ttk
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -126,6 +127,113 @@ class SettingsFontTest(WindowCase):
             window.restore_default()
 
         self.assertEqual(self.saved()["font"], ["Helvetica", 12])
+
+
+class SettingsDoNotResetTheWindowTest(WindowCase):
+    """A change of the batch size of a deploy used to rebuild the whole window: the selected action and the text typed
+    for it were forgotten and the player table closed."""
+
+    def open_settings(self):
+        window = SettingsWindow(self.app, self.app.lang)
+        self.addCleanup(close, window)
+        return window
+
+    def save(self, window):
+        with patch("gui_app.settings_dialog.messagebox.showinfo"):
+            window.save_settings()
+
+    def test_changing_only_the_batch_size_keeps_what_the_person_was_doing(self):
+        self.app.entity_type_var.set("Playlists")
+        self.app._text_box_data = "typed for the action"
+        browser = MagicMock()
+        browser.winfo_exists.return_value = True
+        self.app._player_browser = browser
+        window = self.open_settings()
+        window.deploy_batch_size_var.set(25)
+
+        self.save(window)
+
+        self.assertEqual(self.saved()["deploy_batch_size"], 25)
+        self.assertEqual(self.app.entity_type_var.get(), "Playlists")
+        self.assertEqual(self.app._text_box_data, "typed for the action")
+        browser.destroy.assert_not_called()
+
+    def test_a_new_language_or_font_rebuilds_the_window(self):
+        for change in ("language", "font", "size"):
+            with self.subTest(change):
+                window = self.open_settings()
+                if change == "language":
+                    window.language_var.set("en" if self.app.lang.language == "cz" else "cz")
+                elif change == "font":
+                    window.font_var.set("Courier" if self.app.font[0] != "Courier" else "Arial")
+                else:
+                    window.size_var.set(self.app.font[1] + 2)
+                with patch.object(self.app, "refresh_ui") as refresh:
+                    self.save(window)
+
+                refresh.assert_called_once()
+                window.destroy() if window.winfo_exists() else None
+
+
+class SettingsDialogTest(WindowCase):
+    def open_settings(self):
+        window = SettingsWindow(self.app, self.app.lang)
+        self.addCleanup(close, window)
+        return window
+
+    def widgets(self, window, kind):
+        found, pending = [], [window]
+        while pending:
+            widget = pending.pop()
+            pending.extend(widget.winfo_children())
+            if isinstance(widget, kind):
+                found.append(widget)
+        return found
+
+    def test_the_languages_are_named_not_given_as_codes_and_the_choice_is_the_code(self):
+        window = self.open_settings()
+        combobox = next(c for c in self.widgets(window, ttk.Combobox) if "English" in c.cget("values"))
+
+        self.assertEqual(list(combobox.cget("values")), ["English", "Čeština"])
+        self.assertEqual(combobox.get(), "Čeština")  # the config of the test is Czech
+        combobox.set("English")
+        combobox.event_generate("<<ComboboxSelected>>")
+        self.app.update()
+
+        self.assertEqual(window.language_var.get(), "en")
+
+    def test_the_editor_button_is_there_only_when_the_editor_can_be_opened(self):
+        for password, shown in (("secret", True), ("", False)):
+            with self.subTest(password=password):
+                with patch.dict("os.environ", {"JSON_EDITOR_PASSWORD": password}):
+                    window = self.open_settings()
+                texts = [b.cget("text") for b in self.widgets(window, ttk.Button)]
+
+                self.assertEqual(self.app.lang.get_message("edit_json") in texts, shown)
+
+    def test_the_password_of_the_editor_is_asked_in_the_language_of_the_application(self):
+        window = self.open_settings()
+        with patch.dict("os.environ", {"JSON_EDITOR_PASSWORD": "secret"}), \
+                patch("gui_app.settings_dialog.simpledialog.askstring", return_value="secret") as ask, \
+                patch.object(window, "open_json_editor") as opened:
+            window.prompt_password()
+
+        opened.assert_called_once()
+        self.assertEqual(ask.call_args.args, ("Heslo", self.app.lang.get_message("json_password_prompt")))
+
+    def test_a_wrong_password_is_told_and_a_cancelled_dialog_is_not(self):
+        window = self.open_settings()
+        with patch.dict("os.environ", {"JSON_EDITOR_PASSWORD": "secret"}), \
+                patch.object(window, "open_json_editor") as opened, \
+                patch("gui_app.settings_dialog.messagebox.showerror") as error:
+            with patch("gui_app.settings_dialog.simpledialog.askstring", return_value="wrong"):
+                window.prompt_password()
+            error.assert_called_once()
+            with patch("gui_app.settings_dialog.simpledialog.askstring", return_value=None):
+                window.prompt_password()
+
+        opened.assert_not_called()
+        error.assert_called_once()  # not again for the cancel
 
 
 class LogWindowCase(WindowCase):

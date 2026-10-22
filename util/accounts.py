@@ -62,11 +62,22 @@ def remember_selection(data: dict, account: str, login: str) -> bool:
     return before != (data["default"], entry.get("last"))
 
 
-def _unused(data: dict, candidates: List[Credential]) -> List[Credential]:
+def unused_credentials(data: dict, candidates: List[Credential]) -> List[Credential]:
     """Passwords are shared by every entry with the same URL and login, so only unreferenced ones may go."""
     used = {(entry.get("url", ""), name["login"])
             for entry in data["logins"].values() for name in entry.get("names", {}).values()}
     return sorted(set(candidates) - used)
+
+
+def change_url(data: dict, account: str, url: str) -> Tuple[str, str]:
+    """
+    Gives the account another address; returns (old, new). The passwords are kept under the address and the login, so
+    the caller moves those of the account's logins from the old address to the new one.
+    """
+    entry = data["logins"][account]
+    old = entry.get("url", "")
+    entry["url"] = normalize_url(url)
+    return old, entry["url"]
 
 
 def remove_login(data: dict, account: str, name: str) -> List[Credential]:
@@ -77,7 +88,7 @@ def remove_login(data: dict, account: str, name: str) -> List[Credential]:
         del entry["last"]
     if data.get("default") == [account, name]:
         data["default"] = [account, ""]
-    return _unused(data, [(entry.get("url", ""), removed["login"])])
+    return unused_credentials(data, [(entry.get("url", ""), removed["login"])])
 
 
 def remove_account(data: dict, account: str) -> List[Credential]:
@@ -85,7 +96,7 @@ def remove_account(data: dict, account: str) -> List[Credential]:
     entry = data["logins"].pop(account)
     if data.get("default", ["", ""])[0] == account:
         data["default"] = ["", ""]
-    return _unused(data, [(entry.get("url", ""), name["login"]) for name in entry.get("names", {}).values()])
+    return unused_credentials(data, [(entry.get("url", ""), name["login"]) for name in entry.get("names", {}).values()])
 
 
 def player_columns(data: dict, account: str) -> dict:

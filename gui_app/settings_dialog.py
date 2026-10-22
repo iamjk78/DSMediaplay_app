@@ -5,6 +5,10 @@ from gui_app.icons import set_window_icon
 import os
 
 
+# What the drop-down shows for the codes of the languages (each in its own language, so it is found in any)
+LANGUAGE_NAMES = {"en": "English", "cz": "Čeština"}
+
+
 # noinspection PyUnresolvedReferences
 class SettingsWindow(tk.Toplevel):
     def __init__(self, master: "DSMediaplayApp", lang_manager: LanguageManager):
@@ -31,9 +35,10 @@ class SettingsWindow(tk.Toplevel):
         language_label = ttk.Label(self, text=self.lang_manager.get_message("select_language"), font=self.font)
         language_label.grid(row=0, column=0, padx=pad_x, pady=pad_y, sticky="w")
 
-        languages = ["en", "cz"]
-        language_combobox = ttk.Combobox(self, textvariable=self.language_var, values=languages, state="readonly",
-                                         width=20)
+        language_combobox = ttk.Combobox(self, values=list(LANGUAGE_NAMES.values()), state="readonly", width=20)
+        language_combobox.set(LANGUAGE_NAMES.get(self.language_var.get(), self.language_var.get()))
+        language_combobox.bind("<<ComboboxSelected>>", lambda _event: self.language_var.set(
+            next(code for code, name in LANGUAGE_NAMES.items() if name == language_combobox.get())))
         language_combobox.grid(row=0, column=1, padx=pad_x, pady=pad_y, sticky="w")
 
         font_label = ttk.Label(self, text=self.lang_manager.get_message("select_font"), font=self.font)
@@ -75,29 +80,45 @@ class SettingsWindow(tk.Toplevel):
         open_button = ttk.Button(self, text=self.lang_manager.get_message("default"), command=self.restore_default)
         open_button.grid(row=5, column=2, padx=pad_x, pady=pad_y, sticky="w")
 
-        json_manager_button = ttk.Button(self, text="Edit JSON", command=self.prompt_password)
-        json_manager_button.grid(row=6, column=0, padx=pad_x, pady=pad_y, sticky="w")
+        if os.getenv("JSON_EDITOR_PASSWORD"):  # without it nobody can get in, so the button would only mislead
+            json_manager_button = ttk.Button(self, text=self.lang_manager.get_message("edit_json"),
+                                             command=self.prompt_password)
+            json_manager_button.grid(row=6, column=0, padx=pad_x, pady=pad_y, sticky="w")
 
     def prompt_password(self):
-        password = simpledialog.askstring("Password", "Enter the password:", show='*')
+        password = simpledialog.askstring(self.lang_manager.get_message("password").rstrip(":"),
+                                          self.lang_manager.get_message("json_password_prompt"), show='*', parent=self)
+        if password is None:  # cancelled
+            return
         actual_password = os.getenv("JSON_EDITOR_PASSWORD")
         if actual_password and password == actual_password:
             self.open_json_editor()
         else:
-            messagebox.showerror("Error", "Incorrect password")
+            messagebox.showerror(self.lang_manager.get_message("error_title"),
+                                 self.lang_manager.get_message("json_password_wrong"), parent=self)
 
     def open_json_editor(self):
         from json_manager.json_manager import JsonEditorApp
-        JsonEditorApp(self.master, self.master.config_file)
+        JsonEditorApp(self.master)
         self.destroy()
+
+    def apply_look(self, language: str, font: tuple) -> None:
+        """
+        Applies a language and a font. The window is rebuilt only when one of them really changed: the rebuild forgets
+        the selected action and the text typed for it and closes the player table, which a change of the batch size of a
+        deploy has no reason to do.
+        """
+        changed = language != self.lang_manager.language or tuple(font) != tuple(self.master.font)
+        self.lang_manager.set_language(language)
+        self.master.update_font(font)
+        if changed:
+            self.master.refresh_ui()
 
     def restore_default(self):
         selected_language = "en"
         selected_font = "Helvetica"
         selected_size = 12
-        self.lang_manager.set_language(selected_language)
-        self.master.update_font((selected_font, selected_size))
-        self.master.refresh_ui()
+        self.apply_look(selected_language, (selected_font, selected_size))
         self.master.all_data["lang"] = selected_language
         self.master.all_data["font"] = [selected_font, selected_size]
         self.master.all_data["deploy_batch_size"] = 10
@@ -110,9 +131,7 @@ class SettingsWindow(tk.Toplevel):
         selected_language = self.language_var.get()
         selected_font = self.font_var.get()
         selected_size = self.size_var.get()
-        self.lang_manager.set_language(selected_language)
-        self.master.update_font((selected_font, selected_size))
-        self.master.refresh_ui()
+        self.apply_look(selected_language, (selected_font, int(selected_size)))
         self.master.all_data["lang"] = selected_language
         self.master.all_data["font"] = [selected_font, selected_size]
         self.master.all_data["deploy_batch_size"] = self.deploy_batch_size_var.get()

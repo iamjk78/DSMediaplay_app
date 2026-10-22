@@ -1,6 +1,6 @@
 import unittest
 
-from util.accounts import (AccountError, add_account, add_login, hidden_player_columns, normalize_url, player_columns,
+from util.accounts import (AccountError, add_account, add_login, change_url, unused_credentials, hidden_player_columns, normalize_url, player_columns,
                            player_font_size, remember_selection, remove_account, remove_login,
                            set_hidden_player_columns, set_player_columns, set_player_font_size,
                            set_snapshot_window_size, snapshot_window_size, player_window_geometry,
@@ -358,6 +358,41 @@ class PlayerWindowGeometryTest(unittest.TestCase):
         self.assertIsNone(player_window_geometry(data, "nope"))
         set_player_window_geometry(data, "A", None)
         self.assertNotIn("player_window", data["logins"]["A"])
+
+
+class ChangeUrlTest(unittest.TestCase):
+    def config(self):
+        data = empty_config()
+        add_account(data, "A", "https://a.example.com")
+        add_login(data, "A", "jane")
+        return data
+
+    def test_the_account_gets_the_checked_address_and_the_old_one_is_returned(self):
+        data = self.config()
+
+        old, new = change_url(data, "A", " https://b.example.com/ ")
+
+        self.assertEqual((old, new), ("https://a.example.com", "https://b.example.com"))
+        self.assertEqual(data["logins"]["A"]["url"], "https://b.example.com")
+
+    def test_an_address_that_is_not_acceptable_changes_nothing(self):
+        for url in ("http://b.example.com", "https://u:p@b.example.com", "https://b.example.com/?x=1", "", "b"):
+            with self.subTest(url=url):
+                data = self.config()
+
+                with self.assertRaises(AccountError):
+                    change_url(data, "A", url)
+
+                self.assertEqual(data["logins"]["A"]["url"], "https://a.example.com")
+
+    def test_a_credential_is_unused_only_when_no_entry_has_its_address_and_login(self):
+        data = self.config()
+        add_account(data, "B", "https://a.example.com")
+        add_login(data, "B", "jane")
+
+        self.assertEqual(unused_credentials(data, [("https://a.example.com", "jane")]), [])
+        self.assertEqual(unused_credentials(data, [("https://old.example.com", "jane")]),
+                         [("https://old.example.com", "jane")])
 
 
 if __name__ == "__main__":
