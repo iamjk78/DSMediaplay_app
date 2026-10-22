@@ -21,6 +21,7 @@ from gui_app.snapshot_viewer import (CASCADE_STEP, SnapshotSlots, SnapshotViewer
                                      valid_window_size)
 from gui_app.tooltip import Tooltip, hide_if_shown
 from util.accounts import DEFAULT_HIDDEN_COLUMNS
+from gui_app.wheel import wheel_units
 from util.player_filter import (AGE_OPTIONS, TEMPERATURE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row,
                                 sort_rows, version_key)
 
@@ -721,7 +722,7 @@ class PlayerBrowser(tk.Toplevel):
             self._x_scrollbar.grid()
 
     def _wheel_step(self, event) -> int:
-        return -event.delta if self.tk.call("tk", "windowingsystem") == "aqua" else -event.delta // 120
+        return wheel_units(event.delta, self.tk.call("tk", "windowingsystem") == "aqua")
 
     def _on_mouse_wheel(self, event):
         self._scroll_y("scroll", self._wheel_step(event), "units")

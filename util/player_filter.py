@@ -118,14 +118,19 @@ def version_key(version: str) -> Tuple:
                  if part)
 
 
+def one_line(value: Any) -> str:
+    """A text of the server on one line: a line break in a name would make its row taller than the others."""
+    return " ".join(str(value or "").split())
+
+
 def player_row(player: Dict[str, Any]) -> PlayerRow:
     """The row of one player object as the server returns it."""
     group = player.get("group") or {}
     return PlayerRow(
-        name=player.get("name", ""),
+        name=one_line(player.get("name")),
         online=bool(player.get("licensed", True) and player.get("isConnected", False)),
-        group=group.get("name", "") if isinstance(group, dict) else "",
-        location=player.get("configLocation") or player.get("location") or "",
+        group=one_line(group.get("name")) if isinstance(group, dict) else "",
+        location=one_line(player.get("configLocation") or player.get("location")),
         labels=tuple(player.get("labels") or ()),
         synced=parse_timestamp(player.get("lastUpload")),
         reported=parse_timestamp(player.get("lastReported")),

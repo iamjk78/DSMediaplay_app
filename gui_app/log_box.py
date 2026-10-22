@@ -202,6 +202,9 @@ class LoggingTextBox(tk.Toplevel):
         self.log_text.tag_configure('error', foreground='red', font=(self._font[0], self._font[1], 'bold'))
 
     def setup_buttons(self):
+        """The buttons of the window; called again at the end of the run, it replaces them instead of adding more."""
+        for old in getattr(self, "_buttons", ()):
+            old.destroy()
         pad_x = 5
         pad_y = 5
 
@@ -213,6 +216,7 @@ class LoggingTextBox(tk.Toplevel):
 
         save_button = tk.Button(self, text=self.lang.get_message("save"), font=self._font, command=self.save_text)
         save_button.grid(row=self._buttons_row, column=3, padx=pad_x, pady=pad_y)
+        self._buttons = (stop_button, close_button, save_button)
 
     def save_text(self):
         file_path = filedialog.asksaveasfilename(defaultextension=".txt",
@@ -240,6 +244,14 @@ class LoggingTextBox(tk.Toplevel):
     def display_success(self):
         self.update_activity_circle("G")
         self.setup_buttons()
+
+    def destroy(self):
+        # The name of the logger is made of id(self), which Python hands out again: a logger left behind would give the
+        # next window its handler, writing into a widget that no longer exists.
+        for handler in list(self.logger.handlers):
+            self.logger.removeHandler(handler)
+        logging.Logger.manager.loggerDict.pop(self.logger.name, None)
+        super().destroy()
 
     def setup_logging(self):
         # Create a logger for this window

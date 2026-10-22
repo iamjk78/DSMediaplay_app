@@ -1,5 +1,6 @@
 """The Save button of the log window and the font of the settings: both used to claim they worked and did not."""
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -297,6 +298,42 @@ class EndOfTheOperationTest(LogWindowCase):
         self.assertIn(box.lang.get_message("internal_error", error_msg="'line_num'"), log)
         self.assertEqual(box.indication_label.cget("text"), box.lang.get_message("error"))
         self.assertNotIn(box.lang.get_message("operation_successful"), log)
+
+
+class LogWindowHousekeepingTest(LogWindowCase):
+    def buttons(self, box):
+        return [child for child in box.winfo_children() if isinstance(child, tk.Button)]
+
+    def test_the_buttons_are_not_piled_up_when_the_run_ends(self):
+        box = self.open_box()
+        self.assertEqual(len(self.buttons(box)), 3)
+
+        box.display_success()
+        box.display_error()
+        box.setup_buttons()
+
+        self.assertEqual(len(self.buttons(box)), 3)
+
+    def test_a_closed_window_leaves_no_logger_behind(self):
+        box = self.open_box()
+        name = box.logger.name
+        self.assertIn(name, logging.Logger.manager.loggerDict)
+
+        box.destroy()
+
+        self.assertNotIn(name, logging.Logger.manager.loggerDict)
+        self.assertEqual(box.logger.handlers, [])
+
+    def test_a_window_that_gets_the_name_of_a_closed_one_logs_only_into_itself(self):
+        first = self.open_box()
+        first.destroy()
+        second = self.open_box()
+
+        second.logger.info("hello")
+        self.app.update()
+
+        self.assertIn("hello", second.log_text.get("1.0", tk.END))
+        self.assertEqual(len(second.logger.handlers), 1)
 
 
 if __name__ == "__main__":

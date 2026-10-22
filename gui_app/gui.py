@@ -870,7 +870,7 @@ class DSMediaplayApp(tk.Tk):
         self.option_choose_name.config(values=names)
         if login not in names:
             self.option_choose_name.set("")
-        self.fill_password_details()
+        self.fill_password_details(keep_typed=login in names)
         self.update_action_buttons()  # the data may have changed without any of the fields changing
 
     def on_focus_in(self, event):
@@ -1139,9 +1139,13 @@ class DSMediaplayApp(tk.Tk):
             self.default = self.all_data["default"]
             self.save_account_configs()
 
-    def fill_password_details(self, _=None):
+    def fill_password_details(self, _=None, keep_typed=False):
+        """Shows the stored password of the selected login. `keep_typed`: the login is the same as before, so a
+        password the person is typing is not replaced by the stored one (this runs before every save of the config)."""
         account = self.option_choose_administration.get()
         name = self.option_choose_name.get()
+        if keep_typed and self.input_for_password.get():
+            return
         self.input_for_password.delete(0, tk.END)
         if account in self.account_data and name in self.account_data[account].get("names", []):
             url = self.account_data[account].get("url", "")

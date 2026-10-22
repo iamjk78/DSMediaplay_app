@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import requests.exceptions
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
                                        WEEK_DAYS, snapshot_file_stem, snapshot_reason)
+import itertools
 import json
 import os
 import re
@@ -340,9 +341,12 @@ class InputProcessor(ABC):
         except LoginError:
             self._wrong_init_counter += 1
             self._write_incorrect_login_error()
+        except ResponseError as error:  # the server answered the login with an error of its own
+            self._wrong_init_counter += 1
+            self._write_fail_response(error.status or 4004)
         except requests.exceptions.RequestException as ex:
             self._wrong_init_counter += 1
-            if ex.response:
+            if ex.response is not None:  # a response of 4xx/5xx is falsy
                 self._write_fail_response(ex.response.status_code)
             else:
                 self._write_fail_response(4004)
@@ -366,7 +370,7 @@ class InputProcessor(ABC):
                     names['asset_names'] = server.get_asset_names()
         except requests.exceptions.RequestException as ex:
             self._wrong_init_counter += 1
-            if ex.response:
+            if ex.response is not None:  # a response of 4xx/5xx is falsy
                 self._write_fail_response(ex.response.status_code)
             else:
                 self._write_fail_response(4004)
@@ -447,6 +451,8 @@ class EntityValidationProcessor(InputProcessor, ABC):
             if not self.data:
                 self._write_wrong_format(1)
                 raise FormatException
+        except FormatException:  # reported already, not an internal error
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
@@ -523,7 +529,7 @@ class CreateProcessor(EntityValidationProcessor):
         return bool(pattern.findall(line))
 
     def load(self, input_text: str):
-        pattern = re.compile(r"[\t\n;ěščřžýáíéß]")
+        pattern = re.compile(r"[\t\n;ěščřžýáíéß]", re.IGNORECASE)
         self._write_start_loading()
         server = self._try_server_login()
         if not server:
@@ -581,7 +587,7 @@ class RemoveProcessor(EntityValidationProcessor):
 
     @staticmethod
     def get_labeled_test(server_method):
-        labels = ["test", "Test", "TEst", "TESt", "TEST", "tEST", "teST", "tesT", "tESt", "teSt", "tEst"]
+        labels = {"".join(letters) for letters in itertools.product(*((c.lower(), c.upper()) for c in "test"))}
         labeled_entities = []
         for label in labels:
             labeled_entities += server_method(label)
@@ -744,29 +750,33 @@ class RenameProcessor(EntityValidationProcessor, ABC):
                 self._write_no_server_returned()
                 return
 
-            input_lines = {i for i in input_text.split('\n') if i}
             unrecognized_name_counter = 0
             loaded_old_name = set()
             loaded_new_name = set()
-            for i, line in enumerate(input_lines):
+            for line_num, line in self._numbered_lines(input_text):
                 split_line = line.split("\t")
                 if len(split_line) != 2:
                     self._wrong_init_counter += 1
-                    self._write_incorrect_format(i + 1)
+                    self._write_incorrect_format(line_num)
                     continue
 
                 old_name, new_name = split_line[0], split_line[1]
-                if not self._validate_entity(old_name, names[self.entity_type], i + 1):
+                if not self._validate_entity(old_name, names[self.entity_type], line_num):
                     unrecognized_name_counter += 1
                     continue
 
+                if old_name in loaded_old_name:  # two new names for one: which one is meant?
+                    self._write_collision(line_num, old_name)
+                    self._wrong_init_counter += 1
+                    continue
+
                 if not self._validate_new_name(new_name):
-                    self._write_invalid_name(i + 1, old_name, new_name)
+                    self._write_invalid_name(line_num, old_name, new_name)
                     self._wrong_init_counter += 1
                     continue
 
                 if (new_name in names[self.entity_type] and new_name != old_name) or new_name in loaded_new_name:
-                    self._write_invalid_name(i + 1, old_name, new_name)
+                    self._write_invalid_name(line_num, old_name, new_name)
                     self._wrong_init_counter += 1
                     continue
 
@@ -779,6 +789,8 @@ class RenameProcessor(EntityValidationProcessor, ABC):
                 self._write_wrong_format(self._wrong_init_counter)
                 self._write_recognition_errors(unrecognized_name_counter)
                 raise FormatException
+        except FormatException:  # reported already, not an internal error
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
@@ -1208,20 +1220,23 @@ class AssetToPlaylistProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        names = self._retrieve_names(server, 'playlist_names')
+        names = self._retrieve_names(server, 'playlist_names', 'asset_names')
         if not names:
             self._write_no_server_returned()
             return
 
-        input_lines = {tuple(j for j in i.split("\t") if j) for i in input_text.split('\n') if i}
         playlist_assets = {}
-        for i, line in enumerate(input_lines):
-            split_line = line
+        for line_num, line in self._numbered_lines(input_text):
+            split_line = tuple(j for j in line.split("\t") if j)
+            if not split_line:
+                continue
             playlist_name = split_line[0]
-            if not self._validate_entity(playlist_name, names['playlist_names'], i + 1):
+            if not self._validate_entity(playlist_name, names['playlist_names'], line_num):
                 continue
 
-            assets = self._validate_assets(list(split_line[1:]))
+            # a misspelt name would put a file into the playlist that does not exist
+            assets = [asset for asset in self._validate_assets(list(split_line[1:]))
+                      if self._validate_entity(asset, names['asset_names'], line_num)]
             if assets:
                 if playlist_name in playlist_assets:
                     playlist_assets[playlist_name].extend(assets)
@@ -2307,6 +2322,8 @@ class RemoveAllUnusedGroupsProcessor(RemoveUnusedGroupsProcessor):
             if not self.data:
                 self._write_wrong_format(1)
                 raise FormatException
+        except FormatException:  # reported already, not an internal error
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
@@ -2332,6 +2349,8 @@ class RemoveAllUnusedLocationsProcessor(RemoveUnusedLocationsProcessor):
             if not self.data:
                 self._write_wrong_format(1)
                 raise FormatException
+        except FormatException:  # reported already, not an internal error
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
@@ -2357,6 +2376,8 @@ class RemoveAllUnusedPlaylistsProcessor(RemoveUnusedPlaylistsProcessor):
             if not self.data:
                 self._write_wrong_format(1)
                 raise FormatException
+        except FormatException:  # reported already, not an internal error
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
@@ -2382,6 +2403,8 @@ class RemoveAllUnusedLabelsProcessor(RemoveUnusedLabelsProcessor):
             if not self.data:
                 self._write_wrong_format(1)
                 raise FormatException
+        except FormatException:  # reported already, not an internal error
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
@@ -2407,6 +2430,8 @@ class RemoveAllUnusedAssetsProcessor(RemoveUnusedAssetsProcessor):
             if not self.data:
                 self._write_wrong_format(1)
                 raise FormatException
+        except FormatException:  # reported already, not an internal error
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from api_testing.request_calls import ServerApi
 from pasted_playlists_test import ProcessorCase, line
-from processor.input_processing import (AssetValidityProcessor, PlaylistSettingsProcessor,
+from processor.input_processing import (AssetToPlaylistProcessor, AssetValidityProcessor, PlaylistSettingsProcessor,
                                         RemoveExpiredPlaylistsProcessor, parse_validity_hour)
 from destructive_actions_test import make_processor
 
@@ -71,6 +71,30 @@ class AssetValidityTest(ProcessorCase):
         processor, logger = self.load(text, real_text=True)
 
         self.assertTrue(any("Řádek 3" in message and "bad" in message for message in self.messages(logger)))
+
+
+class AssetsToPlaylistInputTest(ProcessorCase):
+    def setUp(self):
+        super().setUp()
+        self.server.get_asset_names.return_value = ["a.jpg", "b.jpg"]
+
+    def test_assets_that_exist_are_listed_for_the_playlist(self):
+        processor, _ = self.load(AssetToPlaylistProcessor, line("Promo", "a.jpg", "b.jpg"))
+
+        self.assertFalse(processor.refused)
+        self.assertEqual(processor.data, {"Promo": ["a.jpg", "b.jpg"]})
+
+    def test_a_misspelt_asset_is_refused_instead_of_putting_a_file_that_is_not_there_into_the_playlist(self):
+        processor, logger = self.load(AssetToPlaylistProcessor, line("Promo", "a.jpg", "b.jgp"), real_text=True)
+
+        self.assertTrue(processor.refused)
+        self.assertTrue(any("b.jgp" in message for message in self.messages(logger, "warning")))
+
+    def test_the_line_is_numbered_as_the_user_sees_it(self):
+        processor, logger = self.load(AssetToPlaylistProcessor, line("Promo", "a.jpg") + "\n\n" + line("Promo", "x"),
+                                      real_text=True)
+
+        self.assertTrue(any("Řádek 3" in message for message in self.messages(logger, "warning")))
 
 
 class AssetValidityRequestTest(unittest.TestCase):

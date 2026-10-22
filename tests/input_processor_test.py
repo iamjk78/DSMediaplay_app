@@ -129,6 +129,7 @@ class TestProcessors(unittest.TestCase):
         mock_server = MagicMock()
         mock_server.__enter__.return_value = mock_server
         mock_server.get_playlist_names.return_value = ["playlist1"]
+        mock_server.get_asset_names.return_value = ["asset1", "asset2"]
 
         logger = MagicMock()
         processor = AssetToPlaylistProcessor(logger, url='http://example.com', login='user', password='pass',

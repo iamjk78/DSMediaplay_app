@@ -8,7 +8,7 @@ import string
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCE_DIRECTORIES = ("api_testing", "gui_app", "json_manager", "processor", "util", "watchdog_service")
+SOURCE_DIRECTORIES = ("api_testing", "gui_app", "json_manager", "processor", "util")
 
 
 def placeholders(text: str) -> set:

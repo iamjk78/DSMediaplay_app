@@ -3,6 +3,7 @@ from tkinter import font as tkfont
 from tkinter import ttk
 from typing import Callable, Dict, FrozenSet, List, Tuple
 
+from gui_app.wheel import wheel_units
 from util.player_filter import plain_text
 
 MAX_POPUP_HEIGHT = 280
@@ -182,7 +183,7 @@ class MultiSelectCombo(tk.Frame):
             self.close()
 
     def _on_wheel(self, event):
-        step = -event.delta if self.tk.call("tk", "windowingsystem") == "aqua" else -event.delta // 120
+        step = wheel_units(event.delta, self.tk.call("tk", "windowingsystem") == "aqua")
         self._canvas.yview_scroll(step, "units")
         return "break"
 

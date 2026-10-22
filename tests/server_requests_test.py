@@ -336,5 +336,117 @@ class NamesInRequestsTest(unittest.TestCase):
         self.assertEqual(api.get_groups_playlists_details(), {"G": []})
 
 
+class KeepWhatThePlaylistHasTest(unittest.TestCase):
+    """Taking one asset out of a playlist used to write all the others from their names alone, which reset the durations
+    they are shown for (and the zones and full screen) to the defaults."""
+
+    SHORT = {"filename": "a.jpg", "duration": 33, "selected": True, "option": {"main": False}, "dragSelected": True,
+             "fullscreen": True, "isVideo": False}
+    LONG = {"filename": "b.mp4", "duration": 7, "selected": True, "option": {"main": False}, "isVideo": True,
+            "dragSelected": True}
+
+    def make_api(self, assets):
+        api = ServerApi.__new__(ServerApi)
+        written = []
+
+        def request(method, endpoint, **kwargs):
+            if method == "get":
+                return {"success": True, "data": {"name": "P", "assets": copy.deepcopy(assets)}}
+            written.append((endpoint, kwargs["json"]))
+            return {"success": True}
+
+        api._make_request = MagicMock(side_effect=request)
+        api.written = written
+        return api
+
+    def sent(self, api):
+        return dict(api.written)["/playlists/P"]["assets"]
+
+    def test_the_assets_that_stay_are_sent_back_as_the_playlist_has_them(self):
+        api = self.make_api([self.SHORT, self.LONG, {"filename": "c.jpg"}])
+
+        api.set_assets_to_playlist("P", ["a.jpg", "b.mp4"])
+
+        self.assertEqual(self.sent(api), [self.SHORT, self.LONG])
+
+    def test_a_new_asset_gets_the_defaults_and_the_order_is_the_one_asked_for(self):
+        api = self.make_api([self.SHORT, self.LONG])
+
+        api.set_assets_to_playlist("P", ["b.mp4", "new.jpg", "a.jpg"])
+
+        sent = self.sent(api)
+        self.assertEqual([asset["filename"] for asset in sent], ["b.mp4", "new.jpg", "a.jpg"])
+        self.assertEqual(sent[0], self.LONG)
+        self.assertEqual(sent[1], {"filename": "new.jpg", "selected": "true", "dragSelected": "true",
+                                   "option": {"main": "true"}})
+        self.assertEqual(sent[2], self.SHORT)
+
+    def test_an_asset_listed_twice_keeps_its_settings_once(self):
+        api = self.make_api([self.SHORT])
+
+        api.set_assets_to_playlist("P", ["a.jpg", "a.jpg"])
+
+        first, second = self.sent(api)
+        self.assertEqual(first, self.SHORT)
+        self.assertNotIn("duration", second)
+
+    def test_the_files_are_set_before_the_playlist_is_written_and_a_refusal_stops_it(self):
+        class Refusal(dict):
+            status_code = None
+
+        api = ServerApi.__new__(ServerApi)
+        api._make_request = MagicMock(side_effect=lambda method, endpoint, **kw: (
+            {"success": True, "data": {"assets": [self.SHORT]}} if method == "get" else Refusal(success=False)))
+
+        result = api.set_assets_to_playlist("P", ["a.jpg"])
+
+        self.assertEqual(result.status_code, 400)
+        self.assertEqual([call.args[1] for call in api._make_request.call_args_list], ["/playlists/P", "/playlistfiles"])
+
+
+class PlaylistSettingsRequestTest(unittest.TestCase):
+    """The domination of a playlist is one of its settings; the server takes the whole settings object as sent."""
+
+    ADS = {"adPlaylist": True, "adCount": 3, "adInterval": 15}
+
+    def make_api(self, settings):
+        api = ServerApi.__new__(ServerApi)
+        api._make_request = MagicMock(side_effect=lambda method, endpoint, **kw: {
+            "success": True, "data": {"name": "P", "settings": copy.deepcopy(settings)}})
+        return api
+
+    def sent(self, api):
+        return api._make_request.call_args.kwargs["json"]["settings"]
+
+    def test_switching_the_domination_on_keeps_the_other_settings(self):
+        api = self.make_api({"ads": self.ADS, "audio": {"enable": True}})
+
+        api.set_playlist_settings("P", "300")
+
+        self.assertEqual(self.sent(api), {"ads": self.ADS, "audio": {"enable": True},
+                                          "domination": {"enable": True, "timeInterval": 300}})
+
+    def test_switching_it_off_keeps_the_other_settings_and_drops_the_interval(self):
+        api = self.make_api({"ads": self.ADS, "domination": {"enable": True, "timeInterval": 300}})
+
+        api.set_playlist_settings("P", "")
+
+        self.assertEqual(self.sent(api), {"ads": self.ADS, "domination": {"enable": False}})
+
+    def test_what_the_domination_has_besides_the_interval_stays_when_it_is_switched_on(self):
+        api = self.make_api({"domination": {"enable": False, "timeInterval": 10, "startOnly": True}})
+
+        api.set_playlist_settings("P", "300")
+
+        self.assertEqual(self.sent(api), {"domination": {"enable": True, "timeInterval": 300, "startOnly": True}})
+
+    def test_a_playlist_without_settings_gets_only_the_domination(self):
+        api = self.make_api(None)
+
+        api.set_playlist_settings("P", "60")
+
+        self.assertEqual(self.sent(api), {"domination": {"enable": True, "timeInterval": 60}})
+
+
 if __name__ == "__main__":
     unittest.main()

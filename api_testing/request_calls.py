@@ -235,9 +235,10 @@ class ServerApi:
 
     def __exit__(self, exception_type, exception_value, exception_traceback) -> None:
         """
-        Exits the runtime context related to this object.
+        Exits the runtime context related to this object. Logging out is of no interest to the result: what was done
+        with the session is done, and an error here would report a successful action as a failed one.
         """
-        self._close_session()
+        self.close_quietly()
 
     def close_quietly(self) -> None:
         """Logs out, but a failure of that is of no interest: what has been fetched with the session stays valid."""
@@ -279,6 +280,8 @@ class ServerApi:
         response = self._post(self._url + "/session", json=data, timeout=LOGIN_TIMEOUT)
         if response.status_code in (401, 403):
             raise LoginError
+        if not response.ok:  # the server is down or broken: not the password that is wrong
+            raise ResponseError(params={}, status=response.status_code, request="POST /session")
         body = response.json()  # a failed login answers with the JSON literal null
         token = body.get("token") if isinstance(body, dict) else None
         if not token:
@@ -807,20 +810,30 @@ class ServerApi:
 
     def set_assets_to_playlist(self, playlist: str, assets: List[str]) -> json:
         """
-        Updates the playlist with the specified assets and their durations.
+        Makes the assets of the playlist the listed ones, in that order.
+
+        The server keeps more about an asset in a playlist than its name (the duration it is shown for, full screen,
+        the zones), and takes in a write exactly what it is sent. So an asset that the playlist has already is sent
+        back as the playlist has it, and only one that is new gets the defaults. (Writing every asset from its name
+        alone reset the durations of all the others every time one asset was taken out.)
 
         Parameters
         ----------
         playlist : str
             The name of the playlist.
-        assets : list of tuples
-            List of tuples where each tuple contains asset filename and duration.
+        assets : list of str
+            The filenames of the assets, in the order they are to play.
 
         Returns
         -------
         json
             The response from the server.
         """
+        current = {}
+        for existing in (self._make_request("get", f"/playlists/{path_segment(playlist)}").get("data") or {}) \
+                .get("assets") or []:
+            current.setdefault(existing.get("filename"), []).append(existing)
+
         request_body = {
             "playlist": playlist,
             "assets": assets
@@ -833,6 +846,7 @@ class ServerApi:
         settings_request_body = {
             "name": playlist,
             "assets": [
+                current[asset_name].pop(0) if current.get(asset_name) else
                 {
                     "filename": asset_name,
                     "selected": "true",
@@ -1881,24 +1895,19 @@ class ServerApi:
         ]
 
     def set_playlist_settings(self, name: str, domination_interval: str):
-        body = {
-            "settings": {
-                "domination": {
-                    "enable": False
-                }
-            }
-        }
+        """
+        Switches the domination of a playlist on with the interval, or off when the interval is empty. The other
+        settings of the playlist (ads, audio, ticker) are sent back as it has them: the server takes the settings
+        object exactly as sent, so writing the domination alone dropped all of them.
+        """
+        path = f"/playlists/{path_segment(name)}"
+        settings = dict((self._make_request("get", path).get("data") or {}).get("settings") or {})
         if domination_interval:
-            num = int(domination_interval)
-            body = {
-                "settings": {
-                    "domination": {
-                        "enable": True,
-                        "timeInterval": num
-                    }
-                }
-            }
-        return self._make_request("post", f"/playlists/{path_segment(name)}", json=body)
+            settings["domination"] = {**(settings.get("domination") or {}), "enable": True,
+                                      "timeInterval": int(domination_interval)}
+        else:
+            settings["domination"] = {"enable": False}
+        return self._make_request("post", path, json={"settings": settings})
 
     def get_assets_validity(self) -> List[Tuple[str, str, str, str, str]]:
         """
