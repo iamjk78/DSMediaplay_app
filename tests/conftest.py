@@ -37,6 +37,20 @@ def a_large_screen(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def windows_may_be_larger_than_the_screen(monkeypatch):
+    """The system keeps a window within the screen (Tk's default largest size): on a small screen of a runner the
+    windows would not get the sizes the tests ask for, whatever the application does."""
+    for window_class in (tk.Tk, tk.Toplevel):
+        def init(self, *args, _original=window_class.__init__, **kwargs):
+            _original(self, *args, **kwargs)
+            try:
+                self.wm_maxsize(4000, 3000)
+            except tk.TclError:
+                pass
+        monkeypatch.setattr(window_class, "__init__", init)
+
+
+@pytest.fixture(autouse=True)
 def isolated_from_the_users_data(tmp_path, monkeypatch):
     """
     No test may read or write the passwords in the real credential store (macOS: the Keychain, which asks the person at
