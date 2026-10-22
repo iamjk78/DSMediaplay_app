@@ -1,3 +1,4 @@
+import gc
 import tkinter as tk
 
 import keyring
@@ -61,3 +62,6 @@ def isolated_from_the_users_data(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
     yield
     keyring.set_keyring(previous)
+    # Tk variables and images are finalized by whichever thread happens to run the garbage collector; one that is not
+    # the thread of the interpreter that made them aborts the whole process. So the garbage of a test goes here.
+    gc.collect()

@@ -8,6 +8,8 @@ import string
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# get_message, and the two helpers of the processors that pass the key on to it
+LOOKUPS = ("get_message", "_write_log_warning", "_write_log_error")
 SOURCE_DIRECTORIES = ("api_testing", "gui_app", "json_manager", "processor", "util")
 
 
@@ -33,7 +35,7 @@ def calls_asking_for_a_message():
                     tree = ast.parse(file.read())
                 for node in ast.walk(tree):
                     if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                            and node.func.attr == "get_message" and node.args
+                            and node.func.attr in LOOKUPS and node.args
                             and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
                             and all(keyword.arg for keyword in node.keywords)):  # **values cannot be checked
                         yield (os.path.relpath(path, ROOT), node.lineno, node.args[0].value,

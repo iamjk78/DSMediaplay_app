@@ -378,13 +378,28 @@ class InputProcessor(ABC):
         return names
 
     @staticmethod
-    def _numbered_lines(input_text: str) -> List[Tuple[int, str]]:
-        """The lines that are not empty with their number as the user sees it; a line pasted twice is read once."""
-        numbered = {}
-        for line_num, line in enumerate(input_text.split('\n'), 1):
-            if line:
-                numbered.setdefault(line, line_num)
-        return [(line_num, line) for line, line_num in numbered.items()]
+    def _indexed_rows(input_text: str, make_row=None, keep_repeats: bool = False) -> List[Tuple[int, Any]]:
+        """
+        The lines of the input that have something in them, as (index, row) in the order they were written. The index
+        counts from 0, so `index + 1` is the number of the line as the person sees it. A row that repeats is read once,
+        unless `keep_repeats` (for the actions that report a repeated name themselves). `make_row` turns a line into the
+        row (a text, a tuple of cells); the default is the line itself.
+        """
+        seen, rows = set(), []
+        for index, line in enumerate(input_text.split('\n')):
+            row = make_row(line) if make_row else line
+            if not line.strip() or not row:
+                continue
+            if not keep_repeats:
+                if row in seen:
+                    continue
+                seen.add(row)
+            rows.append((index, row))
+        return rows
+
+    def _numbered_lines(self, input_text: str) -> List[Tuple[int, str]]:
+        """The lines that have something in them with their number as the user sees it (the first is 1)."""
+        return [(index + 1, row) for index, row in self._indexed_rows(input_text)]
 
     @staticmethod
     def _blocks(cells: List[str], size: int) -> List[List[str]]:
@@ -429,10 +444,9 @@ class EntityValidationProcessor(InputProcessor, ABC):
                 self._write_no_server_returned()
                 return
 
-            input_lines = {i.strip() for i in input_text.split('\n') if i.strip()}
             self.data = []
 
-            for i, entity in enumerate(input_lines):
+            for i, entity in self._indexed_rows(input_text, str.strip):
                 if not self._validate_entity(entity, names[self.entity_type], i + 1):
                     continue
 
@@ -541,13 +555,9 @@ class CreateProcessor(EntityValidationProcessor):
             self._write_no_server_returned()
             return
 
-        lines = set(input_text.split('\n'))
         self.data = []
 
-        for i, line in enumerate(lines):
-            line_strip = line.strip()
-            if line_strip == "":
-                continue
+        for i, line_strip in self._indexed_rows(input_text, str.strip):
             if line_strip in names[self.entity_type]:
                 self._write_not_new_name(i + 1, line_strip)
                 self._wrong_init_counter += 1
@@ -559,7 +569,7 @@ class CreateProcessor(EntityValidationProcessor):
                 continue
 
             if self.check_name(line_strip, pattern):
-                self._write_name_fail(i, line_strip)
+                self._write_name_fail(i + 1, line_strip)
                 self._wrong_init_counter += 1
 
             self.data.append(line_strip)
@@ -665,9 +675,8 @@ class RemoveByKeywordProcessor(RemoveProcessor, ABC):
             self._write_no_server_returned()
             return
 
-        input_lines = {i for i in input_text.split('\n') if i}
         entity_keywords = {}
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text):
             split_line = line.split("\t")
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
@@ -850,9 +859,8 @@ class PlayerGroupProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {i for i in input_text.split('\n') if i}
         unrecognized_name_counter = 0
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text):
             split_line = line.split("\t")
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
@@ -1082,10 +1090,9 @@ class PlaylistProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = [i for i in input_text.split('\n') if i]
         group_playlists = {}
         loaded_groups = set()
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, keep_repeats=True):
             split_line = line.split("\t")
             split_line += [""] * (2 - len(split_line))  # a line with the group only
             group = split_line[0]
@@ -1273,11 +1280,7 @@ class PlayerNoteProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {
-            convert(self._pad_list(i.split("\t"), 2))
-            for i in input_text.split('\n') if i
-        }
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, lambda text: convert(self._pad_list(text.split("\t"), 2))):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
@@ -1360,10 +1363,9 @@ class PlayerConfigLocationProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {convert(i.split("\t")) for i in input_text.split('\n') if i}
         unrecognized_name_counter = 0
         already_assigned = set()
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, lambda text: convert(text.split("\t"))):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
@@ -1410,9 +1412,9 @@ class LocationTimesProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = [self._pad_list(i.split("\t"), 15) for i in input_text.split('\n') if i]
         unrecognized_name_counter = 0
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, lambda text: self._pad_list(text.split("\t"), 15),
+                                          keep_repeats=True):
             split_line = line
             if len(split_line) != 15:
                 self._wrong_init_counter += 1
@@ -1497,14 +1499,13 @@ class PlayerLabelsProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {tuple(j for j in i.split("\t") if j) for i in input_text.split('\n') if i}
         unrecognized_name_counter = 0
         already_assigned = set()
         self.data = {}
         self._same_key = {}
         self._wrong_init_counter = 0
 
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, lambda text: tuple(cell for cell in text.split("\t") if cell)):
             split_line = line
             player = split_line[0]
             labels = split_line[1:] if len(split_line) > 1 else []
@@ -1551,13 +1552,12 @@ class DeleteAdditionalPlaylistProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
         additional_playlists_players = {player for player, playlists in server.get_additional_playlists() if playlists}
-        input_lines = {tuple(j for j in i.split("\t") if j) for i in input_text.split('\n') if i}
         unrecognized_name_counter = 0
         self.data = {}
         self._same_key = {}
         self._wrong_init_counter = 0
 
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, lambda text: tuple(cell for cell in text.split("\t") if cell)):
             split_line = line
             player = split_line[0]
             if not self._validate_entity(player, names['player_names'], i + 1):
@@ -1713,10 +1713,10 @@ class PlaylistSettingsProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = [convert(self._pad_list(i.split("\t"), 2)) for i in input_text.split('\n') if i]
         unrecognized_name_counter = 0
         self.data = {}
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, lambda text: convert(self._pad_list(text.split("\t"), 2)),
+                                          keep_repeats=True):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
@@ -1781,9 +1781,9 @@ class RemovePlaylistsProcessor(RemoveProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = [convert(self._pad_list(i.split("\t"), 2)) for i in input_text.split('\n') if i]
         group_keywords = {}
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(input_text, lambda text: convert(self._pad_list(text.split("\t"), 2)),
+                                          keep_repeats=True):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
@@ -1857,11 +1857,12 @@ class RemovePlaylistsByListProcessor(RemoveProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {line.strip() for line in input_text.split('\n') if line.strip()}
+        input_lines = [row for _, row in self._indexed_rows(input_text, str.strip)]
         self.data = [playlist for playlist in input_lines if playlist in names['playlist_names']]
 
-        if len(self.data) != len(input_lines):
-            self._write_log_warning("Skipped.")
+        unknown = [playlist for playlist in input_lines if playlist not in names['playlist_names']]
+        if unknown:
+            self._write_log_warning("skipped_unknown_playlists", names=", ".join(unknown))
 
         group_playlists = server.get_groups_playlists()
         self.to_remove = {
@@ -2177,10 +2178,10 @@ class PlayerDetailsCloneProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {convert(self._pad_list([j for j in i.split("\t") if j], 2)) for i in input_text.split('\n') if i}
-        for i, line in enumerate(input_lines):
+        for i, line in self._indexed_rows(
+                input_text, lambda text: convert(self._pad_list([cell for cell in text.split("\t") if cell], 2))):
             split_line = line
-            if len(split_line) != 2:
+            if len(split_line) != 2 or not all(split_line):  # a player to copy to is needed too
                 self._wrong_init_counter += 1
                 self._write_incorrect_format(i + 1)
                 continue
@@ -2313,7 +2314,7 @@ class RemoveAllUnusedGroupsProcessor(RemoveUnusedGroupsProcessor):
 
             unused_groups = server.get_unused_groups()
             if not unused_groups:
-                self._write_no_server_returned()
+                self._write_log_warning("nothing_unused")
                 return
 
             self.data = unused_groups
@@ -2340,7 +2341,7 @@ class RemoveAllUnusedLocationsProcessor(RemoveUnusedLocationsProcessor):
 
             unused_locations = server.get_unused_locations()
             if not unused_locations:
-                self._write_no_server_returned()
+                self._write_log_warning("nothing_unused")
                 return
 
             self.data = unused_locations
@@ -2367,7 +2368,7 @@ class RemoveAllUnusedPlaylistsProcessor(RemoveUnusedPlaylistsProcessor):
 
             unused_playlists = server.get_unused_playlists()
             if not unused_playlists:
-                self._write_no_server_returned()
+                self._write_log_warning("nothing_unused")
                 return
 
             self.data = unused_playlists
@@ -2394,7 +2395,7 @@ class RemoveAllUnusedLabelsProcessor(RemoveUnusedLabelsProcessor):
 
             unused_labels = server.get_unused_labels()
             if not unused_labels:
-                self._write_no_server_returned()
+                self._write_log_warning("nothing_unused")
                 return
 
             self.data = unused_labels
@@ -2421,7 +2422,7 @@ class RemoveAllUnusedAssetsProcessor(RemoveUnusedAssetsProcessor):
 
             unused_assets = server.get_unused_assets()
             if not unused_assets:
-                self._write_no_server_returned()
+                self._write_log_warning("nothing_unused")
                 return
 
             self.data = unused_assets
@@ -2472,9 +2473,6 @@ class AssetValidityProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {convert(self._pad_list(i.split("\t"), 5))
-                       for i in input_text.split('\n') if i
-                       }
         unrecognized_name_counter = 0
         for line_num, line in self._numbered_lines(input_text):
             split_line = self._pad_list(line.split("\t"), 5)
@@ -2565,11 +2563,10 @@ class PlayerUpdateProcessor(EntityValidationProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {i.strip() for i in input_text.split('\n') if i.strip()}
         unrecognized_name_counter = 0
 
         self.data = []
-        for i, player_name in enumerate(input_lines):
+        for i, player_name in self._indexed_rows(input_text, str.strip):
             if not self._validate_entity(player_name, names[self.entity_type], i + 1):
                 unrecognized_name_counter += 1
                 continue
@@ -2594,8 +2591,8 @@ class PlayerUpdateProcessor(EntityValidationProcessor):
                         sleep(1)
                         server.player_update(player_name)
                         self._write_success_update(player_name)
-                    except Exception as _:
-                        self._write_error_update(player_name, 400)
+                    except Exception as error:
+                        self._write_error_update(player_name, getattr(error, "status", None) or type(error).__name__)
                     yield
         except Exception as e:
             self._write_internal_error(e)
@@ -2607,7 +2604,7 @@ class PlayerUpdateProcessor(EntityValidationProcessor):
     def _write_watchdog_turned_off(self, player_name: str):
         self._logger.info(self.lang.get_message("turn_off_watchdog", player_name=player_name))
 
-    def _write_error_update(self, player_name: str, code: int):
+    def _write_error_update(self, player_name: str, code):
         self._logger.error(self.lang.get_message("error_update", player_name=player_name, code=code))
 
 
