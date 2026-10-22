@@ -8,6 +8,7 @@ import copy
 import json
 import os
 import queue
+import re
 import tempfile
 import threading
 from gui_app.input_box import InputTextBox
@@ -735,11 +736,14 @@ class DSMediaplayApp(tk.Tk):
             return
         self.open_action_log_box(action, url, login, password, data)
 
-    def generate_csv(self, task_type, url, login, password):
+    def csv_file_path(self, task_type: str) -> str:
         date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         administration = self.option_choose_administration.get()
-        file_name = f'{administration}-{task_type}-{date}.csv'
-        file_path = os.path.join(get_download_path(), file_name)
+        account_part = re.sub(r'[^\w.-]+', '_', administration).strip('._') or 'account'  # no path, no odd characters
+        return os.path.join(get_download_path(), f'{account_part}-{task_type}-{date}.csv')
+
+    def generate_csv(self, task_type, url, login, password):
+        file_path = self.csv_file_path(task_type)
         csv_task = CSVTaskFactory.create_task(
             task_type=task_type,
             log_handler=None,

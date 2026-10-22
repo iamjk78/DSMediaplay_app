@@ -69,6 +69,24 @@ class CSVTaskFactory:
         return task_class(log_handler, url=url, login=login, password=password)
 
 
+# What a number, a phone number or a date may contain after a sign in front of it
+_PLAIN_AFTER_SIGN = re.compile(r"[\d\s.,/()+-]*")
+
+
+def safe_cell(value):
+    """
+    Text that a spreadsheet would run as a formula (a player note or name that was typed as "=...", "@...", or
+    "+word"/"-word") is given a leading apostrophe, which the spreadsheet shows as nothing more than a text mark. A sign
+    followed only by digits and the like stays as it is: it is a number or a phone number, and it is pasted back.
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    first = value[0]
+    if first in "=@\t\r" or (first in "+-" and not _PLAIN_AFTER_SIGN.fullmatch(value[1:])):
+        return "'" + value
+    return value
+
+
 class CSVTask(ABC):
     def __init__(self, log_handler, *, url: str, login: str, password: str):
         self.logger = log_handler
@@ -88,15 +106,17 @@ class CSVTask(ABC):
 
     @staticmethod
     def _write_to_csv(output_file: str, data: list, headers: [str]) -> None:
-        with open(output_file, "w", newline='', encoding='utf-8') as file:
+        # With the byte order mark spreadsheet applications on Windows read the file as UTF-8; without it the accents are garbled
+        # (and names garbled like that no longer match anything when the cells are pasted back).
+        with open(output_file, "w", newline='', encoding='utf-8-sig') as file:
             csvwriter = csv.writer(file, delimiter=';')
             if headers:
                 csvwriter.writerow(headers)
-            csvwriter.writerows(data)
+            csvwriter.writerows([[safe_cell(cell) for cell in row] for row in data])
 
     @staticmethod
     def _generate_headers(data: list) -> [str]:
-        max_length = max(len(row) for row in data)
+        max_length = max((len(row) for row in data), default=0)
         headers = [f"Column {i+1}" for i in range(max_length)]
         return headers
 
@@ -129,7 +149,7 @@ class GroupWithPlaylistsCSVTask(CSVTask):
 
     def get_headers(self, data: list) -> [str]:
         headers = ["Group", "Default Playlist"]
-        max_length = max(len(row) for row in data)
+        max_length = max((len(row) for row in data), default=0)
         headers.extend([f"Playlist {i//5 + 1} {field}"
                         for i, field in enumerate(
                         ["Name", "Start Date", "End Date", "Start Time", "End Time"] * ((max_length - 1) // 5)
@@ -173,7 +193,7 @@ class PlaylistsWithAssetsCSVTask(CSVTask):
 
     def get_headers(self, data: list) -> [str]:
         headers = ["Playlist"]
-        max_assets = max((len(row) - 1) for row in data)
+        max_assets = max(((len(row) - 1) for row in data), default=0)
         for i in range(max_assets):
             headers.append(f"Asset {i+1} Name")
         return headers
@@ -211,7 +231,7 @@ class DetailedGroupsPlaylistsCSVTask(CSVTask):
 
     def get_headers(self, data: list) -> [str]:
         headers = ["Group", "Default Playlist"]
-        max_length = max(len(row) for row in data)
+        max_length = max((len(row) for row in data), default=0)
         headers.extend([
             f"Playlist {i//6 + 1} {field}"
             for i, field in enumerate(
@@ -312,7 +332,7 @@ class PlayerLabelsCSVTask(CSVTask):
         self._write_to_csv(output_file, csv_lines, headers)
 
     def get_headers(self, data: list) -> [str]:
-        max_labels = max(len(row) - 1 for row in data)
+        max_labels = max((len(row) - 1 for row in data), default=0)
         headers = ["Player"]
         headers.extend([f"Category {i+1}" for i in range(max_labels)])
         return headers
@@ -329,7 +349,7 @@ class PlayerAdditionalPlaylistsCSVTask(CSVTask):
         self._write_to_csv(output_file, csv_lines, headers)
 
     def get_headers(self, data: list) -> [str]:
-        max_labels = max(len(row) - 1 for row in data)
+        max_labels = max((len(row) - 1 for row in data), default=0)
         headers = ["Player"]
         headers.extend([f"Playlist {i+1}" for i in range(max_labels)])
         return headers
@@ -613,6 +633,6 @@ class GroupsWithIdenticalPlaylistsCSVTask(CSVTask):
     def get_headers(self, data: list) -> [str]:
         if not data:
             return []
-        max_length = max(len(row) for row in data)
+        max_length = max((len(row) for row in data), default=0)
         headers = [f"Group {i + 1}" for i in range(max_length)]
         return headers

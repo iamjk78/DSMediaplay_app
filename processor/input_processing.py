@@ -96,6 +96,26 @@ def normalize_time_format(time_str: str, is_off_time: bool = False) -> str:
     raise ValueError(f"Time format for {time_str} is not recognized.")
 
 
+def parse_validity_hour(text: str, is_end: bool) -> Optional[int]:
+    """
+    The hour of the validity of an asset, as the server keeps it: a whole number, 0-23 for the start and 1-24 for the
+    end (a text like "08:00" is refused by the server). "8", "08" and "08:00" are taken; an end of "00:00" is the end
+    of the day. Empty is None; anything else (minutes, a letter) raises ValueError.
+    """
+    text = text.strip()
+    if not text:
+        return None
+    match = re.fullmatch(r"([0-9]{1,2})(?::00)?", text)
+    if not match:
+        raise ValueError(text)
+    hour = int(match.group(1))
+    if is_end and hour == 0:
+        hour = 24
+    if not (1 if is_end else 0) <= hour <= (24 if is_end else 23):
+        raise ValueError(text)
+    return hour
+
+
 class FormatException(Exception):
     """Format of loaded data is wrong."""
     pass
@@ -1688,9 +1708,15 @@ class PlaylistSettingsProcessor(AssignProcessor):
                 self._write_incorrect_format(i + 1)
                 continue
 
-            playlist_name, domination_time = split_line[0], split_line[1]
+            playlist_name, domination_time = split_line[0], split_line[1].strip()
             if not self._validate_entity(playlist_name, names['playlist_names'], i + 1):
                 unrecognized_name_counter += 1
+                continue
+
+            if domination_time and not (domination_time.isascii() and domination_time.isdigit()
+                                        and int(domination_time) > 0):
+                self._wrong_init_counter += 1
+                self._write_invalid_number(i + 1, playlist_name, domination_time)
                 continue
 
             self.data[playlist_name] = domination_time
@@ -1706,9 +1732,9 @@ class PlaylistSettingsProcessor(AssignProcessor):
             response = server.set_playlist_settings(playlist_name, domination_time)
             yield Response(200, response)
 
-    #   def _write_success_assign(self, playlist: str, domination_time: str):
-    #       self._logger.info(
-    #           self.lang.get_message("success_assign_playlist", playlist=playlist, domination_time=domination_time))
+    def _write_invalid_number(self, line_num: int, playlist: str, value: str):
+        self._logger.error(self.lang.get_message("invalid_domination_interval", line_num=line_num,
+                                                 playlist=playlist, value=value))
 
     def _write_error_assign(self, line_num: int, code: int):
         self._logger.error(self.lang.get_message("error_assign_playlist", line_num=line_num, code=code))
@@ -1944,6 +1970,16 @@ class RemoveExpiredPlaylistsProcessor(RemoveProcessor):
     def _remove_method(self, server, entity_name: str) -> Response:
         response = server.remove_expired_playlists_from_group(entity_name)
         return Response(200, response)
+
+    def _remove_entity(self, server, entity_name: str):
+        """The group is not deleted: what is said is the playlists that were taken out of it, if there were any."""
+        try:
+            removed = self._remove_method(server, entity_name).response_msg
+        except Exception as e:
+            self._write_internal_error(e)
+            return
+        key = "success_remove_expired" if removed else "nothing_expired"
+        self._logger.info(self.lang.get_message(key, group=entity_name, removed=", ".join(removed or [])))
 
     def _label_method(self, server: ServerApi):
         return server.get_groups_by_label
@@ -2415,26 +2451,55 @@ class AssetValidityProcessor(AssignProcessor):
                        for i in input_text.split('\n') if i
                        }
         unrecognized_name_counter = 0
-        for i, line in enumerate(input_lines):
-            split_line = line
+        for line_num, line in self._numbered_lines(input_text):
+            split_line = self._pad_list(line.split("\t"), 5)
             if len(split_line) != 5:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(line_num)
                 continue
 
             asset_name, start_date, end_date, start_hour, end_hour = split_line
 
-            if not self._validate_entity(asset_name, names['asset_names'], i + 1):
+            if not self._validate_entity(asset_name, names['asset_names'], line_num):
                 unrecognized_name_counter += 1
                 continue
 
-            self.data[asset_name] = (start_date, end_date, start_hour, end_hour)
+            validity = self._validated_validity(line_num, asset_name, start_date.strip(), end_date.strip(),
+                                                start_hour, end_hour)
+            if validity:
+                self.data[asset_name] = validity
 
         self._write_load_finish()
         if self._wrong_init_counter > 0 or unrecognized_name_counter > 0:
             self._write_wrong_format(self._wrong_init_counter)
             self._write_recognition_errors(unrecognized_name_counter)
             raise FormatException
+
+    def _validated_validity(self, line_num: int, asset_name: str, start_date: str, end_date: str, start_hour: str,
+                            end_hour: str) -> Optional[Tuple]:
+        """The validity of the line in the form it is sent, or None after reporting what is wrong with it."""
+        valid = True
+        for date in (start_date, end_date):
+            if date and not self._validate_date_format(date):
+                self._write_invalid_asset_value(line_num, asset_name, "invalid_asset_date", date)
+                valid = False
+        if valid and start_date and end_date and not compare_date(start_date, end_date):
+            self._write_invalid_asset_value(line_num, asset_name, "asset_date_order", f"{start_date} - {end_date}")
+            valid = False
+        hours = []
+        for text, is_end in ((start_hour, False), (end_hour, True)):
+            try:
+                hours.append(parse_validity_hour(text, is_end))
+            except ValueError:
+                self._write_invalid_asset_value(line_num, asset_name, "invalid_asset_hour", text)
+                valid = False
+        if not valid:
+            self._wrong_init_counter += 1
+            return None
+        return (start_date, end_date, *hours)
+
+    def _write_invalid_asset_value(self, line_num: int, asset_name: str, key: str, value: str):
+        self._logger.error(self.lang.get_message(key, line_num=line_num, asset=asset_name, value=value))
 
     def _assign_stepwise(self, server) -> Generator[Response, None, None]:
         for asset_name, (start_date, end_date, start_hour, end_hour) in self.data.items():

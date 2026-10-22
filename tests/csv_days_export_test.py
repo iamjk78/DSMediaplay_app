@@ -25,7 +25,7 @@ class DetailedPlaylistsExportTest(unittest.TestCase):
             path = os.path.join(directory, "export.csv")
             CSVTaskFactory.create_task("detailed_groups_with_playlists", None, url="https://x.example.com",
                                        login="login", password="pw").generate_csv(path)
-            with open(path, encoding="utf-8", newline="") as file:
+            with open(path, encoding="utf-8-sig", newline="") as file:
                 return list(csv.reader(file, delimiter=";"))
 
     def test_all_seven_days_are_written_with_their_api_codes(self):

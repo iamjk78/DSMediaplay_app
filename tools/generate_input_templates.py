@@ -156,10 +156,11 @@ cz = {
         "set_asset_validity": action(
             "Nastavení platnosti assetu.",
             ["1. název assetu", "2. platí od: datum nebo prázdné", "3. platí do: datum nebo prázdné",
-             "4. od kolika hodin: čas HH:MM nebo prázdné", "5. do kolika hodin: čas HH:MM nebo prázdné"],
+             "4. od kolika hodin: celá hodina 0-23 (např. 8 nebo 08:00) nebo prázdné",
+             "5. do kolika hodin: celá hodina 1-24 (24 nebo 00:00 = do půlnoci) nebo prázdné"],
             ["<název assetu>", "01.01.2026", "31.12.2026", "08:00", "18:00"],
             [CZ_DATE, "Hodiny se použijí jen tehdy, když je vyplněné aspoň jedno datum; bez dat se platnost vypne.",
-             "Datum se při načtení neověřuje, špatný formát způsobí chybu až při provedení."]),
+             "Datum i hodiny se kontrolují při načtení; server bere jen celé hodiny (minuty ne)."]),
         "remove_unused_assets": action(
             "Smazání nepoužívaných assetů.", ["1. název assetu (jeden na řádek)"], ["<název assetu>"],
             ["Assety se štítkem \"test\" se přeskočí."]),
@@ -288,10 +289,11 @@ en = {
         "set_asset_validity": action(
             "Set the validity of an asset.",
             ["1. asset name", "2. valid from: a date or empty", "3. valid to: a date or empty",
-             "4. from what hour: time HH:MM or empty", "5. until what hour: time HH:MM or empty"],
+             "4. from what hour: a whole hour 0-23 (e.g. 8 or 08:00) or empty",
+             "5. until what hour: a whole hour 1-24 (24 or 00:00 = until midnight) or empty"],
             ["<asset name>", "01.01.2026", "31.12.2026", "08:00", "18:00"],
             [EN_DATE, "The hours are used only when at least one date is filled in; with no dates the validity is off.",
-             "The date is not checked when the input is loaded, a wrong format fails only when it is carried out."]),
+             "The dates and the hours are checked when the input is loaded; the server takes whole hours only (no minutes)."]),
         "remove_unused_assets": action(
             "Delete unused assets.", ["1. asset name (one per line)"], ["<asset name>"],
             ["Assets labelled \"test\" are skipped."]),

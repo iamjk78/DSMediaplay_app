@@ -424,13 +424,13 @@
           "1. název assetu",
           "2. platí od: datum nebo prázdné",
           "3. platí do: datum nebo prázdné",
-          "4. od kolika hodin: čas HH:MM nebo prázdné",
-          "5. do kolika hodin: čas HH:MM nebo prázdné"
+          "4. od kolika hodin: celá hodina 0-23 (např. 8 nebo 08:00) nebo prázdné",
+          "5. do kolika hodin: celá hodina 1-24 (24 nebo 00:00 = do půlnoci) nebo prázdné"
         ],
         "notes": [
           "Datum: DD.MM.RRRR (např. 31.12.2026).",
           "Hodiny se použijí jen tehdy, když je vyplněné aspoň jedno datum; bez dat se platnost vypne.",
-          "Datum se při načtení neověřuje, špatný formát způsobí chybu až při provedení."
+          "Datum i hodiny se kontrolují při načtení; server bere jen celé hodiny (minuty ne)."
         ],
         "example": [
           "<název assetu>",
@@ -901,13 +901,13 @@
           "1. asset name",
           "2. valid from: a date or empty",
           "3. valid to: a date or empty",
-          "4. from what hour: time HH:MM or empty",
-          "5. until what hour: time HH:MM or empty"
+          "4. from what hour: a whole hour 0-23 (e.g. 8 or 08:00) or empty",
+          "5. until what hour: a whole hour 1-24 (24 or 00:00 = until midnight) or empty"
         ],
         "notes": [
           "Date: DD.MM.YYYY (e.g. 31.12.2026).",
           "The hours are used only when at least one date is filled in; with no dates the validity is off.",
-          "The date is not checked when the input is loaded, a wrong format fails only when it is carried out."
+          "The dates and the hours are checked when the input is loaded; the server takes whole hours only (no minutes)."
         ],
         "example": [
           "<asset name>",

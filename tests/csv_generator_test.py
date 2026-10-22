@@ -43,7 +43,7 @@ class CSVTaskTestCase(unittest.TestCase):
         patch.stopall()
 
     def _read_csv_file(self, file_path):
-        with open(file_path, 'r', newline='', encoding='utf-8') as f:
+        with open(file_path, 'r', newline='', encoding='utf-8-sig') as f:
             reader = csv.reader(f, delimiter=';')
             return list(reader)
 

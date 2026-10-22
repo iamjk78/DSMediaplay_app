@@ -1450,8 +1450,10 @@ class ServerApi:
         current_date = datetime.now().date().isoformat()
 
         for playlist in group_details.get("playlists") or []:
-            end_date = playlist.get("settings", {}).get("enddate")
-            if end_date and end_date[:10] < current_date:
+            settings = playlist.get("settings") or {}
+            end_date = settings.get("enddate")
+            # a date kept in a playlist whose date restriction is switched off (the web does that) restricts nothing
+            if str(settings.get("durationEnable")).lower() == "true" and end_date and end_date[:10] < current_date:
                 removed.append(playlist["name"])
             else:
                 new_playlists.append(playlist)
@@ -1937,10 +1939,10 @@ class ServerApi:
             The start date of the validity period in ISO 8601 format.
         end_date : Optional[str]
             The end date of the validity period in ISO 8601 format.
-        start_hour : Optional[str]
-            The start hour of the validity period.
-        end_hour : Optional[str]
-            The end hour of the validity period.
+        start_hour : Optional[int]
+            The start hour of the validity period, 0-23 (a number: the server refuses a text).
+        end_hour : Optional[int]
+            The end hour of the validity period, 1-24.
 
         Returns
         -------
@@ -1958,9 +1960,9 @@ class ServerApi:
                 validity["startdate"] = start_date
             if end_date:
                 validity["enddate"] = end_date
-            if start_hour:
+            if start_hour is not None:  # 0 is an hour too
                 validity["starthour"] = start_hour
-            if end_hour:
+            if end_hour is not None:
                 validity["endhour"] = end_hour
 
         request_body = {
