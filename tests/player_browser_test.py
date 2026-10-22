@@ -2224,6 +2224,7 @@ class MainWindowTest(BrowserTestCase):
             first = browser_class.return_value
             first.winfo_exists.return_value = True
             first.connection = ("https://x", "jane")
+            first.is_for.side_effect = lambda url, login, password: (url, login) == ("https://x", "jane")
             self.app.perform_show_action(ACTION, "https://x", "jane", "pw", None)
             self.app.perform_show_action(ACTION, "https://x", "jane", "pw", None)
 
@@ -2235,17 +2236,61 @@ class MainWindowTest(BrowserTestCase):
             first = browser_class.return_value
             first.winfo_exists.return_value = True
             first.connection = ("https://x", "jane")
+            first.is_for.side_effect = lambda url, login, password: (url, login) == ("https://x", "jane")
             self.app.perform_show_action(ACTION, "https://x", "jane", "pw", None)
             self.app.perform_show_action(ACTION, "https://y", "john", "pw", None)
 
             first.destroy.assert_called_once()
             self.assertEqual(browser_class.call_count, 2)
 
+    def test_the_same_login_with_another_password_gets_a_window_of_its_own(self):
+        with patch("gui_app.gui.PlayerBrowser") as browser_class:
+            first = browser_class.return_value
+            first.winfo_exists.return_value = True
+            first.connection = ("https://x", "jane")
+            first.is_for.side_effect = lambda url, login, password: (url, login, password) == ("https://x", "jane", "bad")
+            self.app.open_player_browser("https://x", "jane", "bad")
+            self.app.open_player_browser("https://x", "jane", "good")  # the old window shows an error with the old one
+
+            first.destroy.assert_called_once()
+            self.assertEqual(browser_class.call_count, 2)
+
+    def test_removing_a_login_or_an_account_closes_its_player_window_and_only_that(self):
+        self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {"jane": {"login": "jane"},
+                                                                            "john": {"login": "john"}}}
+        self.app.all_data["logins"]["Other"] = {"url": "https://y", "names": {"jane": {"login": "jane"}}}
+        self.app.account_data = self.app.all_data["logins"]
+        self.app.save_account_configs()
+        for removal, account, login, closes in (("remove_login", "Demo", "jane", True),
+                                                ("remove_login", "Demo", "john", False),
+                                                ("remove_login", "Other", "jane", False),
+                                                ("remove_account", "Demo", "jane", True),
+                                                ("remove_account", "Other", "jane", False)):
+            with self.subTest(removal=removal, account=account, login=login):
+                with patch.object(gui.messagebox, "askyesno", return_value=True), patch.object(gui.messagebox, "showwarning"):
+                    self.app.all_data["logins"]["Demo"] = {"url": "https://x", "names": {
+                        "jane": {"login": "jane"}, "john": {"login": "john"}}}
+                    self.app.all_data["logins"]["Other"] = {"url": "https://y", "names": {"jane": {"login": "jane"}}}
+                    self.app.account_data = self.app.all_data["logins"]
+                    self.app.save_account_configs()
+                    window = MagicMock()
+                    window.winfo_exists.return_value = True
+                    window.connection = ("https://x", "jane")
+                    self.app._player_browser = window
+                    self.app.option_choose_administration.set(account)
+                    self.app.fill_login_details()
+                    self.app.option_choose_name.set(login)
+
+                    getattr(self.app, removal)()
+
+                    self.assertEqual(window.destroy.called, closes)
+
     def test_on_open_is_called_whether_the_window_is_created_or_reused(self):
         with patch("gui_app.gui.PlayerBrowser") as browser_class:
             first = browser_class.return_value
             first.winfo_exists.return_value = True
             first.connection = ("https://x", "jane")
+            first.is_for.side_effect = lambda url, login, password: (url, login) == ("https://x", "jane")
             on_open = MagicMock()
             self.app.open_player_browser("https://x", "jane", "pw", on_open=on_open)
             self.app.open_player_browser("https://x", "jane", "pw", on_open=on_open)
@@ -2257,6 +2302,7 @@ class MainWindowTest(BrowserTestCase):
             window = browser_class.return_value
             window.winfo_exists.return_value = True
             window.connection = ("https://x", "jane")
+            window.is_for.side_effect = lambda url, login, password: (url, login) == ("https://x", "jane")
 
             self.app.open_player_browser("https://x", "jane", "pw", refresh_if_open=True)  # it is created: loads anyway
             window.refresh.assert_not_called()

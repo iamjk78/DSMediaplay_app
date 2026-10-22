@@ -776,6 +776,10 @@ class PlayerBrowser(tk.Toplevel):
 
     # ---- loading
 
+    def is_for(self, url: str, login: str, password: str) -> bool:
+        """Whether this window shows the players of exactly this account, login and password."""
+        return self._credentials == (url, login, password)
+
     def refresh(self):
         """
         Fetches the players from the server again. Two downloads start at least MIN_REFRESH_INTERVAL seconds apart:

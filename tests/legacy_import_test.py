@@ -259,6 +259,24 @@ class ImportedThroughTheAppTest(unittest.TestCase):
         self.assertNotIn("legacy_import_done", saved)
         self.assertEqual(saved["logins"], {})  # nothing half-imported was written either
 
+    def test_after_a_keyring_failure_no_password_waits_in_memory_for_the_next_save(self):
+        class FailingKeyring(InMemoryKeyring):
+            def set_password(self, service, username, password):
+                raise KeyringError("no backend")
+        keyring.set_keyring(FailingKeyring())
+
+        with patch("gui_app.gui.legacy_login_file", return_value=self.legacy_path), \
+                patch("gui_app.gui.messagebox.showwarning"):
+            app = self.start_app()
+        app.all_data["font"] = ["Courier", 14]
+        app.save_account_configs()  # any later save of the config, for any other reason
+
+        with open(self.config_path, encoding="utf-8") as file:
+            written = file.read()
+        self.assertNotIn("s3cret", written)
+        self.assertNotIn("Old customer", written)
+        self.assertNotIn("legacy_import_done", written)
+
 
 if __name__ == "__main__":
     unittest.main()

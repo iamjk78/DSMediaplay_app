@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import keyring
 from keyring.errors import KeyringError, PasswordDeleteError
@@ -17,16 +18,26 @@ def _key(url: str, login: str) -> str:
     return f"{login}@{url}"
 
 
-def _load_all() -> dict:
-    """The stored passwords, keyed by `_key(url, login)`. Raises KeyringError when the store is unavailable."""
+def _load_all(to_update: bool = False) -> dict:
+    """
+    The stored passwords, keyed by `_key(url, login)`. Raises KeyringError when the store is unavailable.
+
+    Content that cannot be read (hand-edited, damaged) reads as nothing stored. To update it that would mean writing
+    one password over all the others, so before the update starts from an empty list the content is kept under an
+    item of its own (the store being unable to keep it stops the update).
+    """
     raw = keyring.get_password(SERVICE_NAME, ACCOUNTS_ITEM)
     if not raw:
         return {}
     try:
         passwords = json.loads(raw)
-    except ValueError:  # damaged (hand-edited?) content: nothing stored is better than a crash
-        return {}
-    return passwords if isinstance(passwords, dict) else {}
+    except ValueError:
+        passwords = None
+    if isinstance(passwords, dict):
+        return passwords
+    if to_update:
+        keyring.set_password(SERVICE_NAME, f"{ACCOUNTS_ITEM}.unreadable-{datetime.now():%Y%m%d-%H%M%S}", raw)
+    return {}
 
 
 def _save_all(passwords: dict) -> None:
@@ -43,14 +54,14 @@ def get_password(url: str, login: str) -> str:
 
 def set_password(url: str, login: str, password: str) -> None:
     """Stores the password in the OS credential store. Raises KeyringError when it is unavailable."""
-    passwords = _load_all()
+    passwords = _load_all(to_update=True)
     passwords[_key(url, login)] = password
     _save_all(passwords)
 
 
 def delete_password(url: str, login: str) -> None:
     """Removes the stored password, if there is one. Raises KeyringError when the store is unavailable."""
-    passwords = _load_all()
+    passwords = _load_all(to_update=True)
     if passwords.pop(_key(url, login), None) is not None:
         _save_all(passwords)
 
@@ -76,7 +87,7 @@ def migrate_plaintext_passwords(data: dict) -> bool:
     if not changed_accounts:
         return False
     if new_passwords:
-        passwords = _load_all()
+        passwords = _load_all(to_update=True)
         passwords.update(new_passwords)
         _save_all(passwords)
     for account in changed_accounts:
@@ -110,7 +121,7 @@ def migrate_per_account_items(data: dict) -> bool:
                 found[_key(url, login)] = old
     if not found:
         return False
-    passwords = _load_all()
+    passwords = _load_all(to_update=True)
     passwords.update(found)
     _save_all(passwords)
     for key in found:

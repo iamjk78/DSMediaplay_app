@@ -152,6 +152,40 @@ class CredentialsTest(unittest.TestCase):
 
         self.assertEqual(credentials.get_password("https://a.example.com", "alice"), "")
 
+    def test_a_password_stored_over_damaged_content_does_not_destroy_the_content(self):
+        keyring.set_password(credentials.SERVICE_NAME, credentials.ACCOUNTS_ITEM, "{not json")
+
+        credentials.set_password("https://a.example.com", "alice", "pw")
+
+        kept = [value for (service, item), value in self.backend.store.items()
+                if item.startswith(credentials.ACCOUNTS_ITEM + ".unreadable-")]
+        self.assertEqual(kept, ["{not json"])
+        self.assertEqual(credentials.get_password("https://a.example.com", "alice"), "pw")
+
+    def test_when_the_damaged_content_cannot_be_kept_nothing_is_written_over_it(self):
+        class FailsNewItems(InMemoryKeyring):
+            def set_password(self, service, username, password):
+                if username != credentials.ACCOUNTS_ITEM:
+                    raise KeyringError("cannot keep a copy")
+                super().set_password(service, username, password)
+        backend = FailsNewItems()
+        keyring.set_keyring(backend)
+        backend.store[(credentials.SERVICE_NAME, credentials.ACCOUNTS_ITEM)] = "[1, 2]"
+
+        with self.assertRaises(KeyringError):
+            credentials.set_password("https://a.example.com", "alice", "pw")
+        with self.assertRaises(KeyringError):
+            credentials.delete_password("https://a.example.com", "alice")
+
+        self.assertEqual(backend.store[(credentials.SERVICE_NAME, credentials.ACCOUNTS_ITEM)], "[1, 2]")
+
+    def test_readable_content_is_updated_without_any_copy_of_it(self):
+        credentials.set_password("https://a.example.com", "alice", "pw")
+        credentials.set_password("https://b.example.com", "bob", "pw2")
+
+        self.assertEqual([item for _, item in self.backend.store], [credentials.ACCOUNTS_ITEM])
+        self.assertEqual(credentials.get_password("https://a.example.com", "alice"), "pw")
+
     def test_get_password_reports_no_store_available_as_empty(self):
         class FailsReading(InMemoryKeyring):
             def get_password(self, service, username):

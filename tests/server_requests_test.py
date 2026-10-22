@@ -1,12 +1,14 @@
 """How requests to the server are sent: with a timeout, the token in a header, and errors that never show the token."""
 import copy
+import re
 import unittest
+from urllib.parse import quote
 from unittest.mock import MagicMock
 
 import requests
 
-from api_testing.request_calls import (REQUEST_TIMEOUT, SNAPSHOT_TIMEOUT, TOKEN_HEADER, ResponseError, ServerApi,
-                                       without_secrets)
+from api_testing.request_calls import (REQUEST_TIMEOUT, SNAPSHOT_TIMEOUT, TOKEN_HEADER, NameResolutionError,
+                                       ResponseError, ServerApi, label_pattern, without_secrets)
 
 TOKEN = "SECRET-TOKEN-123"
 
@@ -259,6 +261,79 @@ class KeepWhatTheGroupHasTest(unittest.TestCase):
         self.assertEqual((method, endpoint), ("post", "/groups/g1"))
         self.assertEqual(body["playlists"], [TV_OFF, SWITCHED_OFF])
         self.assertEqual(body["playAllEligiblePlaylists"], "true")
+
+
+class NamesInRequestsTest(unittest.TestCase):
+    """A name is part of the path of a request or the word a search is made with, and it is any text a user chose."""
+
+    NAMES = ["a?b.mp4", "Menu #2.jpg", "100%.jpg", "100%25.jpg", "a/b", "plain name.mp4"]
+
+    def make_api(self, data=None):
+        api = ServerApi.__new__(ServerApi)
+        api._make_request = MagicMock(return_value={"success": True, "data": data})
+        return api
+
+    def test_a_name_is_one_part_of_the_path_whatever_it_contains(self):
+        for name in self.NAMES:
+            with self.subTest(name=name):
+                api = self.make_api({"dbdata": {"_id": "x"}})
+                api.delete_asset(name)
+                path = api._make_request.call_args.args[1]
+                self.assertEqual(path, "/files/" + quote(name, safe=""))
+                self.assertNotIn("?", path)
+                self.assertNotIn("#", path)
+                self.assertEqual(path.count("/"), 2)
+
+                api = self.make_api()
+                api.delete_playlist(name)
+                self.assertEqual(api._make_request.call_args_list[0].args[1], "/files/" + quote(f"__{name}.json", safe=""))
+
+                api = self.make_api({"dbdata": {"_id": "x"}})
+                api.get_asset_id_by_name(name)
+                self.assertEqual(api._make_request.call_args.args[1], "/files/" + quote(name, safe=""))
+
+    def test_the_search_of_a_label_takes_the_name_literally(self):
+        for name in ("TV (old)", "a.b", "x[1]", "1+1", "50%", "plain"):
+            with self.subTest(name=name):
+                self.assertTrue(re.fullmatch(label_pattern(name), name))
+        self.assertFalse(re.fullmatch(label_pattern("a.b"), "axb"))
+
+    def test_a_group_or_label_is_found_only_by_its_own_name(self):
+        found = [{"_id": "1", "name": "Shop 1"}]  # what a search for "Shop" gives
+        for lookup in ("get_group_id_by_name", "get_label_id_by_name"):
+            with self.subTest(lookup=lookup):
+                api = self.make_api(found)
+
+                with self.assertRaises(NameResolutionError):
+                    getattr(api, lookup)("Shop")
+                self.assertEqual(getattr(api, lookup)("Shop 1"), "1")
+
+    def test_two_groups_with_the_same_name_are_not_guessed_between(self):
+        api = self.make_api([{"_id": "1", "name": "Shop"}, {"_id": "2", "name": "Shop"}])
+
+        with self.assertRaises(NameResolutionError):
+            api.get_group_id_by_name("Shop")
+
+    def test_the_search_of_labels_is_sent_escaped(self):
+        api = self.make_api([{"_id": "1", "name": "TV (old)"}])
+
+        self.assertEqual(api.get_label_id_by_name("TV (old)"), "1")
+        self.assertEqual(api._make_request.call_args.kwargs["params"], {"string": "TV \\(old\\)"})
+
+    def test_a_label_without_a_name_is_nobodys_to_delete(self):
+        api = self.make_api([{"_id": "1", "name": "left"}, {"_id": "2"}, {"_id": "3", "name": ""}])
+
+        self.assertEqual(api.get_labels(), ["left"])
+
+    def test_answers_with_null_where_a_list_belongs_do_not_stop_the_reading(self):
+        api = self.make_api([{"configLocation": "L1", "toggleRows": None},
+                             {"configLocation": "L2", "toggleRows": [{"weekDays": [True], "turnOn": None}]}])
+
+        locations = api.get_locations()
+
+        self.assertEqual([next(iter(location)) for location in locations], ["L1", "L2"])
+        api = self.make_api([{"name": "G", "playlists": None}])
+        self.assertEqual(api.get_groups_playlists_details(), {"G": []})
 
 
 if __name__ == "__main__":

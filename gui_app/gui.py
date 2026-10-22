@@ -4,13 +4,17 @@ from gui_app.color_button import (BLUE, GREEN, GREEN_DARK, PURPLE, RED, YELLOW, 
                                   make_color_button, set_button_colors, set_button_enabled)
 from gui_app.icons import set_window_icon
 from gui_app.tooltip import Tooltip
+import copy
 import json
 import os
+import queue
 import tempfile
+import threading
 from gui_app.input_box import InputTextBox
 from gui_app.settings_dialog import SettingsWindow
 from gui_app.account_dialogs import EntryDialog, LanguageDialog
 from processor.csv_generator import CSVTaskFactory
+from api_testing.request_calls import LoginError
 from processor.input_processing import try_login
 from datetime import datetime
 from util.language import LanguageManager
@@ -47,6 +51,7 @@ def get_download_path():
 
 
 BLINK_INTERVAL_MS = 500
+CSV_POLL_MS = 100  # how often the window looks whether what the server was asked for (a file, a login) is ready
 
 
 class DSMediaplayApp(tk.Tk):
@@ -117,6 +122,8 @@ class DSMediaplayApp(tk.Tk):
         self._blink_dark = False
         self._input_window_open = False
         self._player_browser = None
+        self._csv_running = False
+        self._login_check_running = False
 
         self._admin_row = 0
         self._profile_row = 1
@@ -639,7 +646,7 @@ class DSMediaplayApp(tk.Tk):
         `refresh_if_open` makes a window that was already open fetch the players again (what it shows can be old)."""
         browser = self._player_browser
         if browser is not None and browser.winfo_exists():
-            if browser.connection == (url, login):
+            if browser.is_for(url, login, password):  # with another password it is the window of a login that failed
                 browser.deiconify()
                 browser.lift()
                 browser.focus_force()
@@ -740,15 +747,42 @@ class DSMediaplayApp(tk.Tk):
             login=login,
             password=password
         )
+        if self._csv_running:
+            return
+        self._csv_running = True
+        outcome = queue.Queue()
+
+        def work():  # reading the server takes seconds, so not in the thread of the window; it touches nothing of Tk
+            try:
+                csv_task.generate_csv(file_path)
+                outcome.put(None)
+            except Exception as error:
+                outcome.put(error)
+
+        self.config(cursor="watch")
+        threading.Thread(target=work, daemon=True).start()
+        self._finish_csv(outcome, file_path)
+
+    def _finish_csv(self, outcome: queue.Queue, file_path: str):
         try:
-            csv_task.generate_csv(file_path)
+            error = outcome.get_nowait()
+        except queue.Empty:
+            self.after(CSV_POLL_MS, self._finish_csv, outcome, file_path)
+            return
+        self._csv_running = False
+        self.config(cursor="")
+        if error is None:
             messagebox.showinfo(self.lang.get_message("info_title"),
                                 self.lang.get_message("file_saved", file_path=file_path))
-        except Exception:
-            self.show_warning()
+        else:
+            messagebox.showwarning(self.lang.get_message("warning_title"), self.csv_error_text(error))
 
-    def show_warning(self):
-        messagebox.showwarning(self.lang.get_message("warning_title"), self.lang.get_message("file_save_error"))
+    def csv_error_text(self, error: Exception) -> str:
+        if isinstance(error, LoginError):
+            return self.lang.get_message("login_error")
+        if isinstance(error, OSError) and not isinstance(error, requests.exceptions.RequestException):
+            return self.lang.get_message("file_save_error")  # the file could not be written
+        return self.lang.get_message("csv_failed", error=str(error))
 
     def open_action_log_box(self, processor_type, url, login, password, data):
         extra_settings = None
@@ -916,6 +950,8 @@ class DSMediaplayApp(tk.Tk):
         if not messagebox.askyesno(self.lang.get_message("warning_title"),
                                    self.lang.get_message("remove_login_confirm", login=name, account=account)):
             return
+        self.close_player_browser_of(self.account_data[account].get("url", ""),
+                                     {self.account_data[account]["names"][name]["login"]})
         unused = accounts.remove_login(self.all_data, account, name)
         self.save_account_configs()
         self.delete_passwords(unused)
@@ -931,6 +967,8 @@ class DSMediaplayApp(tk.Tk):
         if not messagebox.askyesno(self.lang.get_message("warning_title"),
                                    self.lang.get_message("remove_account_confirm", account=account, count=count)):
             return
+        self.close_player_browser_of(self.account_data[account].get("url", ""),
+                                     {details.get("login") for details in self.account_data[account]["names"].values()})
         unused = accounts.remove_account(self.all_data, account)
         self.save_account_configs()
         self.delete_passwords(unused)
@@ -940,6 +978,13 @@ class DSMediaplayApp(tk.Tk):
         self.option_choose_name.config(values=[])
         self.option_choose_name.set("")
         self.input_for_password.delete(0, tk.END)
+
+    def close_player_browser_of(self, url: str, logins: set):
+        """A player window of a login that has been removed would keep its password and go on refreshing."""
+        browser = self._player_browser
+        if browser is not None and browser.winfo_exists() and browser.connection[0] == url \
+                and browser.connection[1] in logins:
+            browser.destroy()
 
     def delete_passwords(self, unused):
         """Deletes the passwords of removed logins; a store failure is reported once, the removal stays."""
@@ -967,18 +1012,22 @@ class DSMediaplayApp(tk.Tk):
         if self.all_data.get("legacy_import_done"):
             return
         legacy = legacy_import.read_legacy_accounts(legacy_login_file())
+        # Worked out on a copy: the merge puts the passwords of the old app into it as plaintext fields, which a store
+        # that cannot be used would leave there, for the next save of the config to write into the file.
+        merged = copy.deepcopy(self.all_data)
         if legacy is not None:
-            legacy_import.merge_legacy_accounts(self.all_data, legacy)
-        self.all_data["legacy_import_done"] = True
+            legacy_import.merge_legacy_accounts(merged, legacy)
+        merged["legacy_import_done"] = True
         try:
             # The merge above only ever adds plaintext "password" fields (never removes existing ones), so this
             # also covers any of those already in the file from before this ran, exactly as it would a moment later.
-            credentials.migrate_plaintext_passwords(self.all_data)
+            credentials.migrate_plaintext_passwords(merged)
         except credentials.KeyringError as error:
-            del self.all_data["legacy_import_done"]
             messagebox.showwarning(self.lang.get_message("warning_title"),
                                    self.lang.get_message("credential_store_error", error=str(error)))
             return
+        self.all_data.clear()
+        self.all_data.update(merged)
         self.save_account_configs()
 
     def migrate_plaintext_passwords(self):
@@ -1016,19 +1065,40 @@ class DSMediaplayApp(tk.Tk):
         if not password:
             messagebox.showerror(self.lang.get_message("error_title"), self.lang.get_message("password_required"))
             return
+        if self._login_check_running:
+            return
+        self._login_check_running = True
+        outcome = queue.Queue()
+
+        def work():  # asking the server takes seconds, so not in the thread of the window; it touches nothing of Tk
+            try:
+                outcome.put((try_login(url, login, password), None))
+            except Exception as error:
+                outcome.put((False, error))
+
         self.config(cursor="watch")
-        self.update_idletasks()
+        threading.Thread(target=work, daemon=True).start()
+        self._finish_login_check(outcome, administration, account_name, url, login, password)
+
+    def _finish_login_check(self, outcome: queue.Queue, administration, account_name, url, login, password):
         try:
-            successful_login = try_login(url, login, password)
-        except requests.exceptions.RequestException as error:
+            successful_login, error = outcome.get_nowait()
+        except queue.Empty:
+            self.after(CSV_POLL_MS, self._finish_login_check, outcome, administration, account_name, url, login,
+                       password)
+            return
+        self._login_check_running = False
+        self.config(cursor="")
+        if error is not None:
             messagebox.showerror(self.lang.get_message("error_title"),
                                  self.lang.get_message("login_check_failed", error=str(error)))
             return
-        finally:
-            self.config(cursor="")
         if not successful_login:
             messagebox.showerror(self.lang.get_message("error_title"), self.lang.get_message("save_failure"))
             return
+        self.sync_from_disk()
+        if account_name not in self.account_data.get(administration, {}).get("names", {}):
+            return  # removed while the server was being asked
         try:
             credentials.set_password(url, login, password)
         except credentials.KeyringError as error:

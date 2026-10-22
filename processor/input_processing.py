@@ -18,10 +18,6 @@ def convert(lst: List) -> Tuple:
     return tuple(lst)
 
 
-def flatten(xss: List[List]) -> List:
-    return [x for xs in xss for x in xs]
-
-
 def legible_to_iso(legible_str: str) -> Optional[str]:
     if not legible_str or legible_str in ["None", ""]:
         return None
@@ -357,22 +353,24 @@ class InputProcessor(ABC):
             return None
         return names
 
-    def _empty_cells_cleanup(self, k: int, data: List[str]) -> list[str]:
-        return list(filter(lambda x: x != [""],
-                           list(filter(lambda x: not self._is_empty(k, x),
-                                       [data[i:i + k]
-                                        for i in range(0, len(data), k)]))))
-
-    def _flat_empty_cells_cleanup(self, k: int, data: List[str]) -> list[str]:
-        return flatten(list(filter(lambda x: x != [""],
-                                   list(filter(lambda x: not self._is_empty(k, x),
-                                               [data[i:i + k]
-                                                for i in range(0, len(data), k)])))))
+    @staticmethod
+    def _numbered_lines(input_text: str) -> List[Tuple[int, str]]:
+        """The lines that are not empty with their number as the user sees it; a line pasted twice is read once."""
+        numbered = {}
+        for line_num, line in enumerate(input_text.split('\n'), 1):
+            if line:
+                numbered.setdefault(line, line_num)
+        return [(line_num, line) for line, line_num in numbered.items()]
 
     @staticmethod
-    def _is_empty(k: int, data: List[str]) -> bool:
-        empty = ["" for _ in range(k)]
-        return empty == data
+    def _blocks(cells: List[str], size: int) -> List[List[str]]:
+        """
+        The cells that follow the fixed columns of a line, cut into blocks of `size` cells counted from the first of
+        them. The last block is completed with empty cells and blocks with nothing in them are dropped, so a block
+        never takes cells of its neighbour.
+        """
+        padded = cells + [""] * (-len(cells) % size)
+        return [block for block in (padded[i:i + size] for i in range(0, len(padded), size)) if any(block)]
 
     @staticmethod
     def _end_time_parse(end_time: str) -> str:
@@ -867,37 +865,30 @@ class DetailedPlaylistProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {
-            convert(self._flat_empty_cells_cleanup(6, self._pad_line(i.split("\t"), 6)))
-            for i in input_text.split('\n') if i
-        }
         group_playlists = {}
         loaded_groups = set()
-        for i, line in enumerate(input_lines):
-            split_line = list(line)
-            group = split_line[0]
-            if not self._validate_entity(group, names['group_names'], i + 1):
+        for line_num, line in self._numbered_lines(input_text):
+            cells = line.split("\t")
+            group = cells[0]
+            if not self._validate_entity(group, names['group_names'], line_num):
                 continue
 
             if group in loaded_groups:
-                self._write_collision(i + 1, group)
+                self._write_collision(line_num, group)
                 self._wrong_init_counter += 1
 
             loaded_groups.add(group)
             playlists = []
 
-            if split_line[1] in server.get_playlist_names():
-                playlists = [(split_line[1], None, None, None, None, None)]
-            # else:
-            #     self._wrong_init_counter += 1
-            #     self._write_name_fail(i + 1, split_line[1])
-            #     continue
+            default_playlist = cells[1] if len(cells) > 1 else ""
+            if default_playlist in names['playlist_names']:
+                playlists = [(default_playlist, None, None, None, None, None)]
+            elif default_playlist:  # dropping it quietly would write the group without the playlist it plays by default
+                self._wrong_init_counter += 1
+                self._write_name_fail(line_num, default_playlist)
+                continue
 
-            data_filtered = self._empty_cells_cleanup(6, split_line[2:])
-            for data in data_filtered:
-                playlist_data = self._validate_playlist_data(i + 1, group, data, names['playlist_names'])
-                if playlist_data:
-                    playlists.append(playlist_data)
+            playlists.extend(self._validated_blocks(line_num, group, cells[2:], names['playlist_names']))
 
             if group in group_playlists:
                 group_playlists[group].extend(playlists)
@@ -915,6 +906,22 @@ class DetailedPlaylistProcessor(AssignProcessor):
             playlists = self.data[group]
             response = server.set_playlist_to_group_detailed(group, playlists)
             yield Response(200, response)
+
+    def _validated_blocks(self, line_num: int, group: str, cells: List[str], playlist_names: List[str]) -> List[Tuple]:
+        playlists = []
+        for block_number, block in enumerate(self._blocks(cells, 6), 1):
+            if not block[0]:  # times without a playlist would otherwise be read as the ones of another
+                self._wrong_init_counter += 1
+                self._write_missing_playlist_name(line_num, group, block_number)
+                continue
+            playlist_data = self._validate_playlist_data(line_num, group, block, playlist_names)
+            if playlist_data:
+                playlists.append(playlist_data)
+        return playlists
+
+    def _write_missing_playlist_name(self, line_num: int, group: str, block_number: int):
+        self._logger.error(self.lang.get_message("missing_playlist_name", line_num=line_num, group=group,
+                                                 block_number=block_number))
 
     def _validate_playlist_data(self, line_num, group, data, playlist_names):
         playlist_name, start_date, end_date, weekdays, start_time, end_time = data
@@ -1027,11 +1034,6 @@ class DetailedPlaylistProcessor(AssignProcessor):
                                                  start_time=start_time,
                                                  end_time=end_time))
 
-    @staticmethod
-    def _pad_line(line, pad_to):
-        n = (len(line) - 2) % pad_to
-        return line + [""] * n
-
 
 class PlaylistProcessor(AssignProcessor):
     """Deprecated version of playlist processor without weekdays."""
@@ -1052,8 +1054,8 @@ class PlaylistProcessor(AssignProcessor):
         group_playlists = {}
         loaded_groups = set()
         for i, line in enumerate(input_lines):
-            raw_line = line.split("\t")
-            split_line = raw_line + [""] * ((len(raw_line) - 2) % 5)
+            split_line = line.split("\t")
+            split_line += [""] * (2 - len(split_line))  # a line with the group only
             group = split_line[0]
             if not self._validate_entity(group, names['group_names'], i + 1):
                 continue
@@ -1070,8 +1072,7 @@ class PlaylistProcessor(AssignProcessor):
                 self._wrong_init_counter += 1
                 self._write_name_fail(i + 1, split_line[1])
                 continue
-            data_filtered = self._empty_cells_cleanup(5, split_line[2:])
-            for data in data_filtered:
+            for data in self._blocks(split_line[2:], 5):
                 playlist_data = self._validate_playlist_data(i + 1, group, data, names['playlist_names'])
                 if playlist_data:
                     playlists.append(playlist_data)
@@ -1555,40 +1556,43 @@ class GroupSettingsProcessor(AssignProcessor):
             self._write_no_server_returned()
             return
 
-        input_lines = {tuple(j for j in i.split("\t")) for i in input_text.split('\n') if i}
         unrecognized_name_counter = 0
         already_assigned = set()
         self.data = {}
         self._same_key = {}
         self._wrong_init_counter = 0
 
-        for i, line in enumerate(input_lines):
-            split_line = line
-            group = split_line[0]
-            settings = split_line[1:]
-            settings = self._pad_list(list(settings), 9)
-            restart_time = normalize_time_format(settings[2])
-            deploy_time = normalize_time_format(settings[3])
-            settings[4] = self._str_to_bool(settings[4])
-            settings[5] = self._str_to_bool(settings[5])
-            on_time, off_time = on_off_time_handler(settings[6], settings[7])
-            if len(settings) != 9:
-                self._write_incorrect_format(i + 1)
+        for line_num, line in self._numbered_lines(input_text):
+            cells = line.split("\t")
+            group, settings = cells[0], cells[1:]
+            # The last column (the video player) may be left out; everything before it is written to the server as it
+            # stands, so a line cut short would switch off what its missing columns say.
+            if not 8 <= len(settings) <= 9:
+                self._write_incorrect_format(line_num)
                 self._wrong_init_counter += 1
                 continue
+            settings += [""] * (9 - len(settings))
 
-            if not self._validate_entity(group, names['group_names'], i + 1):
+            if not self._validate_entity(group, names['group_names'], line_num):
                 unrecognized_name_counter += 1
                 continue
 
             if group in already_assigned:
-                self._write_collision(i + 1, group)
+                self._write_collision(line_num, group)
                 self._wrong_init_counter += 1
                 self._same_key.setdefault(group, []).append(settings)
                 continue
-            time_strings = [on_time, off_time, deploy_time, restart_time]
-            checked_time = [self._time_format_check(i + 1, x) for i, x in enumerate(time_strings)]
 
+            if not settings[0] or not settings[1]:
+                self._write_missing_group_setting(line_num, group)
+                self._wrong_init_counter += 1
+                continue
+
+            if not self._normalize_times(line_num, group, settings):
+                continue
+
+            settings[4] = self._str_to_bool(settings[4])
+            settings[5] = self._str_to_bool(settings[5])
             self.data[group] = settings
             already_assigned.add(group)
 
@@ -1618,10 +1622,31 @@ class GroupSettingsProcessor(AssignProcessor):
     def _str_to_bool(value: str) -> bool:
         return value.lower() in ["true", "1", "yes"]
 
-    def _time_format_check(self, line_num: int, time_str: str):
-        if not self._validate_time_format(time_str):
-            self._write_invalid_time_format(line_num, time_str)
+    def _normalize_times(self, line_num: int, group: str, settings: List) -> bool:
+        """
+        Puts the times of the line (restart, deploy, display on and off) in the form the server takes, in place. A time
+        that cannot be read is reported and so is a display switched on without the time it is switched off (or the
+        other way round), which would leave the display without any schedule.
+        """
+        valid = True
+        for index, is_off_time in ((2, False), (3, False), (6, False), (7, True)):
+            try:
+                settings[index] = normalize_time_format(settings[index], is_off_time=is_off_time)
+            except ValueError:
+                self._write_invalid_time_format(line_num, settings[index])
+                self._wrong_init_counter += 1
+                valid = False
+        if valid and bool(settings[6]) != bool(settings[7]):
+            self._write_sleep_times_incomplete(line_num, group)
             self._wrong_init_counter += 1
+            valid = False
+        return valid
+
+    def _write_missing_group_setting(self, line_num: int, group: str):
+        self._logger.error(self.lang.get_message("missing_group_setting", line_num=line_num, group=group))
+
+    def _write_sleep_times_incomplete(self, line_num: int, group: str):
+        self._logger.error(self.lang.get_message("sleep_times_incomplete", line_num=line_num, group=group))
 
     def _write_invalid_time_format(self, line_num: int, time_str: str):
         self._logger.error(self.lang.get_message("invalid_time_format", line_num=line_num, time_str=time_str))
@@ -1840,12 +1865,6 @@ class RemovePlaylistsByListProcessor(RemoveProcessor):
 
 
 class AddDetailedPlaylistProcessor(DetailedPlaylistProcessor):
-    @staticmethod
-    def _pad_line(line, pad_to):
-        n = (len(line) - 1) % pad_to
-        k = (2 * pad_to - n)
-        return line + [""] * k
-
     def load(self, input_text: str):
         try:
             self._write_start_loading()
@@ -1861,22 +1880,18 @@ class AddDetailedPlaylistProcessor(DetailedPlaylistProcessor):
 
             existing_group_playlists = server.get_groups_playlists_details()
 
-            input_lines = {
-                convert([i.split("\t")[0]] + self._flat_empty_cells_cleanup(6, self._pad_line(i.split("\t"), 6)[1:]))
-                for i in input_text.split('\n') if i
-            }
             group_playlists = {}
             loaded_groups = set()
-            for i, line in enumerate(input_lines):
-                split_line = line
-                group = split_line[0]
+            for line_num, line in self._numbered_lines(input_text):
+                cells = line.split("\t")
+                group = cells[0]
                 if group not in names['group_names']:
-                    self._write_name_fail(i, group)
+                    self._write_name_fail(line_num, group)
                     self._wrong_init_counter += 1
                     continue
 
                 if group in loaded_groups:
-                    self._write_collision(i, group)
+                    self._write_collision(line_num, group)
                     self._wrong_init_counter += 1
 
                 loaded_groups.add(group)
@@ -1901,16 +1916,12 @@ class AddDetailedPlaylistProcessor(DetailedPlaylistProcessor):
                             )
                         except ValueError as e:
                             self._wrong_init_counter += 1
-                            self._write_invalid_time(i, group, existing_pl_data[0], str(e))
+                            self._write_invalid_time(line_num, group, existing_pl_data[0], str(e))
                             continue
                         playlists.append(existing_pl_data)
 
                 # Add new playlists from input
-                data_filtered = self._empty_cells_cleanup(6, split_line[1:])
-                for data in data_filtered:
-                    playlist_data = self._validate_playlist_data(i, group, data, names['playlist_names'])
-                    if playlist_data:
-                        playlists.append(playlist_data)
+                playlists.extend(self._validated_blocks(line_num, group, cells[1:], names['playlist_names']))
 
                 group_playlists[group] = playlists
 
@@ -1920,6 +1931,8 @@ class AddDetailedPlaylistProcessor(DetailedPlaylistProcessor):
             if self._wrong_init_counter > 0:
                 self._write_wrong_format(self._wrong_init_counter)
                 raise FormatException
+        except FormatException:  # not an internal error: it has been reported
+            raise
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()

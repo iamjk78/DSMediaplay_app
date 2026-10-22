@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple, Optional, Union
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 import requests
 from requests.adapters import HTTPAdapter
 import json
@@ -64,6 +64,19 @@ def main_account_url(url: str) -> str:
 
 def flatten(xss: List[Any]):
     return [x for xs in xss for x in xs]
+
+
+def path_segment(name: str) -> str:
+    """
+    A name as one part of the path of a request. Written as it is, a "?" or "#" in it ends the path ("a?b.mp4" would
+    delete the asset "a"), a "%" is read as the start of a code and a "/" as the end of the part.
+    """
+    return quote(name, safe="")
+
+
+def label_pattern(name: str) -> str:
+    """The search of labels takes a regular expression; this one matches the name itself and nothing else."""
+    return re.sub(r"[.*+?^${}()|\[\]\\/]", r"\\\g<0>", name)
 
 
 # /players is read in pages of this size, asked for explicitly instead of trusting the server's default one
@@ -472,7 +485,7 @@ class ServerApi:
         NameResolutionError
             If the name doesn't belong to any assets.
         """
-        response = self._make_request("get", f"/files/{name}")
+        response = self._make_request("get", f"/files/{path_segment(name)}")
         _id = response["data"].get("dbdata", {}).get("_id", False)
         if _id:
             return _id
@@ -498,9 +511,7 @@ class ServerApi:
         NameResolutionError
             If the name wasn't present among all names of players.
         """
-        response = self._make_request("get", "/labels", params={"string": name})
-        if len(response.get("data", [])) == 1:
-            return response["data"][0]["_id"]
+        response = self._make_request("get", "/labels", params={"string": label_pattern(name)})
         filtered = [entity["_id"] for entity in response.get("data", []) if name == entity.get("name", "")]
         if len(filtered) == 1:
             return filtered[0]
@@ -525,9 +536,7 @@ class ServerApi:
         NameResolutionError
             If the name wasn't present among all names of groups.
         """
-        response = self._make_request("get", "/groups", params={"string": name})
-        if len(response.get("data", [])) == 1:
-            return response["data"][0]["_id"]
+        response = self._make_request("get", "/groups", params={"string": name})  # a search: the name itself is among the finds
         filtered = [entity["_id"] for entity in response.get("data", []) if name == entity.get("name", "")]
         if len(filtered) == 1:
             return filtered[0]
@@ -792,7 +801,7 @@ class ServerApi:
                     "start_time": playlist.get("settings", {}).get("starttime"),
                     "end_time": playlist.get("settings", {}).get("endtime")
                 }
-                for playlist in group["playlists"]
+                for playlist in group.get("playlists") or []
             ]
         return group_playlist_details
 
@@ -835,7 +844,7 @@ class ServerApi:
                 for asset_name in assets
             ]
         }
-        return self._make_request("post", f"/playlists/{playlist}", json=settings_request_body)
+        return self._make_request("post", f"/playlists/{path_segment(playlist)}", json=settings_request_body)
 
     def get_group_details(self, group_id: str) -> Dict:
         """
@@ -894,7 +903,7 @@ class ServerApi:
         new_playlists = []
         removed = []
 
-        for playlist in group_details.get("playlists", []):
+        for playlist in group_details.get("playlists") or []:
             if keyword in playlist.get("name", ""):
                 removed.append(playlist["name"])
             else:
@@ -1017,7 +1026,7 @@ class ServerApi:
             A list of label names.
         """
         response = self._make_request("get", "/labels/")
-        return [obj.get("name", "") for obj in response.get("data", [])]
+        return [obj["name"] for obj in response.get("data", []) if obj.get("name")]  # a label without a name exists
 
     def get_additional_playlists(self) -> List[Tuple[str, List[str]]]:
         return [(obj.get("name", ""), obj.get("playlists", [])) for obj in self.get_player_objects()]
@@ -1110,12 +1119,12 @@ class ServerApi:
 
         for location in response["data"]:
             location_name = location.get('configLocation', "")
-            toggle_rows = location.get('toggleRows', False)
+            toggle_rows = location.get('toggleRows') or []
             times = {day: {"on": "", "off": ""} for day in WEEK_DAYS}
 
             for row in toggle_rows:
-                on_time = row['turnOn']
-                off_time = row['turnOff']
+                on_time = row.get('turnOn') or ""
+                off_time = row.get('turnOff') or ""
                 for i, is_active in enumerate(row.get('weekDays', [])):
                     if is_active:
                         day = list(times.keys())[i]
@@ -1258,8 +1267,8 @@ class ServerApi:
                 group.get("everydayDeployTime", None) if group.get("deployEveryday") else None,
                 group.get("combineDefaultPlaylist", None),
                 group.get("playAllEligiblePlaylists", None),
-                group.get("sleep", {}).get("ontime", None),
-                group.get("sleep", {}).get("offtime", None),
+                group.get("sleep", {}).get("ontime", None) if group.get("sleep", {}).get("enable") else None,
+                group.get("sleep", {}).get("offtime", None) if group.get("sleep", {}).get("enable") else None,
                 group.get("selectedVideoPlayer", None)
             )
             for group in response.get("data", [])
@@ -1331,7 +1340,7 @@ class ServerApi:
                 "deployEveryday": False
             })
 
-        if on_time and on_time:
+        if on_time and off_time:
             request_body.update({
                 "sleep": {
                     "enable": True,
@@ -1440,7 +1449,7 @@ class ServerApi:
         removed = []
         current_date = datetime.now().date().isoformat()
 
-        for playlist in group_details.get("playlists", []):
+        for playlist in group_details.get("playlists") or []:
             end_date = playlist.get("settings", {}).get("enddate")
             if end_date and end_date[:10] < current_date:
                 removed.append(playlist["name"])
@@ -1632,7 +1641,7 @@ class ServerApi:
         return self._make_request("delete", f"/groups/{group_id}")
 
     def delete_playlist(self, name: str):
-        response = self._make_request("delete", f"/files/__{name}.json")
+        response = self._make_request("delete", f"/files/{path_segment(f'__{name}.json')}")
         request_body = {
             "playlist": name,
             "assets": []
@@ -1686,7 +1695,7 @@ class ServerApi:
         return unused_assets
 
     def delete_asset(self, name: str):
-        return self._make_request("delete", f"/files/{name}")
+        return self._make_request("delete", f"/files/{path_segment(name)}")
 
     def get_assets_details(self) -> List[Dict[str, Any]]:
         """
@@ -1887,7 +1896,7 @@ class ServerApi:
                     }
                 }
             }
-        return self._make_request("post", f"/playlists/{name}", json=body)
+        return self._make_request("post", f"/playlists/{path_segment(name)}", json=body)
 
     def get_assets_validity(self) -> List[Tuple[str, str, str, str, str]]:
         """
@@ -1962,7 +1971,7 @@ class ServerApi:
             }
         }
 
-        return self._make_request("post", f"/files/{asset_name}", json=request_body)
+        return self._make_request("post", f"/files/{path_segment(asset_name)}", json=request_body)
 
     def send_player_command(self, player_name: str, command: str):
         player_id = self.get_player_id_by_name(player_name)
