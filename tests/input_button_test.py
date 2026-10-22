@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import time
 
+from button_helpers import font_of
 from gui_app import gui
 from gui_app.color_button import GREEN, GREEN_DARK, ColorButton
 from gui_app.gui import DSMediaplayApp
@@ -170,15 +171,15 @@ class InputButtonTest(unittest.TestCase):
 
     def test_the_text_is_always_bold(self):
         button = self.app.input_prompt_button
-        self.assertEqual(button.cget("font"), ("Helvetica", 12, "bold"))
+        self.assertEqual(font_of(button), ("Helvetica", 12, "bold"))
 
         self.choose("Playlists", "set_playlist_settings")
         self.fills_over(100)
-        self.assertEqual(button.cget("font"), ("Helvetica", 12, "bold"))
+        self.assertEqual(font_of(button), ("Helvetica", 12, "bold"))
 
         self.app.update_font(("Arial", 16))
         self.app.refresh_ui()
-        self.assertEqual(button.cget("font"), ("Arial", 16, "bold"))
+        self.assertEqual(font_of(button), ("Arial", 16, "bold"))
 
     def text_colour(self):
         button = self.app.input_prompt_button

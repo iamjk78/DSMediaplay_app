@@ -325,7 +325,7 @@ class DocumentationServerTest(unittest.TestCase):
     def test_index_is_resolved_inside_pages(self):
         path = self.handler.resolve_path("/cz/")
 
-        self.assertTrue(path.endswith("documentation/pages/cz/index.html"))
+        self.assertTrue(str(path).replace("\\", "/").endswith("documentation/pages/cz/index.html"))
 
     def test_parent_directory_segments_are_rejected(self):
         for request in ("/../../etc/passwd", "/en/../../../etc/passwd", "/assets/../../../etc/passwd"):

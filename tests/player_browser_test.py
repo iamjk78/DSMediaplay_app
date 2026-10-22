@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, call, patch
 import requests
 
 from api_testing.request_calls import LoginError, ResponseError, ServerApi
+from button_helpers import fill, font_of, press
 from gui_app import gui
 from gui_app.color_button import GREEN, RED, ColorButton, button_interactive
 from gui_app.snapshot_viewer import DEFAULT_WINDOW_SIZE
@@ -1411,7 +1412,7 @@ class TemperatureAndVersionTest(BrowserTestCase):
         for key in ("temperature", "version"):
             self.assertFalse(browser._header_cells[key].winfo_ismapped())
             self.assertFalse(browser._filter_widgets[key].winfo_ismapped())
-            self.assertEqual(browser.column_buttons[key]._colors.normal if False else browser.column_buttons[key]._colors, RED)
+            self.assertEqual(fill(browser.column_buttons[key]), RED.normal)
         for key in ("group", "location", "label", "synced", "reported", "note"):
             self.assertTrue(browser._header_cells[key].winfo_ismapped())
 
@@ -2478,17 +2479,11 @@ class TableButtons:
 
     @staticmethod
     def press(button):
-        if isinstance(button, ColorButton):  # drawn on a canvas: pressed and let go inside it, as with the mouse
-            button.event_generate("<ButtonPress-1>", x=5, y=5)
-            button.event_generate("<ButtonRelease-1>", x=5, y=5)
-        else:
-            self.press(button)
+        press(button)
 
     @staticmethod
     def fill(button):
-        if isinstance(button, ColorButton):
-            return button.itemcget(button.find_withtag("all")[0], "fill")
-        return button.cget("background")
+        return fill(button)
 
 
 class SnapshotButtonTest(TableButtons, BrowserTestCase):
@@ -2532,7 +2527,7 @@ class SnapshotButtonTest(TableButtons, BrowserTestCase):
 
         self.assertEqual(self.fill(self.button(browser, "Lobby")[1]), GREEN.normal)
         self.assertEqual(self.fill(self.button(browser, "Prerov 1")[1]), RED.normal)
-        self.assertEqual(self.button(browser, "Lobby")[1].cget("font")[1], 16)
+        self.assertEqual(font_of(self.button(browser, "Lobby")[1])[1], 16)
 
     def test_a_player_without_an_id_cannot_be_asked(self):
         rows = [{**player("Bez id"), "_id": ""}]

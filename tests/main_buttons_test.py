@@ -5,6 +5,7 @@ import tkinter as tk
 import unittest
 from unittest.mock import MagicMock, patch
 
+from button_helpers import fill, is_enabled, normal_fill, press
 from gui_app import gui
 from gui_app.color_button import BLUE, DISABLED, GREEN, PURPLE, YELLOW, ColorButton, equalize_widths
 
@@ -52,7 +53,10 @@ class MainButtonsTest(MainWindowCase):
     def test_the_new_buttons_and_start_are_the_same_size_and_font(self):
         outage, live, deploy, start = self.buttons()
 
-        self.assertEqual({(b.winfo_width(), b.winfo_height()) for b in self.buttons()}, {(start.winfo_width(), 28)})
+        if isinstance(start, ColorButton):  # drawn on a canvas: one size, and the height is the one of the design
+            self.assertEqual({(b.winfo_width(), b.winfo_height()) for b in self.buttons()}, {(start.winfo_width(), 28)})
+        else:  # native buttons are sized in characters of their font: the same width
+            self.assertEqual({b.winfo_width() for b in self.buttons()}, {start.winfo_width()})
         self.assertEqual(len({str(b.cget("font")) for b in self.buttons()}), 1)
         self.assertEqual((outage.cget("text"), live.cget("text"), deploy.cget("text")),
                          ("Výpadky", "Live-view", "DEPLOY ALL"))
@@ -90,8 +94,9 @@ class MainButtonsTest(MainWindowCase):
         outage, live, deploy, start = self.buttons()
 
         self.log_in()
-        self.assertEqual((outage._colors, live._colors, deploy._colors, start._colors), (PURPLE, BLUE, YELLOW, GREEN))
-        self.assertTrue(all(b.enabled for b in self.buttons()))
+        self.assertEqual([normal_fill(b) for b in (outage, live, deploy, start)],
+                         [PURPLE.normal, BLUE.normal, YELLOW.normal, GREEN.normal])
+        self.assertTrue(all(is_enabled(b) for b in self.buttons()))
 
     def test_the_buttons_have_tooltips_and_the_texts_exist_in_both_languages(self):
         for button in (self.app.outage_button, self.app.live_view_button, self.app.deploy_all_button):
@@ -127,8 +132,7 @@ class MainButtonsTest(MainWindowCase):
         with patch.object(self.app, "open_action_log_box") as start, \
                 patch.object(gui.messagebox, "askyesno", side_effect=AssertionError("no confirmation")), \
                 patch.object(gui.messagebox, "showinfo") as info:
-            self.app.deploy_all_button.event_generate("<ButtonPress-1>", x=5, y=5)
-            self.app.deploy_all_button.event_generate("<ButtonRelease-1>", x=5, y=5)
+            press(self.app.deploy_all_button)
             button_call = start.call_args
 
             start.reset_mock()
@@ -156,16 +160,14 @@ class MainButtonsTest(MainWindowCase):
     def test_live_view_opens_the_player_window_of_the_selected_account(self):
         self.log_in()
         with patch.object(self.app, "open_player_browser") as opened:
-            self.app.live_view_button.event_generate("<ButtonPress-1>", x=5, y=5)
-            self.app.live_view_button.event_generate("<ButtonRelease-1>", x=5, y=5)
+            press(self.app.live_view_button)
 
         opened.assert_called_once_with(URL, "jane", "secret")
 
     def test_outages_opens_the_player_window_prefiltered_to_active_offline_newest_reported_first(self):
         self.log_in()
         with patch.object(self.app, "open_player_browser") as opened:
-            self.app.outage_button.event_generate("<ButtonPress-1>", x=5, y=5)
-            self.app.outage_button.event_generate("<ButtonRelease-1>", x=5, y=5)
+            press(self.app.outage_button)
 
         opened.assert_called_once()
         args, kwargs = opened.call_args
@@ -202,10 +204,10 @@ class ActionButtonsEnabledTest(MainWindowCase):
     """Start, Live-view and Deploy all are usable only with an account, one of its logins and a password."""
 
     def fills(self):
-        return [b._colors.normal if b.enabled else DISABLED.normal for b in self.buttons()]
+        return [normal_fill(b) for b in self.buttons()]
 
     def all_enabled(self):
-        return [b.enabled for b in self.buttons()]
+        return [is_enabled(b) for b in self.buttons()]
 
     def test_at_first_without_an_account_all_three_are_grey_and_off(self):
         self.assertEqual(self.all_enabled(), [False, False, False, False])
@@ -255,24 +257,19 @@ class ActionButtonsEnabledTest(MainWindowCase):
         with patch.object(self.app, "open_player_browser") as opened, \
                 patch.object(self.app, "open_action_log_box") as log_box, \
                 patch.object(self.app, "execute_action") as execute:
-            start._command = self.app.execute_action  # the patched one
+            start.configure(command=self.app.execute_action)  # the patched one
             for button in self.buttons():
                 button.event_generate("<Enter>")
-                self.assertEqual(button._state, "normal")
-                button.event_generate("<ButtonPress-1>", x=5, y=5)
-                button.event_generate("<ButtonRelease-1>", x=5, y=5)
+                if isinstance(button, ColorButton):
+                    self.assertEqual(button._state, "normal")
+                press(button)
 
         opened.assert_not_called()
         log_box.assert_not_called()
         execute.assert_not_called()
 
     def test_the_grey_button_looks_grey_whatever_its_own_colour(self):
-        fills = []
-        for button in self.buttons():
-            item = button.find_withtag("all")[0]
-            fills.append(button.itemcget(item, "fill"))
-
-        self.assertEqual(fills, [DISABLED.normal] * 4)
+        self.assertEqual([fill(b) for b in self.buttons()], [DISABLED.normal] * 4)
 
     def test_the_tooltip_of_a_grey_button_says_what_is_missing_and_the_normal_one_what_it_does(self):
         outage, live, deploy, start = self.buttons()
@@ -294,8 +291,8 @@ class ActionButtonsEnabledTest(MainWindowCase):
         self.addCleanup(app.destroy)
         app.update()
 
-        self.assertEqual([b.enabled for b in (app.outage_button, app.live_view_button, app.deploy_all_button,
-                                              app.start_button)], [True, True, True, True])
+        self.assertEqual([is_enabled(b) for b in (app.outage_button, app.live_view_button, app.deploy_all_button,
+                                                  app.start_button)], [True, True, True, True])
 
     def test_they_are_off_after_the_account_is_removed(self):
         self.log_in()

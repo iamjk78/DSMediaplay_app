@@ -1,3 +1,5 @@
+import tkinter as tk
+
 import keyring
 import pytest
 from keyring.backend import KeyringBackend
@@ -21,6 +23,17 @@ class InMemoryKeyring(KeyringBackend):
 
     def delete_password(self, service, username):
         self.store.pop((service, username), None)
+
+
+@pytest.fixture(autouse=True)
+def a_large_screen(monkeypatch):
+    """
+    The windows of the application size and place themselves by the screen. The tests expect a normal desktop; a runner
+    of a build has a screen of 1024 x 768, which would shrink every window and fail the tests of the sizes.
+    """
+    for name, value in (("winfo_screenwidth", 2560), ("winfo_screenheight", 1440), ("winfo_vrootwidth", 2560),
+                        ("winfo_vrootheight", 1440), ("winfo_vrootx", 0), ("winfo_vrooty", 0)):
+        monkeypatch.setattr(tk.Misc, name, lambda self, value=value: value)
 
 
 @pytest.fixture(autouse=True)
