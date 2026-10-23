@@ -165,6 +165,8 @@ class MultiSelectTest(unittest.TestCase):
         self.assertEqual(self.combo.entry.winfo_width(), readonly.winfo_width())
 
     def test_the_list_is_above_the_other_widgets(self):
+        self.window.lift()  # on a runner of Windows the root window can lie over this one, and the system answers for it
+        self.window.update()  # (before the list is opened: raising the window changes its size and closes the list)
         self.combo.open()
         self.window.update()
 

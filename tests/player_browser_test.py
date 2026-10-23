@@ -1611,12 +1611,14 @@ class ResetFiltersTest(BrowserTestCase):
 
 
 class SetFilterAndSortTest(BrowserTestCase):
-    OUTAGE_PLAYERS = [
-        player("Aktivni 1", False, reported=ago(hours=1)),
-        player("Aktivni 2", False, reported=ago(minutes=5)),
-        player("Aktivni 3", True, reported=ago(minutes=1)),  # online: must not show up
-        player("Jina pobocka", False, reported=ago(minutes=2)),  # offline but not "aktivni": must not show up
-    ]
+    @property
+    def OUTAGE_PLAYERS(self):  # the times are taken when the test runs: minutes later they would not be "5 minutes ago"
+        return [
+            player("Aktivni 1", False, reported=ago(hours=1)),
+            player("Aktivni 2", False, reported=ago(minutes=5)),
+            player("Aktivni 3", True, reported=ago(minutes=1)),  # online: must not show up
+            player("Jina pobocka", False, reported=ago(minutes=2)),  # offline but not "aktivni": must not show up
+        ]
 
     def test_sets_the_name_and_status_filters_and_the_sort_and_applies_them(self):
         browser = self.open(players=self.OUTAGE_PLAYERS)

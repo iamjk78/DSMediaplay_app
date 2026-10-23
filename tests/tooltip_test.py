@@ -387,6 +387,7 @@ class ActivationBindingTest(unittest.TestCase):
         except tk.TclError:
             self.skipTest("no display available")
         self.addCleanup(self.root.destroy)
+        self.root.update()  # on Windows an <Activate> generated before the window is shown is not delivered
 
     def tooltips(self, count):
         buttons = [tk.Button(self.root, text=str(i)) for i in range(count)]
