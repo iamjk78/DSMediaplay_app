@@ -36,12 +36,15 @@ class MainWindowCase(unittest.TestCase):
         except tk.TclError:  # a test may have closed it already
             pass
 
-    def log_in(self, password="secret"):
+    def log_in(self, password="secret", choose_action=True):
         self.app.option_choose_administration.set("Demo")
         self.app.fill_login_details()
         self.app.option_choose_name.set("jane")
         self.app.input_for_password.delete(0, tk.END)
         self.app.input_for_password.insert(0, password)
+        if choose_action:  # Start runs the selected action
+            self.app.entity_type_var.set("Playlists")
+            self.app.update_action_selection()
 
     def buttons(self):
         return self.app.outage_button, self.app.live_view_button, self.app.deploy_all_button, self.app.start_button
@@ -292,7 +295,10 @@ class ActionButtonsEnabledTest(MainWindowCase):
         app.update()
 
         self.assertEqual([is_enabled(b) for b in (app.outage_button, app.live_view_button, app.deploy_all_button,
-                                                  app.start_button)], [True, True, True, True])
+                                                  app.start_button)], [True, True, True, False])  # no action chosen yet
+        app.entity_type_var.set("Playlists")
+        app.update_action_selection()
+        self.assertTrue(is_enabled(app.start_button))
 
     def test_they_are_off_after_the_account_is_removed(self):
         self.log_in()
@@ -336,6 +342,23 @@ class ActionButtonsEnabledTest(MainWindowCase):
 
         self.assertEqual(self.all_enabled(), [True, True, True, True])
         self.assertEqual(len({b.winfo_width() for b in self.buttons()}), 1)
+
+    def test_start_is_grey_until_an_action_is_chosen_the_others_do_not_need_one(self):
+        self.log_in(choose_action=False)
+
+        self.assertEqual(self.all_enabled(), [True, True, True, False])
+        self.assertIn("kategorii a činnost", self.app.start_button.tooltip._text())
+        self.app.entity_type_var.set("Playlists")
+        self.app.update_action_selection()
+        self.assertEqual(self.all_enabled(), [True, True, True, True])
+        self.assertIn("Spustit", self.app.start_button.tooltip._text())
+
+    def test_start_is_grey_again_when_the_choice_of_the_action_goes(self):
+        self.log_in()
+        self.app.entity_type_var.set("")
+        self.app.update_action_selection()
+
+        self.assertFalse(is_enabled(self.app.start_button))
 
     def test_a_grey_button_can_still_be_started_by_the_code_and_reports_the_missing_login(self):
         with patch.object(gui.messagebox, "showinfo") as info, patch.object(self.app, "open_action_log_box") as start:

@@ -90,7 +90,8 @@ class ServerApiUsesTheMainAccountTest(unittest.TestCase):
     def test_an_image_of_the_main_account_gets_the_token(self):
         with patch("api_testing.request_calls.requests.post", return_value=self.login_answer()):
             api = ServerApi(url=f"{COLLABORATOR}/api", login="jdoe", password="secret")
-        image = MagicMock(ok=True, content=b"\x89PNG\r\n\x1a\nxx")
+        image = MagicMock(ok=True, headers={})
+        image.iter_content.side_effect = lambda chunk_size: iter([b"\x89PNG\r\n\x1a\nxx"])  # a streamed download
 
         with patch("api_testing.request_calls.requests.request", return_value=image) as own, \
                 patch("api_testing.request_calls.requests.get") as foreign:

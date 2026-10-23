@@ -26,10 +26,12 @@ def api() -> ServerApi:
     return instance
 
 
-def response(content: bytes = PNG, ok: bool = True) -> MagicMock:
+def response(content: bytes = PNG, ok: bool = True, headers=None, chunks=None) -> MagicMock:
+    """What requests gives back for a streamed download: in pieces, through iter_content."""
     result = MagicMock()
     result.ok = ok
-    result.content = content
+    result.headers = headers or {}
+    result.iter_content.side_effect = lambda chunk_size: iter(chunks if chunks is not None else [content])
     return result
 
 
@@ -88,6 +90,46 @@ class DownloadSnapshotTest(unittest.TestCase):
             result, _, _ = self.download("/a", content=PNG + b"x" * 20)
 
         self.assertEqual(result.reason, "too_large")
+
+    def test_the_declared_size_refuses_a_huge_response_before_any_of_it_is_read(self):
+        answer = response(headers={"Content-Length": str(10 ** 9)})
+        with patch("api_testing.request_calls.requests.request", return_value=answer):
+            with self.assertRaises(SnapshotError) as caught:
+                api().download_snapshot("/a")
+
+        self.assertEqual(caught.exception.reason, "too_large")
+        answer.iter_content.assert_not_called()
+
+    def test_a_response_that_never_ends_is_cut_off_after_the_limit_not_read_to_the_end(self):
+        read = []
+
+        def endless(chunk_size):
+            for number in range(1000):
+                read.append(number)
+                yield PNG
+
+        answer = response()
+        answer.iter_content.side_effect = endless
+        with patch("api_testing.request_calls.SNAPSHOT_MAX_BYTES", 100), \
+                patch("api_testing.request_calls.requests.request", return_value=answer):
+            with self.assertRaises(SnapshotError) as caught:
+                api().download_snapshot("/a")
+
+        self.assertEqual(caught.exception.reason, "too_large")
+        self.assertLess(len(read), 20)
+
+    def test_the_token_does_not_go_to_the_same_host_name_on_another_port(self):
+        result, own, foreign = self.download("https://demo.example.com:8443/a.png")
+
+        self.assertEqual(result, (PNG, ".png"))
+        own.assert_not_called()
+        self.assertNotIn("secret-token", str(foreign.call_args))
+
+    def test_the_default_port_written_out_is_still_the_same_server(self):
+        _, own, foreign = self.download("https://demo.example.com:443/a.png")
+
+        own.assert_called_once()
+        foreign.assert_not_called()
 
     def test_a_failed_download_is_a_snapshot_error(self):
         result, _, _ = self.download("/a", ok=False)

@@ -327,6 +327,22 @@ class DocumentationServerTest(unittest.TestCase):
 
         self.assertTrue(str(path).replace("\\", "/").endswith("documentation/pages/cz/index.html"))
 
+    def test_a_missing_damaged_or_odd_config_is_the_defaults_and_accents_are_read(self):
+        import tempfile
+        from documentation.server import load_config
+        with tempfile.TemporaryDirectory() as folder:
+            def written(content, name="c.json"):
+                path = os.path.join(folder, name)
+                with open(path, "wb") as file:
+                    file.write(content)
+                return path
+
+            self.assertEqual(load_config(os.path.join(folder, "none.json")), {})
+            self.assertEqual(load_config(written(b"{ not json")), {})
+            self.assertEqual(load_config(written(b"[1, 2]")), {})
+            self.assertEqual(load_config(written(b"\xff\xfe\x00")), {})  # not text at all
+            self.assertEqual(load_config(written('{"jméno": "Škoda"}'.encode("utf-8"))), {"jméno": "Škoda"})
+
     def test_parent_directory_segments_are_rejected(self):
         for request in ("/../../etc/passwd", "/en/../../../etc/passwd", "/assets/../../../etc/passwd"):
             with self.subTest(request=request):

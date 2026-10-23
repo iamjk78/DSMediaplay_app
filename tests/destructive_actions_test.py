@@ -458,6 +458,22 @@ class DeployConfirmationTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return processor
 
+    def test_a_player_without_a_group_is_not_counted_asked_about_or_deployed_but_it_is_said(self):
+        server = self.server
+        server.get_players_for_deploy.return_value = [
+            _player("a"), {**_player("nogroup"), "group_id": "", "group_name": ""}, _player("c", online=False)]
+        server.get_player_names.return_value = []
+        processor = self.processor(account_name="Demo", batch_interval=0)
+        processor.load("")
+        self.assertIn("online přehrávače: 1", processor.confirmation().text)  # it would otherwise be 2
+        server.__enter__.return_value = server
+
+        list(processor.run())
+
+        self.assertEqual([c.args[0] for c in server.trigger_player_deploy.call_args_list], ["id-a"])
+        warning = processor._logger.warning.call_args.args[0]
+        self.assertIn("nogroup", warning)
+
     def test_the_question_names_the_account_and_counts_who_gets_it_and_who_is_skipped(self):
         processor = self.processor(account_name="Acme Shop")
 

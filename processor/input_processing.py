@@ -2640,7 +2640,7 @@ class DeployAllPlayersProcessor(EntityValidationProcessor):
         """Counts the players the deploy is about to reach, for the question the user is asked first."""
         try:
             players = server.get_players_for_deploy(self.data["groups"])
-            self._online = sum(1 for player in players if player["isConnected"])
+            self._online = sum(1 for player in players if player["isConnected"] and player["group_id"])
             self._offline = sum(1 for player in players if not player["isConnected"])
         except Exception as e:
             self._write_internal_error(e)
@@ -2666,10 +2666,15 @@ class DeployAllPlayersProcessor(EntityValidationProcessor):
                     return
 
                 players = server.get_players_for_deploy(self.data["groups"])
-                online = sorted((p for p in players if p["isConnected"]), key=lambda p: p["name"])
+                # A deploy sends the player its own group again; one that has none has nothing to be sent
+                online = sorted((p for p in players if p["isConnected"] and p["group_id"]), key=lambda p: p["name"])
                 offline = sorted((p for p in players if not p["isConnected"]), key=lambda p: p["name"])
+                no_group = sorted(p["name"] for p in players if p["isConnected"] and not p["group_id"])
 
                 self._write_deploy_summary(len(players), len(online), len(offline))
+                if no_group:
+                    self._logger.warning(self.lang.get_message("deploy_skipped_no_group", count=len(no_group),
+                                                               names=", ".join(no_group)))
 
                 queue = [(player, 1) for player in online]
                 failed = []

@@ -323,7 +323,7 @@ class DSMediaplayApp(tk.Tk):
         self.start_button = self.create_emphasised_button("start", self.execute_action, GREEN, size_offset=2,
                                                           parent=right_buttons, padding_x=DEPLOY_PADDING_X)
         self.start_button.grid(row=0, column=1, padx=pad_x, pady=pad_y, sticky="w")
-        self.add_action_tooltip(self.start_button, "tip_start")
+        self.add_action_tooltip(self.start_button, "tip_start", needs_action=True)
         # Above "Live-view", same font, size and right edge
         self.outage_button = self.create_emphasised_button("outages", self.outages, PURPLE, size_offset=2,
                                                             padding_x=DEPLOY_PADDING_X)
@@ -389,6 +389,7 @@ class DSMediaplayApp(tk.Tk):
 
         self._text_box_data = None
         self.update_input_button()
+        self.update_action_buttons()
 
     def reset_data(self, _=None):
         self._text_box_data = None
@@ -542,9 +543,15 @@ class DSMediaplayApp(tk.Tk):
             return
         self.generate_csv(action[4:], url, login, password)
 
-    def add_action_tooltip(self, button, key):
+    def add_action_tooltip(self, button, key, needs_action=False):
         """While the button cannot be used its tooltip says what is missing."""
-        Tooltip(button, lambda: self.lang.get_message(key if self.can_start_actions() else "tip_login_required"))
+        def text():
+            if not self.can_start_actions():
+                return self.lang.get_message("tip_login_required")
+            if needs_action and not self.current_action():
+                return self.lang.get_message("tip_choose_action")
+            return self.lang.get_message(key)
+        Tooltip(button, text)
 
     def can_start_actions(self) -> bool:
         """An account, one of its logins and a password are there: what every action needs."""
@@ -554,10 +561,11 @@ class DSMediaplayApp(tk.Tk):
     def update_action_buttons(self):
         """Start, Live-view, Deploy all and Výpadky are grey until an account, a login and a password are there."""
         enabled = self.can_start_actions()
-        for button, colors in ((self.start_button, GREEN), (self.deploy_all_button, YELLOW),
-                               (self.live_view_button, BLUE), (self.outage_button, PURPLE)):
+        for button, colors, needs_action in ((self.start_button, GREEN, True), (self.deploy_all_button, YELLOW, False),
+                                             (self.live_view_button, BLUE, False), (self.outage_button, PURPLE, False)):
             if button is not None:
-                set_button_enabled(button, enabled, colors)
+                # Start runs the selected action: with none selected it would do nothing
+                set_button_enabled(button, enabled and (bool(self.current_action()) or not needs_action), colors)
 
     def _equalize_action_buttons(self):
         buttons = [self.start_button, self.deploy_all_button, self.live_view_button, self.outage_button]

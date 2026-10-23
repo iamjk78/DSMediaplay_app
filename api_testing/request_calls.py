@@ -2024,18 +2024,26 @@ class ServerApi:
             raise SnapshotError("bad_url")
 
         try:
-            if target.hostname == server.hostname:
+            # The token goes only to the server's own origin: the same host name on another port is another service
+            if (target.hostname, target.port or 443) == (server.hostname, server.port or 443):
                 response = self._request("get", address, headers={TOKEN_HEADER: self._session_token},
-                                         timeout=SNAPSHOT_TIMEOUT)
+                                         timeout=SNAPSHOT_TIMEOUT, stream=True)
             else:
-                response = requests.get(address, timeout=SNAPSHOT_TIMEOUT)
+                response = requests.get(address, timeout=SNAPSHOT_TIMEOUT, stream=True)
+            with response:
+                if not response.ok:
+                    raise SnapshotError("download")
+                declared = response.headers.get("Content-Length", "")
+                if declared.isdigit() and int(declared) > SNAPSHOT_MAX_BYTES:
+                    raise SnapshotError("too_large")
+                content = bytearray()
+                for chunk in response.iter_content(chunk_size=65536):  # not all of it into memory before the check
+                    content += chunk
+                    if len(content) > SNAPSHOT_MAX_BYTES:
+                        raise SnapshotError("too_large")
         except requests.exceptions.RequestException:
             raise SnapshotError("download")
-        if not response.ok:
-            raise SnapshotError("download")
-        content = response.content
-        if len(content) > SNAPSHOT_MAX_BYTES:
-            raise SnapshotError("too_large")
+        content = bytes(content)
         for signature, extension in IMAGE_SIGNATURES:
             if content.startswith(signature):
                 return content, extension

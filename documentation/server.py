@@ -61,12 +61,20 @@ class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(file.read())
 
 
-def run_server(config_path):
-    """Run the HTTP server; the JSON configuration file is optional (it may not exist on first start)."""
-    config = {}
-    if os.path.exists(config_path):
-        with open(config_path, 'r') as config_file:
+def load_config(config_path) -> dict:
+    """The JSON configuration; a missing, unreadable or damaged file only means the defaults (the help is not to die
+    of it, and it may not exist yet on the first start)."""
+    try:
+        with open(config_path, 'r', encoding='utf-8') as config_file:
             config = json.load(config_file)
+    except (OSError, ValueError):
+        return {}
+    return config if isinstance(config, dict) else {}
+
+
+def run_server(config_path):
+    """Run the HTTP server; the JSON configuration file is optional."""
+    config = load_config(config_path)
 
     # Initialize the logger with the parsed configuration
     global log
