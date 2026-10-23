@@ -104,5 +104,37 @@ class ServerApiUsesTheMainAccountTest(unittest.TestCase):
         foreign.assert_not_called()
 
 
+class SaidInTheLogTest(unittest.TestCase):
+    """The credentials go to another address than the one typed: whoever reads the log can see which."""
+
+    def login_with(self, url, tries=2):
+        from processor.input_processing import GroupRenameProcessor
+        logger = MagicMock()
+        lang = MagicMock()
+        lang.get_message.side_effect = lambda key, **kw: f"{key}:{kw}"
+        processor = GroupRenameProcessor(logger, url=url, login="jdoe", password="pw", lang=lang)
+        answer = MagicMock()
+        answer.status_code = 200
+        answer.json.return_value = {"token": "abc"}
+        with patch("api_testing.request_calls.requests.post", return_value=answer):
+            servers = [processor._try_server_login() for _ in range(tries)]
+        return servers, logger
+
+    def test_a_replaced_address_is_named_once_for_the_whole_action(self):
+        servers, logger = self.login_with(COLLABORATOR)
+
+        self.assertEqual(servers[0].redirected_to, f"{MAIN}/api")
+        notes = [call.args[0] for call in logger.info.call_args_list]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("acmeshop.signage.dsmediaplay.com", notes[0])
+        self.assertNotIn("acmeshop_", notes[0])
+
+    def test_an_address_that_stays_says_nothing(self):
+        servers, logger = self.login_with(MAIN)
+
+        self.assertIsNone(servers[0].redirected_to)
+        logger.info.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

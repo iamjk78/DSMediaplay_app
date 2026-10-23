@@ -334,7 +334,11 @@ class InputProcessor(ABC):
 
     def _try_server_login(self) -> Optional[ServerApi]:
         try:
-            return ServerApi(**self._login_info)
+            server = ServerApi(**self._login_info)
+            if server.redirected_to and not getattr(self, "_main_account_said", False):
+                self._main_account_said = True  # once, not at every login of the action
+                self._logger.info(self.lang.get_message("main_account_used", host=urlparse(server.redirected_to).netloc))
+            return server
         except requests.exceptions.ConnectionError:
             self._wrong_init_counter += 1
             self._write_connection_error()

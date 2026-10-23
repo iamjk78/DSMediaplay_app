@@ -215,6 +215,8 @@ class ServerApi:
             The password for API access.
         """
         self._url = main_account_url(url)
+        # What the log says when the address was replaced: the credentials go to another address than the one typed
+        self.redirected_to = self._url if self._url != url else None
         self._login = login
         self._password = password
         self._assert_hostname = _assert_hostname_for(self._url)
