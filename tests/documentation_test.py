@@ -81,6 +81,14 @@ class GuideTest(unittest.TestCase):
                 with self.subTest(page=name, picture=picture):
                     self.assertRegex(picture, rf"_{language}\.png$")  # a picture in the language of the page
 
+    def test_every_picture_the_pages_ask_for_exists(self):
+        handler = CustomHTTPRequestHandler.__new__(CustomHTTPRequestHandler)
+        for (language, name), text in self.rendered.items():
+            for picture in re.findall(r'src="(/assets/images/[^"]+)"', text):
+                with self.subTest(page=name, picture=picture):
+                    self.assertTrue(os.path.isfile(handler.resolve_path(picture)),
+                                    "run: tools/capture_documentation_images.sh")
+
     def test_the_guide_does_not_mention_what_the_application_does_not_have(self):
         for (language, name), text in self.rendered.items():
             with self.subTest(language=language, page=name):
