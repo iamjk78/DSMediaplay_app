@@ -448,5 +448,67 @@ class PlaylistSettingsRequestTest(unittest.TestCase):
         self.assertEqual(self.sent(api), {"domination": {"enable": True, "timeInterval": 60}})
 
 
+class PlayerIdsAreReadOnceTest(unittest.TestCase):
+    """An action for 500 players used to ask for the list of all 500 players for every one of them."""
+
+    def make_api(self, listing):
+        api = ServerApi.__new__(ServerApi)
+        api.get_player_objects = MagicMock(side_effect=lambda: copy.deepcopy(listing))
+        api._make_request = MagicMock(return_value={"data": {}})
+        return api
+
+    def test_many_lookups_read_the_players_once(self):
+        listing = [{"name": f"P{i}", "_id": f"id{i}"} for i in range(50)]
+        api = self.make_api(listing)
+
+        ids = [api.get_player_id_by_name(f"P{i}") for i in range(50)]
+
+        self.assertEqual(ids, [f"id{i}" for i in range(50)])
+        api.get_player_objects.assert_called_once()
+
+    def test_an_unknown_name_gets_one_more_look_before_it_is_refused(self):
+        api = self.make_api([{"name": "A", "_id": "1"}])
+        api.get_player_id_by_name("A")
+
+        with self.assertRaises(NameResolutionError):
+            api.get_player_id_by_name("Typo")
+
+        self.assertEqual(api.get_player_objects.call_count, 2)
+
+    def test_a_player_made_in_the_meantime_is_found_by_that_look(self):
+        listing = [{"name": "A", "_id": "1"}]
+        api = self.make_api(listing)
+        api.get_player_id_by_name("A")
+        listing.append({"name": "New", "_id": "2"})
+
+        self.assertEqual(api.get_player_id_by_name("New"), "2")
+
+    def test_of_two_players_with_one_name_the_first_counts_as_before(self):
+        api = self.make_api([{"name": "Twin", "_id": "first"}, {"name": "Twin", "_id": "second"}])
+
+        self.assertEqual(api.get_player_id_by_name("Twin"), "first")
+
+    def test_after_a_rename_the_old_name_is_not_found_any_more(self):
+        listing = [{"name": "Old", "_id": "1"}]
+        api = self.make_api(listing)
+        api.get_player_id_by_name("Old")
+
+        api.rename_player("Old", "Renamed")
+        listing[0]["name"] = "Renamed"
+
+        with self.assertRaises(NameResolutionError):
+            api.get_player_id_by_name("Old")  # a name read before the rename would still give the id
+        self.assertEqual(api.get_player_id_by_name("Renamed"), "1")
+
+    def test_creating_a_player_makes_the_names_be_read_again(self):
+        listing = [{"name": "A", "_id": "1"}]
+        api = self.make_api(listing)
+        api.get_player_id_by_name("A")
+
+        api.create_player("B")
+
+        self.assertIsNone(api._player_ids)
+
+
 if __name__ == "__main__":
     unittest.main()

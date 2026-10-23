@@ -464,10 +464,25 @@ class ServerApi:
         NameResolutionError
             If the name wasn't present among all names of players.
         """
-        for obj in self.get_player_objects():
-            if name == obj.get("name", ""):
-                return obj["_id"]
+        ids = self._player_ids_by_name()
+        if name not in ids:  # perhaps a player that was made in the meantime: one more look
+            ids = self._player_ids_by_name(refresh=True)
+        if name in ids:
+            return ids[name]
         raise NameResolutionError(name)
+
+    def _player_ids_by_name(self, refresh: bool = False) -> Dict[str, str]:
+        """
+        The ids of all the players by name, read once for this session: an action that does something to each of 500
+        players asked for the whole list of 500 players 500 times. Of two players with one name the first counts.
+        """
+        ids = getattr(self, "_player_ids", None)
+        if ids is None or refresh:
+            ids = {}
+            for obj in self.get_player_objects():
+                ids.setdefault(obj.get("name", ""), obj["_id"])
+            self._player_ids = ids
+        return ids
 
     def get_asset_id_by_name(self, name: str) -> str:
         """
@@ -1439,6 +1454,7 @@ class ServerApi:
         }
 
         response = self._make_request("post", f"/players/{player_id}", json=request_body)
+        self._player_ids = None  # the names have changed
         response["data"]["old_name"] = old_name
         return response
 
@@ -1530,7 +1546,9 @@ class ServerApi:
         """
         request_body = {"name": name}
 
-        return self._make_request("post", "/players/", json=request_body)
+        response = self._make_request("post", "/players/", json=request_body)
+        self._player_ids = None  # there is one more
+        return response
 
     def create_playlist(self, name: str) -> json:
         """

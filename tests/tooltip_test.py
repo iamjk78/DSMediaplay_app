@@ -378,5 +378,44 @@ class PointerOverWidgetTest(unittest.TestCase):
         self.assertFalse(self.tooltip._pointer_over_widget())
 
 
+class ActivationBindingTest(unittest.TestCase):
+    """A window with dozens of tooltips (the player table) must not have dozens of <Activate> bindings."""
+
+    def setUp(self):
+        try:
+            self.root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("no display available")
+        self.addCleanup(self.root.destroy)
+
+    def tooltips(self, count):
+        buttons = [tk.Button(self.root, text=str(i)) for i in range(count)]
+        for button in buttons:
+            button.pack()
+        return buttons, [Tooltip(button, lambda: "text") for button in buttons]
+
+    def test_all_the_tooltips_of_a_window_share_one_binding_and_all_are_told(self):
+        buttons, tooltips = self.tooltips(20)
+        told = []
+        with patch.object(Tooltip, "_on_activate", lambda self, event: told.append(self)):
+            self.root.event_generate("<Activate>")
+            self.root.update()
+
+        self.assertEqual(self.root.bind("<Activate>").count("if {"), 1)
+        self.assertEqual(set(map(id, told)), set(map(id, tooltips)))  # the system may fire an <Activate> of its own too
+
+    def test_a_destroyed_widget_is_no_longer_told(self):
+        buttons, tooltips = self.tooltips(3)
+        buttons[0].destroy()
+        self.root.update()
+        told = []
+
+        with patch.object(Tooltip, "_on_activate", lambda self, event: told.append(self)):
+            self.root.event_generate("<Activate>")
+            self.root.update()
+
+        self.assertEqual(set(map(id, told)), set(map(id, tooltips[1:])))
+
+
 if __name__ == "__main__":
     unittest.main()

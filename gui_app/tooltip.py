@@ -51,8 +51,22 @@ class Tooltip:
         # binding, since only the most specific matching sequence runs: the left click needs its own entry
         for event in ("<Leave>", "<ButtonPress>", "<ButtonPress-1>", "<Destroy>"):
             widget.bind(event, self._hide, add="+")
-        widget.winfo_toplevel().bind("<Activate>", self._on_activate, add="+")
+        self._watch_activation()
         widget.tooltip = self
+
+    def _watch_activation(self) -> None:
+        """
+        One <Activate> binding on the window serves all its tooltips (a window of the player table has dozens, and
+        every one of them had a binding of its own that Tk ran on each activation).
+        """
+        top = self._widget.winfo_toplevel()
+        registry = getattr(top, "_tooltips", None)
+        if registry is None:
+            registry = top._tooltips = set()
+            top.bind("<Activate>", lambda event: [tooltip._on_activate(event) for tooltip in list(registry)], add="+")
+        registry.add(self)
+        self._widget.bind("<Destroy>", lambda event: registry.discard(self) if event.widget is self._widget else None,
+                          add="+")
 
     def _create_window(self) -> None:
         """Built while the delay runs: creating a window on demand added ~130 ms to the first appearance."""

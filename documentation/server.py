@@ -6,6 +6,7 @@ from documentation.server_logger import ServerLogger
 from util.paths import resource_path
 
 PORT = 8080
+bound_port = None  # the port the server listens on, once it does: PORT, or another one when something else has PORT
 
 # Define the base directories for the server
 PAGES_DIR = resource_path('documentation/pages')
@@ -13,8 +14,9 @@ ASSETS_DIR = resource_path('documentation/web_assets')
 
 
 class DocumentationServer(socketserver.TCPServer):
-    # Without this a quick restart of the app fails to bind while the old socket sits in TIME_WAIT
-    allow_reuse_address = True
+    # Without this a quick restart of the app fails to bind while the old socket sits in TIME_WAIT. Not on Windows:
+    # there it lets a second socket bind a port that is being listened on, so a busy port would never be noticed
+    allow_reuse_address = os.name != "nt"
 
 
 class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -72,6 +74,23 @@ def load_config(config_path) -> dict:
     return config if isinstance(config, dict) else {}
 
 
+def bind_server():
+    """
+    The server on PORT, or on a free port when PORT is taken (by another application: the help must not open that
+    one's pages instead of its own); None when no port can be had. Localhost only: the documentation must not be
+    reachable from the network.
+    """
+    global bound_port
+    for port in (PORT, 0):
+        try:
+            httpd = DocumentationServer(("127.0.0.1", port), CustomHTTPRequestHandler)
+        except OSError:
+            continue
+        bound_port = httpd.server_address[1]
+        return httpd
+    return None
+
+
 def run_server(config_path):
     """Run the HTTP server; the JSON configuration file is optional."""
     config = load_config(config_path)
@@ -80,16 +99,12 @@ def run_server(config_path):
     global log
     log = ServerLogger(config=config, log_name="http_server").get_logger()
 
-    # Define the request handler
-    handler = CustomHTTPRequestHandler
-    # Localhost only: the documentation must not be reachable from the network
-    try:
-        httpd = DocumentationServer(("127.0.0.1", PORT), handler)
-    except OSError as error:
-        log.error(f"Documentation server not started, port {PORT} is unavailable: {error}")
+    httpd = bind_server()
+    if httpd is None:
+        log.error("Documentation server not started: no port is available")
         return
     with httpd:
-        log.info(f"Serving at port {PORT}")
+        log.info(f"Serving at port {bound_port}")
         httpd.serve_forever()
 
 

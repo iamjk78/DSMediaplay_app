@@ -14,6 +14,7 @@ import threading
 from gui_app.input_box import InputTextBox
 from gui_app.settings_dialog import SettingsWindow
 from gui_app.account_dialogs import EntryDialog, LanguageDialog
+from documentation import server as documentation_server
 from processor.csv_generator import CSVTaskFactory
 from api_testing.request_calls import LoginError
 from processor.input_processing import try_login
@@ -1200,8 +1201,10 @@ class DSMediaplayApp(tk.Tk):
             self.fill_password_details()
 
     def open_help(self):
-        webbrowser.open(f"http://localhost:8080/{self.lang.language}/")
-        # messagebox.showwarning("Not implemented", "Not yet implemented")
+        if not documentation_server.bound_port:  # the server has not started, or no port could be had for it
+            messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("help_unavailable"))
+            return
+        webbrowser.open(f"http://localhost:{documentation_server.bound_port}/{self.lang.language}/")
 
     def update_font(self, font):
         self.font = font
