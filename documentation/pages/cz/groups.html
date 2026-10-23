@@ -1,43 +1,171 @@
 <!DOCTYPE html>
 <html lang="cs">
-<!-- TODO: All the image links -->
 <head>
     <meta charset="UTF-8">
-    <title>Akce pro Seznamy - Uživatelská příručka DSMediaplay</title>
+    <title>Skupiny - Uživatelská příručka DSMediaplay</title>
     <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
-<h1>Akce pro Groups</h1>
-<nav>
-    <ul>
-        <li><a href="/cz/index.html">Domů</a></li>
-        <li><a href="/cz/players.html">Akce pro Playery</a></li>
-        <li><a href="/cz/playlists.html">Akce pro Playlisty</a></li>
-        <li><a href="/cz/help.html">Nápověda</a></li>
-    </ul>
-</nav>
-
-<section id="detailed_groups_with_playlists">
-    <h2>Nastavení playlistů ke skupinám</h2>
-
-    <section id="step-1-select-group-category">
-        <h3>Krok 1: Výběr kategorie Groups</h3>
-        <p>1. Otevřete ovládací panel DSMediaplay.</p>
-        <p>2. V rozevíracím menu "Vyber kategorii" vyberte "Groups".</p>
-        <p>3. V rozevíracím menu "Vyber činnost" vyberte "Nastavení - playlisty ke skupinám"</p>
-    </section>
-
-    <section id="step-2-input-group-data">
-        <h3>Krok 2: Vložení údajů o skupinách</h3>
-    </section>
-
-    <section class="run-action">
-    </section>
+    <h1>Skupiny</h1>
+    <nav>
+        <ul>
+            <li><a href="/cz/index.html">Domů</a></li>
+            <li><a href="/cz/window.html">Hlavní okno</a></li>
+            <li><a href="/cz/table.html">Tabulka přehrávačů</a></li>
+            <li><a href="/cz/playlists.html">Playlisty</a></li>
+            <li><a href="/cz/groups.html">Skupiny</a></li>
+            <li><a href="/cz/players.html">Přehrávače</a></li>
+            <li><a href="/cz/locations.html">Lokace</a></li>
+            <li><a href="/cz/assets.html">Assety</a></li>
+            <li><a href="/cz/deploy.html">Deploy</a></li>
+        </ul>
+    </nav>
+<section><p>Akce nad skupinami: jejich playlisty a platnost, parametry, přejmenování a úklid.</p><p>Činnosti této kategorie (název je přesně takový, jaký je v aplikaci):</p><ul>
+<li><a href="#get_detailed_groups_with_playlists">CSV - playlisty ke skupinám</a></li>
+<li><a href="#set_detailed_playlists_to_groups">Nastavení - playlisty ke skupinám</a></li>
+<li><a href="#remove_playlists_from_group">Odebrat - playlisty ze skupin</a></li>
+<li><a href="#remove_playlist_list">Odebrat - vybrané playlisty ze všech skupin</a></li>
+<li><a href="#set_group_rename">Přejmenování - skupiny</a></li>
+<li><a href="#get_group_settings">CSV - nastavení skupin</a></li>
+<li><a href="#set_group_settings">Nastavení - parametry skupiny</a></li>
+<li><a href="#set_add_detailed_playlist_to_group">Přidání - playlisty ke skupinám</a></li>
+<li><a href="#remove_expired_playlists">Odebrat - neplatné playlisty</a></li>
+<li><a href="#remove_all_expired_playlists">Odebrat všechny - neplatné playlisty</a></li>
+<li><a href="#create_group">Vytvoření - skupina</a></li>
+<li><a href="#get_group_unused">CSV - nepoužité skupiny</a></li>
+<li><a href="#remove_unused_groups">Smazání - nepoužívané skupiny</a></li>
+<li><a href="#remove_all_unused_groups">Smazání všech - nepoužívaných skupin</a></li>
+<li><a href="#get_identical_groups">CSV - stejné skupiny</a></li>
+</ul></section>
+<section id="get_detailed_groups_with_playlists">
+<h3>CSV - playlisty ke skupinám</h3>
+<p>Uloží do CSV skupiny a jejich playlisty včetně platnosti (data, dny v týdnu, časy). Soubor má tvar, který přijímá „Nastavení - playlisty ke skupinám“, takže se dá upravit a vložit zpět.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „CSV - playlisty ke skupinám“. Pak klikněte na „Spustit“.</p>
 </section>
-
-
-<footer>
-    <a href="/en/groups.html">English</a> | <a href="/cz/groups.html">Čeština</a>
-</footer>
+<section id="set_detailed_playlists_to_groups">
+<h3>Nastavení - playlisty ke skupinám</h3>
+<p>Nastavení playlistů skupiny: playlisty skupiny se nahradí uvedenými.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název skupiny</li><li>2. výchozí playlist (bez omezení; může být prázdný)</li><li>3. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, tabulátory ponechte):</li><li>   a) název playlistu</li><li>   b) platí od: datum nebo prázdné</li><li>   c) platí do: datum nebo prázdné</li><li>   d) dny v týdnu nebo prázdné</li><li>   e) od kolika hodin: čas nebo prázdné</li><li>   f) do kolika hodin: čas nebo prázdné</li></ul>
+<ul class="notes"><li>Jeden řádek na skupinu.</li><li>Datum: DD.MM.RRRR (např. 31.12.2026).</li><li>Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.</li><li>Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název skupiny&gt;</td><td>&lt;výchozí playlist&gt;</td><td>&lt;název playlistu&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>mo,tu,we,th,fr</td><td>08:00</td><td>18:00</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Nastavení - playlisty ke skupinám“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_playlists_from_group">
+<h3>Odebrat - playlisty ze skupin</h3>
+<p>Odebrání playlistů ze skupiny podle klíčového slova.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název skupiny</li><li>2. klíčové slovo (odeberou se playlisty, v jejichž názvu je; rozlišuje velikost písmen)</li></ul>
+<ul class="notes"></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název skupiny&gt;</td><td>&lt;klíčové slovo&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Odebrat - playlisty ze skupin“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_playlist_list">
+<h3>Odebrat - vybrané playlisty ze všech skupin</h3>
+<p>Odebrání vybraných playlistů ze všech skupin.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název playlistu (jeden na řádek)</li></ul>
+<ul class="notes"><li>Neexistující názvy se přeskočí s varováním.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název playlistu&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Odebrat - vybrané playlisty ze všech skupin“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_group_rename">
+<h3>Přejmenování - skupiny</h3>
+<p>Přejmenování skupin.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. stávající název skupiny</li><li>2. nový název</li></ul>
+<ul class="notes"><li>Nový název nesmí obsahovat mezeru, čárku, středník ani uvozovky, nesmí už existovat ani se opakovat.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;stávající název&gt;</td><td>&lt;nový název&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Přejmenování - skupiny“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="get_group_settings">
+<h3>CSV - nastavení skupin</h3>
+<p>Uloží do CSV nastavení skupin: rozlišení, orientaci, automatický restart a deploy, kombinování výchozího playlistu, spánek displeje a přehrávač videa. Tvar odpovídá akci „Nastavení - parametry skupin“.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „CSV - nastavení skupin“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_group_settings">
+<h3>Nastavení - parametry skupiny</h3>
+<p>Nastavení parametrů skupiny.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název skupiny</li><li>2. rozlišení (text jako v CSV exportu, např. 1080p)</li><li>3. orientace (text jako v CSV exportu, např. landscape)</li><li>4. automatický restart: čas HH:MM, prázdné = vypnuto</li><li>5. automatický deploy: čas HH:MM, prázdné = vypnuto</li><li>6. kombinovat výchozí playlist: true / false</li><li>7. přehrávat všechny vyhovující playlisty: true / false</li><li>8. LCD zapnout: čas HH:MM</li><li>9. LCD vypnout: čas HH:MM (8 a 9 vyplňte obě, nebo ani jednu)</li><li>10. video přehrávač: default / mpv / cvlc</li></ul>
+<ul class="notes"><li>Za ano se bere jen true, 1 nebo yes; cokoli jiného (i &quot;ano&quot;) je ne.</li><li>Jeden řádek na skupinu.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název skupiny&gt;</td><td>1080p</td><td>landscape</td><td>03:00</td><td>04:00</td><td>true</td><td>true</td><td>06:00</td><td>22:00</td><td>default</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Nastavení - parametry skupiny“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_add_detailed_playlist_to_group">
+<h3>Přidání - playlisty ke skupinám</h3>
+<p>Přidání playlistů ke skupině: přidají se ke stávajícím, ty zůstanou.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název skupiny</li><li>2. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, tabulátory ponechte):</li><li>   a) název playlistu</li><li>   b) platí od: datum nebo prázdné</li><li>   c) platí do: datum nebo prázdné</li><li>   d) dny v týdnu nebo prázdné</li><li>   e) od kolika hodin: čas nebo prázdné</li><li>   f) do kolika hodin: čas nebo prázdné</li></ul>
+<ul class="notes"><li>Jeden řádek na skupinu (bez sloupce výchozího playlistu).</li><li>Datum: DD.MM.RRRR (např. 31.12.2026).</li><li>Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.</li><li>Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název skupiny&gt;</td><td>&lt;název playlistu&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>mo,tu,we,th,fr</td><td>08:00</td><td>18:00</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Přidání - playlisty ke skupinám“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_expired_playlists">
+<h3>Odebrat - neplatné playlisty</h3>
+<p>Odebrání neplatných (prošlých) playlistů ze skupin.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název skupiny (jeden na řádek)</li></ul>
+<ul class="notes"></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název skupiny&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Odebrat - neplatné playlisty“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_all_expired_playlists">
+<h3>Odebrat všechny - neplatné playlisty</h3>
+<p>Ze všech skupin odebere playlisty, jejichž platnost (zapnuté omezení data) už skončila. Log napíše, které playlisty se ze které skupiny odebraly. Playlist samotný se nemaže.</p>
+<p class="kind">Nevyžaduje vstup, spustí se tlačítkem „Spustit“.</p>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Odebrat všechny - neplatné playlisty“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="create_group">
+<h3>Vytvoření - skupina</h3>
+<p>Vytvoření nových skupin.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. nový název skupiny (jeden na řádek)</li></ul>
+<ul class="notes"><li>Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;nový název skupiny&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Vytvoření - skupina“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="get_group_unused">
+<h3>CSV - nepoužité skupiny</h3>
+<p>Uloží do CSV skupiny, do kterých nepatří žádný přehrávač.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „CSV - nepoužité skupiny“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_unused_groups">
+<h3>Smazání - nepoužívané skupiny</h3>
+<p>Smazání nepoužívaných skupin.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název skupiny (jeden na řádek)</li></ul>
+<ul class="notes"><li>Skupiny se štítkem &quot;test&quot; se přeskočí.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název skupiny&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Smazání - nepoužívané skupiny“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_all_unused_groups">
+<h3>Smazání všech - nepoužívaných skupin</h3>
+<p>Smaže všechny skupiny, do kterých nepatří žádný přehrávač. Před smazáním se zobrazí seznam a aplikace se zeptá.</p>
+<p class="kind">Nevyžaduje vstup, spustí se tlačítkem „Spustit“.</p>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „Smazání všech - nepoužívaných skupin“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="get_identical_groups">
+<h3>CSV - stejné skupiny</h3>
+<p>Uloží do CSV skupiny, které mají stejné playlisty (se stejnou platností) a stejnou orientaci, tedy skupiny, které by šly sloučit.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Groups</b> a činnost „CSV - stejné skupiny“. Pak klikněte na „Spustit“.</p>
+</section>
+    <footer>
+        <a href="/en/groups.html">English</a>
+        | <a href="/cz/groups.html">Čeština</a>
+    </footer>
 </body>
 </html>

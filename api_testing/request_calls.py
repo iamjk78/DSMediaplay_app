@@ -62,6 +62,19 @@ def main_account_url(url: str) -> str:
     return url if netloc == parsed.netloc else parsed._replace(netloc=netloc).geturl()
 
 
+def local_time_of_day(iso: str) -> Optional[str]:
+    """
+    The "HH:MM" that stands for a time of the day stored as a date: the web app writes it next to the time (as
+    `absoluteTime`) and so does this one. The times of the day are stored with the date 1970-01-01, when Central
+    Europe was one hour ahead of UTC all the year (and the web app stores 23:00 as 22:00Z in summer as well).
+    """
+    try:
+        moment = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (moment + timedelta(hours=1)).strftime("%H:%M")
+
+
 def flatten(xss: List[Any]):
     return [x for xs in xss for x in xs]
 
@@ -1348,12 +1361,10 @@ class ServerApi:
         }
 
         if reboot_time:
-            request_body.update({
-                "reboot": {
-                    "enable": True,
-                    "time": reboot_time
-                }
-            })
+            reboot = {"enable": True, "time": reboot_time}
+            if local_time := local_time_of_day(reboot_time):
+                reboot["absoluteTime"] = local_time  # the web app writes it too, the time as the person sees it
+            request_body.update({"reboot": reboot})
         else:
             request_body.update({
                 "reboot": {

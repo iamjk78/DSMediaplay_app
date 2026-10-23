@@ -27,6 +27,24 @@ Nothing secret is stored in this repository or in the build.
 
 Changing a customer's URL invalidates its stored passwords (they are keyed by login and URL) - enter them again.
 
+## User guide
+
+The guide that the Help button opens (`documentation/pages/cz` and `/en`) is generated, not written by hand: the names of the
+buttons and actions, the input templates and the list of the actions come from the application itself, the other texts are in
+`tools/documentation_texts.py`. After changing an action or a text run
+
+```bash
+python tools/generate_documentation.py
+```
+
+and commit the pages (a test fails when they are not up to date). The pictures in the guide are taken by
+`tools/capture_documentation_images.sh` (macOS, with invented data).
+
+## Releasing
+
+The version of the application is in `util/version.py`. A release is a tag `v<that version>` (the build refuses any other); change the
+version, commit, then tag and push the tag, or run the `Build` workflow with `release_tag`.
+
 ## Build
 
 GitHub Actions (`Build` workflow, run manually or by pushing a `v*` tag) builds the Windows installer

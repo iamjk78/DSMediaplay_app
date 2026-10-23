@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Hlavní okno - Uživatelská příručka DSMediaplay</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+    <h1>Hlavní okno</h1>
+    <nav>
+        <ul>
+            <li><a href="/cz/index.html">Domů</a></li>
+            <li><a href="/cz/window.html">Hlavní okno</a></li>
+            <li><a href="/cz/table.html">Tabulka přehrávačů</a></li>
+            <li><a href="/cz/playlists.html">Playlisty</a></li>
+            <li><a href="/cz/groups.html">Skupiny</a></li>
+            <li><a href="/cz/players.html">Přehrávače</a></li>
+            <li><a href="/cz/locations.html">Lokace</a></li>
+            <li><a href="/cz/assets.html">Assety</a></li>
+            <li><a href="/cz/deploy.html">Deploy</a></li>
+        </ul>
+    </nav>
+
+<section>
+<h2>Účet, login a heslo</h2>
+<p><img class="screenshot" src="/assets/images/main_window_cz.png" alt="Hlavní okno" onerror="this.remove()"></p>
+<ul>
+<li><b>Zákaznický účet</b> a <b>Login</b>: vyberte účet a login. Tlačítka <b>+</b> a <b>−</b> vedle nich účet nebo login přidají či odeberou (s uloženými hesly). Adresa účtu musí začínat <code>https://</code>.</li>
+<li><b>Heslo</b> a „Uložit přihlašovací údaje“: aplikace se s údaji přihlásí k serveru; když se přihlášení podaří, heslo uloží do úložiště hesel (macOS Klíčenka, Windows Správce pověření). Do konfiguračního souboru se heslo nikdy nezapisuje.</li>
+<li>Uživatel zákaznického účtu (kolaborant) má adresu s koncem <code>_xxxx</code> (čtyři písmena za posledním podtržítkem). Aplikace pro něj automaticky použije adresu hlavního účtu, kde jsou přehrávače, a v logu to napíše.</li>
+<li>Tlačítka <b>Spustit</b>, <b>DEPLOY ALL</b>, <b>Live-view</b> a <b>Výpadky</b> jsou šedá, dokud není vybraný účet, login a heslo. Spustit navíc potřebuje vybranou činnost.</li>
+</ul>
+</section>
+<section>
+<h2>Kategorie a činnost</h2>
+<p>V „Vyber kategorii“ vyberte kategorii (Playlists, Groups, Players, Locations, Assets, Deploy), v „Vyber činnost“ činnost. Činnosti začínající „CSV“ soubor stahují, ostatní mění data na serveru. Všechny činnosti jsou popsané na stránkách kategorií.</p>
+</section>
+<section>
+<h2>Vstup</h2>
+<p>Tlačítko „Zadání vstupu“ je vidět jen u činností, které vstup berou. V okně je vzor: šedé řádky začínající <code>#</code> popisují sloupce, poslední řádek je příklad. Vzor můžete smazat, nebo nechat, nezměněné řádky vzoru se při zpracování přeskočí. Sloupce se oddělují tabulátorem (při kopírování z Excelu se vloží samy), jeden záznam je jeden řádek. Řádky se zpracovávají v pořadí, v jakém jsou napsané, a chyby uvádějí číslo řádku tak, jak ho vidíte.</p>
+<p>Vstup se zkontroluje celý, než se cokoli změní: když je v něm chyba (neznámý název, špatné datum nebo čas), nic se neprovede a log vypíše všechny chyby.</p>
+</section>
+<section>
+<h2>Spuštění a okno s logem</h2>
+<p>„Spustit“ otevře okno s logem. Ukazuje průběh a stav (<i>Pracuji</i>, <i>Hotovo</i>, <i>Chyba</i>, <i>Zrušeno</i>, <i>Zastaveno</i>). Tlačítka:</p>
+<ul>
+<li><b>STOP</b>: operaci zastaví po dokončení právě zpracovávané dávky. Co se už provedlo, se nevrátí. Po zastavení log napíše, po kolika krocích operace skončila.</li>
+<li><b>Zavřít</b>: zavře okno; když operace ještě běží, nejdřív se zeptá a zastaví ji.</li>
+<li><b>Ulož</b>: uloží log do textového souboru.</li>
+</ul>
+<p>Před nevratnou činností (smazání, Deploy) se v okně s logem zobrazí, co se stane (seznam, počet přehrávačů), a aplikace se zeptá; výchozí odpověď je „Ne“.</p>
+</section>
+<section>
+<h2>Soubory CSV</h2>
+<p>Činnosti „CSV - …“ uloží soubor do složky Stažené (Downloads) pod názvem <code>účet-činnost-datum.csv</code> a po dokončení napíšou cestu. Soubor je oddělený středníky v UTF-8 s označením pro tabulkové procesory, takže se diakritika otevře správně. Co v souboru začíná znakem <code>=</code>, <code>@</code> nebo je to slovo se znaménkem, dostane na začátku apostrof, aby ho tabulka nespustila jako vzorec.</p>
+</section>
+<section>
+<h2>Rychlá tlačítka</h2>
+<ul>
+<li><b>Výpadky</b>: tabulka přehrávačů předfiltrovaná na aktivní přehrávače, které jsou offline, s nejnovějším hlášením nahoře.</li>
+<li><b>Live-view</b>: tabulka všech přehrávačů se snímky obrazovky. Viz <a href="/cz/table.html">Tabulka přehrávačů</a>.</li>
+<li><b>DEPLOY ALL</b>: nasazení na všechny online přehrávače účtu. Před spuštěním se zobrazí jejich počet a aplikace se zeptá.</li>
+</ul>
+</section>
+<section>
+<h2>Nastavení a nápověda</h2>
+<p>Tlačítko „Nastavení“: jazyk, písmo, velikost písma a Deploy (velikost dávky a interval mezi dávkami v sekundách). Jazyk nebo písmo se po uložení použijí v celém okně; změna dávky nic nezavírá. „Obnovit výchozí“ vrátí výchozí hodnoty. Název okna ukazuje verzi aplikace. Tlačítko „Nápověda“ otevře tuto příručku.</p>
+</section>
+<section>
+<h2>Kdyby něco nešlo</h2>
+<ul>
+<li><b>Přihlášení se nepodařilo ověřit</b>: zkontrolujte heslo a připojení k internetu. Chyba serveru (kód 5xx) se hlásí zvlášť, není to špatné heslo.</li>
+<li><b>Chyba při zpracování vstupu</b>: log vypíše číslo řádku a důvod; po opravě vstup uložte znovu.</li>
+<li><b>Poškozený soubor s účty</b>: při startu se aplikace zeptá, jestli ho uložit vedle pod jiným názvem a začít s prázdným seznamem. Hesla zůstávají v úložišti hesel.</li>
+<li><b>Nápověda se neotevře</b>: aplikace použije volný port, když je 8080 obsazený jinou aplikací.</li>
+</ul>
+</section>
+
+    <footer>
+        <a href="/en/window.html">English</a>
+        | <a href="/cz/window.html">Čeština</a>
+    </footer>
+</body>
+</html>

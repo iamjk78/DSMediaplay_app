@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabulka přehrávačů - Uživatelská příručka DSMediaplay</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+    <h1>Tabulka přehrávačů</h1>
+    <nav>
+        <ul>
+            <li><a href="/cz/index.html">Domů</a></li>
+            <li><a href="/cz/window.html">Hlavní okno</a></li>
+            <li><a href="/cz/table.html">Tabulka přehrávačů</a></li>
+            <li><a href="/cz/playlists.html">Playlisty</a></li>
+            <li><a href="/cz/groups.html">Skupiny</a></li>
+            <li><a href="/cz/players.html">Přehrávače</a></li>
+            <li><a href="/cz/locations.html">Lokace</a></li>
+            <li><a href="/cz/assets.html">Assety</a></li>
+            <li><a href="/cz/deploy.html">Deploy</a></li>
+        </ul>
+    </nav>
+
+<section>
+<p><img class="screenshot" src="/assets/images/players_table_cz.png" alt="Tabulka přehrávačů" onerror="this.remove()"></p>
+<p>Otevře ji <b>Live-view</b>, <b>Výpadky</b> nebo činnost Players → „Snímek obrazovky - zobrazit“. Data se stáhnou ze serveru a filtry pracují nad nimi; v dolní části je „Zobrazeno N z M“ a čas poslední aktualizace.</p>
+</section>
+<section>
+<h2>Sloupce</h2>
+<p>Název, Stav (Online/Offline), Skupina, Lokace, Kategorie, Synchronizováno, Reportováno, Poznámka, Teplota a Verze. Tlačítka vedle „Zobrazení sloupců“ sloupce zobrazují a skrývají (zelené je zobrazený, červené skrytý); Teplota a Verze jsou ve výchozím stavu skryté. Šířku sloupce změníte tažením černé čáry mezi sloupci, „Výchozí sloupce“ vrátí výchozí šířky. Velikost písma v okně mění tlačítka <b>A</b>. Velikost okna, sloupců a písma si aplikace pamatuje pro každý účet.</p>
+</section>
+<section>
+<h2>Filtry a řazení</h2>
+<ul>
+<li>Pod záhlavím je filtr pro každý sloupec: text (název, poznámka; bez ohledu na velikost písmen a diakritiku), výběr (stav, skupina, lokace, kategorie), stáří (synchronizováno, reportováno) a teplota. Výběr „(vše)“ filtr vypne.</li>
+<li>„Reset“ zruší všechny filtry.</li>
+<li>Kliknutí na záhlaví sloupce řadí podle něj, druhé kliknutí obrátí směr. Přehrávače, které nemají hodnotu (nikdy se nehlásily, nemají teplotu), jsou vždy na konci.</li>
+</ul>
+</section>
+<section>
+<h2>Aktualizace</h2>
+<p>„Aktualizovat“ načte přehrávače znovu (nejdřív za 10 sekund po předchozím načtení); otevřené okno se samo aktualizuje po 10 minutách. Výpadky při otevření data aktualizují vždy.</p>
+</section>
+<section>
+<h2>Snímek obrazovky</h2>
+<p>Tlačítko „Snímek“ u online přehrávače ukáže aktuální snímek jeho obrazovky v samostatném okně (nejvýše 5 oken najednou); okno si pamatuje velikost. U offline přehrávače je tlačítko červené a nedá se stisknout.</p>
+</section>
+<section>
+<h2>Kopírování textu</h2>
+<p>Text v polích tabulky jde označit myší (tažením část textu, dvojklikem slovo, trojklikem celé pole) a zkopírovat běžnou zkratkou (Cmd+C, na Windows Ctrl+C). Pravé tlačítko myši (na macOS i Ctrl+klik) otevře nabídku: „Kopírovat“ zkopíruje označený text, nebo celé pole, když nic označeno není, a „Kopírovat řádek“ zkopíruje zobrazené sloupce řádku oddělené tabulátory, takže se po vložení do Excelu rozdělí do buněk.</p>
+</section>
+<section>
+<h2>Výpadky</h2>
+<p>Tlačítko <b>Výpadky</b> otevře tabulku se smazanými filtry, s viditelným sloupcem „Reportováno“, s filtrem na offline přehrávače, jejichž název obsahuje „aktivni“ (podle názvosloví přehrávačů), a seřazenou tak, že nahoře jsou přehrávače s nejnovějším hlášením.</p>
+</section>
+
+    <footer>
+        <a href="/en/table.html">English</a>
+        | <a href="/cz/table.html">Čeština</a>
+    </footer>
+</body>
+</html>

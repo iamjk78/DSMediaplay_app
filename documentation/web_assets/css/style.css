@@ -101,3 +101,39 @@ a:hover {
 footer a {
     color: white;
 }
+
+/* The generated guide (tools/generate_documentation.py) */
+table.example {
+    border-collapse: collapse;
+    margin: 8px 0 16px;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+table.example td {
+    border: 1px solid #b7c9e2;
+    padding: 4px 8px;
+    background-color: #f0f5fc;
+}
+
+p.kind {
+    color: #555;
+    font-style: italic;
+    margin: 4px 0;
+}
+
+p.how {
+    border-left: 4px solid #0056b3;
+    padding-left: 10px;
+    margin: 12px 0 4px;
+}
+
+ul.notes {
+    color: #444;
+}
+
+img.screenshot {
+    max-width: 100%;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>The table of players - DSMediaplay User Guide</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+    <h1>The table of players</h1>
+    <nav>
+        <ul>
+            <li><a href="/en/index.html">Home</a></li>
+            <li><a href="/en/window.html">Main window</a></li>
+            <li><a href="/en/table.html">The table of players</a></li>
+            <li><a href="/en/playlists.html">Playlists</a></li>
+            <li><a href="/en/groups.html">Groups</a></li>
+            <li><a href="/en/players.html">Players</a></li>
+            <li><a href="/en/locations.html">Locations</a></li>
+            <li><a href="/en/assets.html">Assets</a></li>
+            <li><a href="/en/deploy.html">Deploy</a></li>
+        </ul>
+    </nav>
+
+<section>
+<p><img class="screenshot" src="/assets/images/players_table_en.png" alt="The table of players" onerror="this.remove()"></p>
+<p>It is opened by <b>Live-view</b>, <b>Outages</b> or the action Players → “Screenshot - show”. The data is downloaded from the server and the filters work on it; the lower part shows “Showing N of M” and the time of the last update.</p>
+</section>
+<section>
+<h2>Columns</h2>
+<p>Name, Status (Online/Offline), Group, Location, Label, Synchronized, Reported, Note, Temperature and Version. The buttons next to “Show columns” show and hide the columns (green is shown, red is hidden); Temperature and Version are hidden by default. Drag the black line between columns to change the width of a column; “Default columns” returns the default widths. The <b>A</b> buttons change the size of the text in the window. The application remembers the size of the window, the columns and the text for every account.</p>
+</section>
+<section>
+<h2>Filters and sorting</h2>
+<ul>
+<li>Under the header there is a filter for every column: text (name, note; letter case and accents do not matter), a choice (status, group, location, label), an age (synchronized, reported) and a temperature. The choice “(all)” switches a filter off.</li>
+<li>“Reset” clears all the filters.</li>
+<li>A click on the header of a column sorts by it, a second click reverses the direction. Players that have no value (never reported, no temperature) are always at the end.</li>
+</ul>
+</section>
+<section>
+<h2>Updating</h2>
+<p>“Refresh” loads the players again (at the earliest 10 seconds after the previous load); a window that is left open updates itself after 10 minutes. Outages always updates the data when it opens.</p>
+</section>
+<section>
+<h2>Screenshot</h2>
+<p>The “Screenshot” button of an online player shows the current screenshot of its screen in a window of its own (at most 5 windows at a time); the window remembers its size. For an offline player the button is red and cannot be pressed.</p>
+</section>
+<section>
+<h2>Copying text</h2>
+<p>The text in the fields of the table can be selected with the mouse (a drag selects a part, a double click a word, a triple click the whole field) and copied with the usual shortcut (Cmd+C, Ctrl+C on Windows). The other mouse button (Ctrl+click too on macOS) opens a menu: “Copy” copies the selected text, or the whole field when nothing is selected, and “Copy row” copies the shown columns of the row separated by tabs, so that pasted into a spreadsheet they fall into cells.</p>
+</section>
+<section>
+<h2>Outages</h2>
+<p>The <b>Outages</b> button opens the table with the filters cleared, the column “Reported” shown, a filter for offline players whose name contains “aktivni” (after the naming of the players), and sorted so that the players with the newest report are at the top.</p>
+</section>
+
+    <footer>
+        <a href="/cz/table.html">Čeština</a>
+        | <a href="/en/table.html">English</a>
+    </footer>
+</body>
+</html>

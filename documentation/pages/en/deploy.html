@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Deploy - DSMediaplay User Guide</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+    <h1>Deploy</h1>
+    <nav>
+        <ul>
+            <li><a href="/en/index.html">Home</a></li>
+            <li><a href="/en/window.html">Main window</a></li>
+            <li><a href="/en/table.html">The table of players</a></li>
+            <li><a href="/en/playlists.html">Playlists</a></li>
+            <li><a href="/en/groups.html">Groups</a></li>
+            <li><a href="/en/players.html">Players</a></li>
+            <li><a href="/en/locations.html">Locations</a></li>
+            <li><a href="/en/assets.html">Assets</a></li>
+            <li><a href="/en/deploy.html">Deploy</a></li>
+        </ul>
+    </nav>
+<section><p>Sending the content to the players at once.</p><p>The actions of this category (the name is exactly as in the application):</p><ul>
+<li><a href="#set_deploy_all_players">Deploy - all players</a></li>
+<li><a href="#set_deploy_selected_groups">Deploy - selected groups</a></li>
+</ul></section>
+<section id="set_deploy_all_players">
+<h3>Deploy - all players</h3>
+<p>Starts a deploy to all the online players of the selected account, in batches. The same as the DEPLOY ALL button. Before it starts, the log window shows the number of players and asks; players without a group and offline players are skipped.</p>
+<p class="kind">Takes no input, it is run with “Start”.</p>
+<p class="how">Select the category <b>Deploy</b> and the action “Deploy - all players”. Then click “Start”.</p>
+</section>
+<section id="set_deploy_selected_groups">
+<h3>Deploy - selected groups</h3>
+<p>Deploy the selected groups: the content is deployed to all online players of these groups.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. group name (one per line)</li></ul>
+<ul class="notes"></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td></tr></table>
+<p class="how">Select the category <b>Deploy</b> and the action “Deploy - selected groups”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+    <footer>
+        <a href="/cz/deploy.html">Čeština</a>
+        | <a href="/en/deploy.html">English</a>
+    </footer>
+</body>
+</html>

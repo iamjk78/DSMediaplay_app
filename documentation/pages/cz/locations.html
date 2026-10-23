@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Lokace - Uživatelská příručka DSMediaplay</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+    <h1>Lokace</h1>
+    <nav>
+        <ul>
+            <li><a href="/cz/index.html">Domů</a></li>
+            <li><a href="/cz/window.html">Hlavní okno</a></li>
+            <li><a href="/cz/table.html">Tabulka přehrávačů</a></li>
+            <li><a href="/cz/playlists.html">Playlisty</a></li>
+            <li><a href="/cz/groups.html">Skupiny</a></li>
+            <li><a href="/cz/players.html">Přehrávače</a></li>
+            <li><a href="/cz/locations.html">Lokace</a></li>
+            <li><a href="/cz/assets.html">Assety</a></li>
+            <li><a href="/cz/deploy.html">Deploy</a></li>
+        </ul>
+    </nav>
+<section><p>Akce nad lokacemi: časy zapnutí a vypnutí displejů, přejmenování, vytvoření a úklid.</p><p>Činnosti této kategorie (název je přesně takový, jaký je v aplikaci):</p><ul>
+<li><a href="#get_locations_plan">CSV - časy lokace</a></li>
+<li><a href="#set_location_plan">Nastavení - časy lokace</a></li>
+<li><a href="#set_location_rename">Přejmenování - lokace</a></li>
+<li><a href="#create_location">Vytvoření - lokace</a></li>
+<li><a href="#remove_unused_locations">Smazání - nepoužívané lokace</a></li>
+<li><a href="#remove_all_unused_locations">Smazání všech - nepoužívaných lokací</a></li>
+<li><a href="#get_location_unused">CSV - nepoužívané lokace</a></li>
+</ul></section>
+<section id="get_locations_plan">
+<h3>CSV - časy lokace</h3>
+<p>Uloží do CSV časy zapnutí a vypnutí displejů v lokacích po dnech v týdnu. Tvar odpovídá akci „Nastavení - časy lokace“.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Locations</b> a činnost „CSV - časy lokace“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_location_plan">
+<h3>Nastavení - časy lokace</h3>
+<p>Nastavení časů zapnutí a vypnutí lokace pro každý den týdne.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název lokace</li><li>2. neděle - zapnutí</li><li>3. neděle - vypnutí</li><li>4. pondělí - zapnutí</li><li>5. pondělí - vypnutí</li><li>6. úterý - zapnutí</li><li>7. úterý - vypnutí</li><li>8. středa - zapnutí</li><li>9. středa - vypnutí</li><li>10. čtvrtek - zapnutí</li><li>11. čtvrtek - vypnutí</li><li>12. pátek - zapnutí</li><li>13. pátek - vypnutí</li><li>14. sobota - zapnutí</li><li>15. sobota - vypnutí</li></ul>
+<ul class="notes"><li>Dny jdou od neděle, stejně jako v CSV exportu a v DSMediaplay.</li><li>Vždy všech 15 sloupců; prázdná buňka = v ten den se nic nenastaví.</li><li>Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název lokace&gt;</td><td></td><td></td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td></td><td></td></tr></table>
+<p class="how">Vyberte kategorii <b>Locations</b> a činnost „Nastavení - časy lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_location_rename">
+<h3>Přejmenování - lokace</h3>
+<p>Přejmenování lokací.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. stávající název lokace</li><li>2. nový název</li></ul>
+<ul class="notes"><li>Nový název nesmí obsahovat mezeru (ani jiné bílé znaky) a nesmí už existovat.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;stávající název&gt;</td><td>&lt;nový název&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Locations</b> a činnost „Přejmenování - lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="create_location">
+<h3>Vytvoření - lokace</h3>
+<p>Vytvoření nových lokací.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. nový název lokace (jeden na řádek)</li></ul>
+<ul class="notes"><li>Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;nový název lokace&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Locations</b> a činnost „Vytvoření - lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_unused_locations">
+<h3>Smazání - nepoužívané lokace</h3>
+<p>Smazání nepoužívaných lokací.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název lokace (jeden na řádek)</li></ul>
+<ul class="notes"><li>Lokace se štítkem &quot;test&quot; se přeskočí.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název lokace&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Locations</b> a činnost „Smazání - nepoužívané lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="remove_all_unused_locations">
+<h3>Smazání všech - nepoužívaných lokací</h3>
+<p>Smaže všechny lokace, ve kterých není žádný přehrávač. Před smazáním se zobrazí seznam a aplikace se zeptá.</p>
+<p class="kind">Nevyžaduje vstup, spustí se tlačítkem „Spustit“.</p>
+<p class="how">Vyberte kategorii <b>Locations</b> a činnost „Smazání všech - nepoužívaných lokací“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="get_location_unused">
+<h3>CSV - nepoužívané lokace</h3>
+<p>Uloží do CSV lokace, ve kterých není žádný přehrávač.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Locations</b> a činnost „CSV - nepoužívané lokace“. Pak klikněte na „Spustit“.</p>
+</section>
+    <footer>
+        <a href="/en/locations.html">English</a>
+        | <a href="/cz/locations.html">Čeština</a>
+    </footer>
+</body>
+</html>

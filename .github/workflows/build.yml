@@ -44,6 +44,8 @@ jobs:
         if: env.RELEASE_TAG != ''
         run: |
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "Invalid release tag: $RELEASE_TAG"; exit 1; }
+          version=$(sed -n 's/^VERSION = "\(.*\)"$/\1/p' util/version.py)
+          [ "$RELEASE_TAG" = "v$version" ] || { echo "The tag $RELEASE_TAG is not the version of the application, v$version (util/version.py)"; exit 1; }
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "A release is built only from a commit that is on main"; exit 1; }
 

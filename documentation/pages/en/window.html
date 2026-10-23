@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Main window - DSMediaplay User Guide</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+    <h1>Main window</h1>
+    <nav>
+        <ul>
+            <li><a href="/en/index.html">Home</a></li>
+            <li><a href="/en/window.html">Main window</a></li>
+            <li><a href="/en/table.html">The table of players</a></li>
+            <li><a href="/en/playlists.html">Playlists</a></li>
+            <li><a href="/en/groups.html">Groups</a></li>
+            <li><a href="/en/players.html">Players</a></li>
+            <li><a href="/en/locations.html">Locations</a></li>
+            <li><a href="/en/assets.html">Assets</a></li>
+            <li><a href="/en/deploy.html">Deploy</a></li>
+        </ul>
+    </nav>
+
+<section>
+<h2>Account, login and password</h2>
+<p><img class="screenshot" src="/assets/images/main_window_en.png" alt="The main window" onerror="this.remove()"></p>
+<ul>
+<li><b>Customer Account</b> and <b>Login</b>: select the account and the login. The <b>+</b> and <b>−</b> buttons next to them add or remove an account or a login (with the stored passwords). The address of an account must start with <code>https://</code>.</li>
+<li><b>Password</b> and “Save Login Details”: the application logs in to the server with the details; when that works, it stores the password in the password store (the macOS Keychain, the Windows Credential Manager). The password is never written to the configuration file.</li>
+<li>A user of a customer account (a collaborator) has an address ending in <code>_xxxx</code> (four letters after the last underscore). The application uses the address of the main account, where the players are, and says so in the log.</li>
+<li>The buttons <b>Start</b>, <b>DEPLOY ALL</b>, <b>Live-view</b> and <b>Outages</b> are grey until an account, a login and a password are given. Start also needs a selected action.</li>
+</ul>
+</section>
+<section>
+<h2>Category and action</h2>
+<p>In “Select Category” select a category (Playlists, Groups, Players, Locations, Assets, Deploy), in “Select Action” an action. The actions that start with “CSV” download a file, the others change data on the server. All the actions are described on the pages of the categories.</p>
+</section>
+<section>
+<h2>Input</h2>
+<p>The “Input Prompt” button is shown only for actions that take input. The window holds a template: the grey lines starting with <code>#</code> describe the columns, the last line is an example. You can delete the template or leave it, the lines of it that were not changed are skipped. The columns are separated by tabs (pasting from a spreadsheet does it), one record is one line. The lines are processed in the order they are written, and errors give the number of the line as you see it.</p>
+<p>The input is checked as a whole before anything is changed: when something in it is wrong (an unknown name, a wrong date or time), nothing is done and the log lists all the errors.</p>
+</section>
+<section>
+<h2>Running and the log window</h2>
+<p>“Start” opens the log window. It shows the progress and the state (<i>Working</i>, <i>Done</i>, <i>Error</i>, <i>Cancelled</i>, <i>Stopped</i>). The buttons:</p>
+<ul>
+<li><b>STOP</b>: stops the operation when the batch being processed is finished. What has been done is not undone. After a stop the log says after how many steps the operation ended.</li>
+<li><b>Close</b>: closes the window; when the operation is still running, it asks first and stops it.</li>
+<li><b>Save</b>: saves the log to a text file.</li>
+</ul>
+<p>Before something that cannot be undone (deleting, deploy) the log window shows what is going to happen (the list, the number of players) and asks; the default answer is “No”.</p>
+</section>
+<section>
+<h2>CSV files</h2>
+<p>The “CSV - …” actions save a file to the Downloads folder as <code>account-action-date.csv</code> and say the path when done. The file is separated by semicolons, in UTF-8 with the mark spreadsheet applications need, so the accents open correctly. A text in the file that starts with <code>=</code> or <code>@</code>, or is a word with a sign, gets an apostrophe in front so a spreadsheet does not run it as a formula.</p>
+</section>
+<section>
+<h2>The quick buttons</h2>
+<ul>
+<li><b>Outages</b>: the table of the players prefiltered to the active players that are offline, with the newest report at the top.</li>
+<li><b>Live-view</b>: the table of all the players with screenshots. See <a href="/en/table.html">The table of players</a>.</li>
+<li><b>DEPLOY ALL</b>: a deploy to all the online players of the account. Their number is shown and confirmed first.</li>
+</ul>
+</section>
+<section>
+<h2>Settings and help</h2>
+<p>The “Settings” button: language, font, font size and Deploy (the size of a batch and the interval between batches in seconds). A new language or font applies to the whole window after saving; changing the batch closes nothing. “Restore defaults” returns the defaults. The title of the window shows the version of the application. The “Help” button opens this guide.</p>
+</section>
+<section>
+<h2>If something does not work</h2>
+<ul>
+<li><b>The login could not be verified</b>: check the password and the internet connection. A server error (code 5xx) is reported separately, it is not a wrong password.</li>
+<li><b>An error in the input</b>: the log gives the number of the line and the reason; save the input again after the correction.</li>
+<li><b>A damaged accounts file</b>: at the start the application asks whether to keep it next to itself under another name and begin with an empty list. The passwords stay in the password store.</li>
+<li><b>The help does not open</b>: the application uses a free port when 8080 is taken by another application.</li>
+</ul>
+</section>
+
+    <footer>
+        <a href="/cz/window.html">Čeština</a>
+        | <a href="/en/window.html">English</a>
+    </footer>
+</body>
+</html>

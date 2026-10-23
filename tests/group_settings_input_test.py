@@ -108,6 +108,24 @@ class GroupSettingsRequestTest(unittest.TestCase):
             with self.subTest(on=on, off=off):
                 self.assertEqual(self.body(on, off)["sleep"], {"enable": False})
 
+    def reboot(self, iso):
+        api = self.make_api()
+        api.set_group_settings("G", "1080p", "landscape", iso, None, False, True, None, None, "default")
+        return api._make_request.call_args.kwargs["json"]["reboot"]
+
+    def test_the_restart_is_written_with_the_time_as_the_person_sees_it_like_the_web_app_does(self):
+        # what the web app stores for 23:00 (checked on the demo account, in summer too): the time and next to it the text
+        self.assertEqual(self.reboot("1970-01-01T22:00:00.000Z"),
+                         {"enable": True, "time": "1970-01-01T22:00:00.000Z", "absoluteTime": "23:00"})
+
+    def test_the_time_as_the_person_sees_it_goes_past_midnight_and_a_time_that_is_not_one_adds_nothing(self):
+        self.assertEqual(self.reboot("1970-01-01T23:30:00.000Z")["absoluteTime"], "00:30")
+        self.assertEqual(self.reboot("1970-01-01T00:00:00.000Z")["absoluteTime"], "01:00")
+        self.assertNotIn("absoluteTime", self.reboot("not a time"))
+
+    def test_no_restart_is_just_switched_off(self):
+        self.assertEqual(self.reboot(None), {"enable": False})
+
     def test_the_times_of_a_display_schedule_that_is_switched_off_are_not_exported(self):
         api = self.make_api()
         api._make_request.return_value = {"data": [
