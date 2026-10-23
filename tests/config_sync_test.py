@@ -52,9 +52,11 @@ class ConfigSyncTest(unittest.TestCase):
         self.directory.cleanup()
 
     def write(self, data):
-        time.sleep(0.02)  # a distinguishable modification time
         with open(self.path, "w", encoding="utf-8") as file:
             json.dump(data, file)
+        # A modification time that is certainly not the one of the write before, whatever the file system measures in
+        self._modified = getattr(self, "_modified", 1_700_000_000_000_000_000) + 10 ** 9
+        os.utime(self.path, ns=(self._modified, self._modified))
 
     def read(self):
         with open(self.path, encoding="utf-8") as file:

@@ -32,6 +32,10 @@ class _AssertHostnameAdapter(HTTPAdapter):
         super().init_poolmanager(*args, assert_hostname=self._assert_hostname, **kwargs)
 
 
+# The servers of the accounts: only for these the name check may use the hyphenated name (see below)
+SERVER_DOMAINS = (".signage.dsmediaplay.com",)
+
+
 def _assert_hostname_for(url: str) -> Optional[str]:
     """
     Wildcard certificates never match hostnames containing an underscore (e.g. shop_admin.signage...), although
@@ -39,7 +43,9 @@ def _assert_hostname_for(url: str) -> Optional[str]:
     check uses the hyphenated equivalent, which the wildcard covers.
     """
     host = urlparse(url).hostname or ""
-    return host.replace("_", "-") if "_" in host else None
+    if "_" not in host or not host.endswith(SERVER_DOMAINS):  # not for any other host: that one must match as it is
+        return None
+    return host.replace("_", "-")
 
 
 # "_jdoe", "_asmi", "_bwhi": an underscore and four letters ending the first part of the host name (before "." or the port)
@@ -316,7 +322,7 @@ class ServerApi:
             session.mount("https://", _AssertHostnameAdapter(self._assert_hostname))
             return session.request(method, url, **kwargs)
 
-    def _make_request(self, method: str, endpoint: str, **kwargs) -> json:
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         url = f"{self._url}{endpoint}"
         # The token travels in a header, not in the address: an address ends up in error texts, logs and proxies
         kwargs["headers"] = {"Content-Type": "application/json", TOKEN_HEADER: self._session_token,
@@ -409,7 +415,7 @@ class ServerApi:
 
         return players
 
-    def trigger_player_deploy(self, player_id: str, group_id: str, group_name: str) -> json:
+    def trigger_player_deploy(self, player_id: str, group_id: str, group_name: str) -> Dict[str, Any]:
         """
         Forces a single player to check in with the server for new content immediately,
         by re-sending its current group assignment (does not affect other players in the group).
@@ -614,7 +620,7 @@ class ServerApi:
         response = self._make_request("get", "/playlists")
         return [obj.get("name", "") for obj in response.get("data", "")]
 
-    def _set_group_playlists(self, group_id: str, group: str, playlists: List[Dict]) -> json:
+    def _set_group_playlists(self, group_id: str, group: str, playlists: List[Dict]) -> Dict[str, Any]:
         """
         Helper function to set playlists for a group.
 
@@ -675,7 +681,7 @@ class ServerApi:
 
     def set_playlist_to_group(self, group: str,
                               playlists: List[Tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]]) \
-            -> json:
+            -> Dict[str, Any]:
         """
         Updates the group's playlists with the specified playlist tuples.
 
@@ -708,7 +714,7 @@ class ServerApi:
         return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed))
 
     def set_playlist_to_group_detailed(self, group: str,
-                                       playlists: List[Tuple[str, Optional[str], Optional[str], Optional[List[int]], Optional[str], Optional[str]]]) -> json:
+                                       playlists: List[Tuple[str, Optional[str], Optional[str], Optional[List[int]], Optional[str], Optional[str]]]) -> Dict[str, Any]:
         """
         Sets detailed playlists for a group.
 
@@ -754,7 +760,7 @@ class ServerApi:
         managed = ("durationEnable", "startdate", "enddate", "weekdays", "timeEnable", "starttime", "endtime")
         return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed))
 
-    def set_group_to_player(self, group: str, player: str) -> json:
+    def set_group_to_player(self, group: str, player: str) -> Dict[str, Any]:
         """
         Sets player to given group.
 
@@ -838,7 +844,7 @@ class ServerApi:
             ]
         return group_playlist_details
 
-    def set_assets_to_playlist(self, playlist: str, assets: List[str]) -> json:
+    def set_assets_to_playlist(self, playlist: str, assets: List[str]) -> Dict[str, Any]:
         """
         Makes the assets of the playlist the listed ones, in that order.
 
@@ -996,7 +1002,7 @@ class ServerApi:
 
         raise NameResolutionError(playlist_name)
 
-    def set_player_note(self, player_name: str, note: str) -> json:
+    def set_player_note(self, player_name: str, note: str) -> Dict[str, Any]:
         """
         Updates the note for the specified player.
 
@@ -1028,7 +1034,7 @@ class ServerApi:
         """
         return [(obj.get("name", ""), obj.get("configLocation", "ERROR")) for obj in self.get_player_objects()]
 
-    def set_player_config_location(self, player_name: str, config_location: str) -> json:
+    def set_player_config_location(self, player_name: str, config_location: str) -> Dict[str, Any]:
         """
         Updates the player's configuration location.
 
@@ -1075,13 +1081,13 @@ class ServerApi:
     def get_additional_playlists(self) -> List[Tuple[str, List[str]]]:
         return [(obj.get("name", ""), obj.get("playlists", [])) for obj in self.get_player_objects()]
 
-    def set_player_additional_playlist(self, player_name: str, additional_playlists: List[str]) -> json:
+    def set_player_additional_playlist(self, player_name: str, additional_playlists: List[str]) -> Dict[str, Any]:
         player_id = self.get_player_id_by_name(player_name)
         request_body = {"playlists": additional_playlists}
 
         return self._make_request("post", f"/players/{player_id}", json=request_body)
 
-    def set_player_labels(self, player_name: str, labels: List[str]) -> json:
+    def set_player_labels(self, player_name: str, labels: List[str]) -> Dict[str, Any]:
         """
         Updates the labels for the specified player.
 
@@ -1180,7 +1186,7 @@ class ServerApi:
 
         return locations_data
 
-    def set_location(self, location_name: str, times: Dict[str, Dict[str, str]]) -> json:
+    def set_location(self, location_name: str, times: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
         """
         Sets the location settings.
 
@@ -1234,7 +1240,7 @@ class ServerApi:
                 row["weekDays"][i] = True
         return list(rows_by_times.values())
 
-    def rename_group(self, old_name: str, new_name: str) -> json:
+    def rename_group(self, old_name: str, new_name: str) -> Dict[str, Any]:
         """
         Renames a group.
 
@@ -1321,7 +1327,7 @@ class ServerApi:
 
     def set_group_settings(self, group: str, resolution: str, orientation: str, reboot_time: Optional[str],
                            deploy_everyday_time: Optional[str], combine_playlist: bool, all_eligible: bool,
-                           on_time: Optional[str], off_time: Optional[str], video_player: Optional[str]) -> json:
+                           on_time: Optional[str], off_time: Optional[str], video_player: Optional[str]) -> Dict[str, Any]:
         """
         Updates the settings for the specified group.
 
@@ -1418,7 +1424,7 @@ class ServerApi:
                 return location["_id"]
         raise NameResolutionError(name)
 
-    def rename_location(self, old_name: str, new_name: str) -> json:
+    def rename_location(self, old_name: str, new_name: str) -> Dict[str, Any]:
         """
         Renames a location from the old name to the new name.
 
@@ -1444,7 +1450,7 @@ class ServerApi:
         response["data"]["old_name"] = old_name
         return response
 
-    def rename_player(self, old_name: str, new_name: str) -> json:
+    def rename_player(self, old_name: str, new_name: str) -> Dict[str, Any]:
         """
         Renames a player from the old name to the new name.
 
@@ -1507,7 +1513,7 @@ class ServerApi:
 
         return removed
 
-    def create_location(self, name: str) -> json:
+    def create_location(self, name: str) -> Dict[str, Any]:
         """
         Creates a new location with the given name.
 
@@ -1525,7 +1531,7 @@ class ServerApi:
 
         return self._make_request("post", "/locations/", json=request_body)
 
-    def create_group(self, name: str) -> json:
+    def create_group(self, name: str) -> Dict[str, Any]:
         """
         Creates a new group with the given name.
 
@@ -1543,7 +1549,7 @@ class ServerApi:
 
         return self._make_request("post", "/groups/", json=request_body)
 
-    def create_player(self, name: str) -> json:
+    def create_player(self, name: str) -> Dict[str, Any]:
         """
         Creates a new player with the given name.
 
@@ -1563,7 +1569,7 @@ class ServerApi:
         self._player_ids = None  # there is one more
         return response
 
-    def create_playlist(self, name: str) -> json:
+    def create_playlist(self, name: str) -> Dict[str, Any]:
         """
         Creates a new playlist with the given name.
 
@@ -1581,7 +1587,7 @@ class ServerApi:
 
         return self._make_request("post", "/playlists/", json=request_body)
 
-    def create_label(self, name: str) -> json:
+    def create_label(self, name: str) -> Dict[str, Any]:
         """
         Creates a new label with the given name.
 
@@ -1638,7 +1644,7 @@ class ServerApi:
         """
         return [(obj["name"], obj.get("version", "N/A")) for obj in self.get_player_objects()]
 
-    def player_update(self, name: str) -> json:
+    def player_update(self, name: str) -> Dict[str, Any]:
         """
         Initiates a software update for the specified player.
 
@@ -1871,7 +1877,7 @@ class ServerApi:
 
         return players
 
-    def set_player_details(self, player_name: str, details: Dict[str, Any]) -> json:
+    def set_player_details(self, player_name: str, details: Dict[str, Any]) -> Dict[str, Any]:
         """
         Updates information about the specified player.
 
@@ -1967,7 +1973,7 @@ class ServerApi:
                            start_date: Optional[str] = None,
                            end_date: Optional[str] = None,
                            start_hour: Optional[str] = None,
-                           end_hour: Optional[str] = None) -> json:
+                           end_hour: Optional[str] = None) -> Dict[str, Any]:
         """
         Sets the validity period for the specified asset.
 

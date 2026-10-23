@@ -17,10 +17,6 @@ from documentation.server import run_server
 from util.paths import default_logins_file
 
 
-def start_server(js):
-    run_server(js)
-
-
 def self_test() -> int:
     """
     Builds the main window on an empty temporary configuration and asks the credential store, then ends: 0 when the
@@ -62,7 +58,7 @@ def main():
     if args.self_test:
         sys.exit(self_test())
     logins_file = args.json or str(default_logins_file())
-    server_thread = threading.Thread(target=start_server, args=(logins_file,))
+    server_thread = threading.Thread(target=run_server)  # the help takes nothing from the file of the accounts
     server_thread.daemon = True  # Thread will exit when the main program exits
     server_thread.start()
 

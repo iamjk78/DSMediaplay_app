@@ -91,9 +91,9 @@ def bind_server():
     return None
 
 
-def run_server(config_path):
-    """Run the HTTP server; the JSON configuration file is optional."""
-    config = load_config(config_path)
+def run_server(config_path=None):
+    """Run the HTTP server; the JSON configuration file (where to log, how much) is optional."""
+    config = load_config(config_path) if config_path else {}
 
     # Initialize the logger with the parsed configuration
     global log

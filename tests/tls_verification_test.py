@@ -29,6 +29,14 @@ class TlsVerificationTest(unittest.TestCase):
                          "shop-admin.signage.dsmediaplay.com")
         self.assertIsNone(_assert_hostname_for("https://shop-admin.signage.dsmediaplay.com"))
 
+    def test_the_hyphenated_name_is_used_only_for_the_servers_of_the_accounts(self):
+        for url in ("https://shop_admin.example.com", "https://shop_admin.signage.dsmediaplay.com.evil.example",
+                    "https://shop_admin.dsmediaplay.com", "https://shop_admin", "https://shop_admin.signage.example.com"):
+            with self.subTest(url=url):
+                self.assertIsNone(_assert_hostname_for(url))  # a name with an underscore must match as it is
+        self.assertEqual(_assert_hostname_for("https://SHOP_admin.signage.dsmediaplay.com:8443/api"),  # a host name has no case
+                         "shop-admin.signage.dsmediaplay.com")
+
     def test_adapter_passes_hostname_to_pool_manager(self):
         adapter = _AssertHostnameAdapter("shop-admin.signage.dsmediaplay.com")
 

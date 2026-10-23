@@ -45,6 +45,29 @@ class BindServerTest(unittest.TestCase):
             self.assertIsNone(server.bind_server())
 
 
+class RunServerTest(unittest.TestCase):
+    def test_the_help_server_starts_without_a_file_and_reads_none_of_the_accounts(self):
+        with patch.object(server, "load_config", side_effect=AssertionError("a file was read")), \
+                patch.object(server, "bind_server", return_value=None), patch.object(server, "ServerLogger"):
+            server.run_server()  # no port: it returns after saying so
+
+    def test_a_given_file_is_read_for_the_configuration(self):
+        with patch.object(server, "load_config", return_value={}) as load, \
+                patch.object(server, "bind_server", return_value=None), patch.object(server, "ServerLogger"):
+            server.run_server("config.json")
+
+        load.assert_called_once_with("config.json")
+
+    def test_the_application_starts_the_help_without_the_file_of_the_accounts(self):
+        import run
+        with patch.object(run.threading, "Thread") as thread, patch.object(run, "DSMediaplayApp") as app, \
+                patch("sys.argv", ["run.py"]):
+            run.main()
+
+        self.assertEqual(thread.call_args.kwargs, {"target": run.run_server})
+        app.return_value.mainloop.assert_called_once()
+
+
 class OpenHelpTest(WindowCase):
     def test_the_help_opens_on_the_port_of_the_server_in_the_language_of_the_application(self):
         with patch.object(server, "bound_port", 51234), patch("gui_app.gui.webbrowser.open") as opened:

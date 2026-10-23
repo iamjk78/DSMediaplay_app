@@ -41,8 +41,3 @@ class ThreadManager:
 
     def is_paused(self):
         return not self.pause_event.is_set()
-
-    def post_update(self, message):
-        """ Update GUI or log safely from the thread. """
-        # TODO: Implement logging or GUI update
-        pass

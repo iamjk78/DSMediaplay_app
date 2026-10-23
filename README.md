@@ -40,6 +40,18 @@ python tools/generate_documentation.py
 and commit the pages (a test fails when they are not up to date). The pictures in the guide are taken by
 `tools/capture_documentation_images.sh` (macOS, with invented data).
 
+## Locked dependencies
+
+The workflow installs `requirements-build.lock` and `requirements-dev.lock`: every package, direct or not, at an exact version and
+with its hash (`pip install --require-hashes`), for Windows and macOS alike. They are made from the `.txt` files; after changing one
+of those (or to take newer versions) run
+
+```bash
+pip install uv
+uv pip compile requirements-build.txt --universal --generate-hashes --python-version 3.13 -o requirements-build.lock
+uv pip compile requirements-dev.txt --universal --generate-hashes --python-version 3.13 -o requirements-dev.lock
+```
+
 ## Releasing
 
 The version of the application is in `util/version.py`. A release is a tag `v<that version>` (the build refuses any other); change the

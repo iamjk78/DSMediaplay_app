@@ -318,14 +318,18 @@ class PlayerBrowserTest(BrowserTestCase):
         self.assertEqual(len(browser.visible_names()), 3)
 
     def test_the_window_stays_responsive_while_loading(self):
-        started = time.monotonic()
+        server_answers = threading.Event()  # the server answers when the test says so, not after some time
         browser = PlayerBrowser(self.app, url="u", login="l", password="p", account_name="A",
-                                fetch=lambda *_: (time.sleep(0.4), PLAYERS)[1])
+                                fetch=lambda *_: (server_answers.wait(10), PLAYERS)[1])
         self.addCleanup(browser.destroy)
+        self.addCleanup(server_answers.set)
 
-        self.assertLess(time.monotonic() - started, 0.3)  # the constructor did not wait for the server
+        self.assertFalse(server_answers.is_set())  # the constructor has returned, though the server has not answered
+        self.assertTrue(browser._loading)  # and it is still waiting for it
         self.assertEqual(browser.status_var.get(), "Načítám playery...")
         self.assertTrue(browser.refresh_button.instate(["!disabled"]))  # a press is remembered, so it is always on
+        self.app.update()  # and the window is alive meanwhile
+        server_answers.set()
         self.wait_for(lambda: not browser._loading)
 
 
