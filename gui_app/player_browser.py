@@ -21,6 +21,7 @@ from gui_app.snapshot_viewer import (CASCADE_STEP, SnapshotSlots, SnapshotViewer
                                      valid_window_size)
 from gui_app.tooltip import Tooltip, hide_if_shown
 from util.accounts import DEFAULT_HIDDEN_COLUMNS
+from gui_app.copyable_cell import CopyableCell
 from gui_app.wheel import wheel_units
 from util.player_filter import (AGE_OPTIONS, TEMPERATURE_OPTIONS, PlayerFilter, PlayerRow, apply_filter, player_row,
                                 sort_rows, version_key)
@@ -931,11 +932,18 @@ class PlayerBrowser(tk.Toplevel):
 
     def _new_pool_row(self, index: int) -> List[tk.Widget]:
         """One reusable slot in the window of rows on screen: the button first, then one cell for each column."""
-        cells = [tk.Label(self._body, font=self._font, width=1, anchor="w") for _ in COLUMNS]
+        cells = [CopyableCell(self._body, self._font, self.lang.get_message("pb_copy"),
+                              self.lang.get_message("pb_copy_row"), lambda: self._row_text(index)) for _ in COLUMNS]
         button = make_color_button(self._body, self.lang.get_message("pb_snapshot"),
                                    lambda: self._click_snapshot(index), self._font, GREEN)
         Tooltip(button, lambda: self._snapshot_tip(index))
         return [button] + cells
+
+    def _row_text(self, index: int) -> str:
+        """The row in pool slot `index` as one line of the columns that are shown, separated by tabs: pasted into a
+        spreadsheet, every column goes to a cell of its own."""
+        _, *cells = self._pool[index]
+        return "\t".join(cell.cget("text") for cell, (key, _, _) in zip(cells, COLUMNS) if key not in self._hidden)
 
     def _row_at(self, index: int) -> Optional[PlayerRow]:
         """The player the pool slot `index` currently shows, if any."""
