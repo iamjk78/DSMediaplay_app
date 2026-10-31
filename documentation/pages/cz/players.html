@@ -21,50 +21,44 @@
         </ul>
     </nav>
 <section><p>Akce nad přehrávači: skupiny, lokace, poznámky, kategorie, přejmenování, snímky obrazovky a přehledy.</p><p>Činnosti této kategorie (název je přesně takový, jaký je v aplikaci):</p><ul>
-<li><a href="#get_players_with_groups">CSV - playery a skupiny</a></li>
-<li><a href="#get_player_locations">CSV - lokace</a></li>
-<li><a href="#get_player_notes">CSV - poznámky</a></li>
+<li><a href="#get_additional_playlists">CSV - Additional playlisty</a></li>
 <li><a href="#get_player_categories">CSV - kategorie</a></li>
+<li><a href="#get_player_locations">CSV - lokace</a></li>
 <li><a href="#get_category_unused">CSV - nepoužívané kategorie</a></li>
 <li><a href="#get_player_details">CSV - parametry</a></li>
-<li><a href="#get_player_versions">CSV - verze</a></li>
+<li><a href="#get_players_with_groups">CSV - playery a skupiny</a></li>
+<li><a href="#get_player_notes">CSV - poznámky</a></li>
 <li><a href="#get_player_overview">CSV - přehled playerů</a></li>
-<li><a href="#get_additional_playlists">CSV - Additional playlisty</a></li>
-<li><a href="#set_groups_to_players">Nastavení - skupiny</a></li>
-<li><a href="#set_notes_to_players">Nastavení - poznámky</a></li>
-<li><a href="#set_player_config_location">Nastavení - lokace</a></li>
+<li><a href="#get_player_versions">CSV - verze</a></li>
 <li><a href="#set_player_labels">Nastavení - kategorie</a></li>
+<li><a href="#set_player_config_location">Nastavení - lokace</a></li>
+<li><a href="#set_notes_to_players">Nastavení - poznámky</a></li>
+<li><a href="#set_groups_to_players">Nastavení - skupiny</a></li>
 <li><a href="#set_player_rename">Přejmenování - playery</a></li>
+<li><a href="#set_player_snapshot">Snímek obrazovky - stáhnout</a></li>
+<li><a href="#show_player_snapshots">Snímek obrazovky - zobrazit</a></li>
+<li><a href="#create_label">Vytvoření - kategorie</a></li>
 <li><a href="#remove_additional_playlists">Odebrání - additional playlisty</a></li>
 <li><a href="#remove_unused_labels">Smazání - nepoužívané kategorie</a></li>
 <li><a href="#remove_all_unused_labels">Smazání všech - nepoužívaných kategorií</a></li>
-<li><a href="#create_label">Vytvoření - kategorie</a></li>
-<li><a href="#set_player_snapshot">Snímek obrazovky - stáhnout</a></li>
-<li><a href="#show_player_snapshots">Snímek obrazovky - zobrazit</a></li>
 </ul></section>
-<section id="get_players_with_groups">
-<h3>CSV - playery a skupiny</h3>
-<p>Uloží do CSV všechny přehrávače a jejich skupiny. Tvar odpovídá akci „Nastavení - skupiny“.</p>
+<section id="get_additional_playlists">
+<h3>CSV - Additional playlisty</h3>
+<p>Uloží do CSV přehrávače, které mají přiřazené doplňkové (additional) playlisty, a ty playlisty.</p>
 <p class="kind">Stáhne CSV do složky Stažené.</p>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - playery a skupiny“. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="get_player_locations">
-<h3>CSV - lokace</h3>
-<p>Uloží do CSV všechny přehrávače a jejich lokace. Tvar odpovídá akci „Nastavení - lokace“.</p>
-<p class="kind">Stáhne CSV do složky Stažené.</p>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - lokace“. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="get_player_notes">
-<h3>CSV - poznámky</h3>
-<p>Uloží do CSV všechny přehrávače a jejich poznámky. Tvar odpovídá akci „Nastavení - poznámky“.</p>
-<p class="kind">Stáhne CSV do složky Stažené.</p>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - poznámky“. Pak klikněte na „Spustit“.</p>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - Additional playlisty“. Pak klikněte na „Spustit“.</p>
 </section>
 <section id="get_player_categories">
 <h3>CSV - kategorie</h3>
 <p>Uloží do CSV všechny přehrávače a jejich kategorie (štítky). Tvar odpovídá akci „Nastavení - kategorie“.</p>
 <p class="kind">Stáhne CSV do složky Stažené.</p>
 <p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - kategorie“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="get_player_locations">
+<h3>CSV - lokace</h3>
+<p>Uloží do CSV všechny přehrávače a jejich lokace. Tvar odpovídá akci „Nastavení - lokace“.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - lokace“. Pak klikněte na „Spustit“.</p>
 </section>
 <section id="get_category_unused">
 <h3>CSV - nepoužívané kategorie</h3>
@@ -78,11 +72,17 @@
 <p class="kind">Stáhne CSV do složky Stažené.</p>
 <p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - parametry“. Pak klikněte na „Spustit“.</p>
 </section>
-<section id="get_player_versions">
-<h3>CSV - verze</h3>
-<p>Uloží do CSV verzi softwaru každého přehrávače.</p>
+<section id="get_players_with_groups">
+<h3>CSV - playery a skupiny</h3>
+<p>Uloží do CSV všechny přehrávače a jejich skupiny. Tvar odpovídá akci „Nastavení - skupiny“.</p>
 <p class="kind">Stáhne CSV do složky Stažené.</p>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - verze“. Pak klikněte na „Spustit“.</p>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - playery a skupiny“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="get_player_notes">
+<h3>CSV - poznámky</h3>
+<p>Uloží do CSV všechny přehrávače a jejich poznámky. Tvar odpovídá akci „Nastavení - poznámky“.</p>
+<p class="kind">Stáhne CSV do složky Stažené.</p>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - poznámky“. Pak klikněte na „Spustit“.</p>
 </section>
 <section id="get_player_overview">
 <h3>CSV - přehled playerů</h3>
@@ -90,41 +90,11 @@
 <p class="kind">Stáhne CSV do složky Stažené.</p>
 <p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - přehled playerů“. Pak klikněte na „Spustit“.</p>
 </section>
-<section id="get_additional_playlists">
-<h3>CSV - Additional playlisty</h3>
-<p>Uloží do CSV přehrávače, které mají přiřazené doplňkové (additional) playlisty, a ty playlisty.</p>
+<section id="get_player_versions">
+<h3>CSV - verze</h3>
+<p>Uloží do CSV verzi softwaru každého přehrávače.</p>
 <p class="kind">Stáhne CSV do složky Stažené.</p>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - Additional playlisty“. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="set_groups_to_players">
-<h3>Nastavení - skupiny</h3>
-<p>Přiřazení skupiny přehrávači.</p>
-<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
-<h4>Vstup</h4>
-<ul><li>1. název přehrávače</li><li>2. název skupiny</li></ul>
-<ul class="notes"><li>Každý přehrávač nejvýše jednou.</li></ul>
-<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td><td>&lt;název skupiny&gt;</td></tr></table>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „Nastavení - skupiny“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="set_notes_to_players">
-<h3>Nastavení - poznámky</h3>
-<p>Nastavení poznámky přehrávače.</p>
-<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
-<h4>Vstup</h4>
-<ul><li>1. název přehrávače</li><li>2. poznámka (může být prázdná = poznámka se smaže; bez tabulátoru a zalomení řádku)</li></ul>
-<ul class="notes"></ul>
-<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td><td>&lt;poznámka&gt;</td></tr></table>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „Nastavení - poznámky“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="set_player_config_location">
-<h3>Nastavení - lokace</h3>
-<p>Přiřazení lokace přehrávači.</p>
-<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
-<h4>Vstup</h4>
-<ul><li>1. název přehrávače</li><li>2. název lokace</li></ul>
-<ul class="notes"><li>Každý přehrávač nejvýše jednou.</li></ul>
-<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td><td>&lt;název lokace&gt;</td></tr></table>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „Nastavení - lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „CSV - verze“. Pak klikněte na „Spustit“.</p>
 </section>
 <section id="set_player_labels">
 <h3>Nastavení - kategorie</h3>
@@ -136,6 +106,36 @@
 <p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td><td>&lt;kategorie 1&gt;</td><td>&lt;kategorie 2&gt;</td></tr></table>
 <p class="how">Vyberte kategorii <b>Players</b> a činnost „Nastavení - kategorie“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
 </section>
+<section id="set_player_config_location">
+<h3>Nastavení - lokace</h3>
+<p>Přiřazení lokace přehrávači.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název přehrávače</li><li>2. název lokace</li></ul>
+<ul class="notes"><li>Každý přehrávač nejvýše jednou.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td><td>&lt;název lokace&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „Nastavení - lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_notes_to_players">
+<h3>Nastavení - poznámky</h3>
+<p>Nastavení poznámky přehrávače.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název přehrávače</li><li>2. poznámka (může být prázdná = poznámka se smaže; bez tabulátoru a zalomení řádku)</li></ul>
+<ul class="notes"></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td><td>&lt;poznámka&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „Nastavení - poznámky“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_groups_to_players">
+<h3>Nastavení - skupiny</h3>
+<p>Přiřazení skupiny přehrávači.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název přehrávače</li><li>2. název skupiny</li></ul>
+<ul class="notes"><li>Každý přehrávač nejvýše jednou.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td><td>&lt;název skupiny&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „Nastavení - skupiny“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
 <section id="set_player_rename">
 <h3>Přejmenování - playery</h3>
 <p>Přejmenování přehrávačů.</p>
@@ -145,6 +145,32 @@
 <ul class="notes"><li>Nový název musí obsahovat identifikátor, za kterým následuje podtržítko: PB, PC, PD nebo PE + 4 číslice (např. PB1234_), nebo RPI + 3 číslice (např. RPI123_). Identifikátor stávajícího názvu se nesmí změnit. Nový název nesmí obsahovat uvozovky, čárku, středník ani mezery a nesmí už existovat.</li></ul>
 <p>Příklad řádku:</p><table class="example"><tr><td>&lt;stávající název&gt;</td><td>&lt;nový název&gt;_PB1234_</td></tr></table>
 <p class="how">Vyberte kategorii <b>Players</b> a činnost „Přejmenování - playery“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="set_player_snapshot">
+<h3>Snímek obrazovky - stáhnout</h3>
+<p>Snímek obrazovky: uloží obrázek toho, co přehrávač právě zobrazuje. Uloží se do složky DSMediaplay_snapshots ve stažených souborech.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. název přehrávače (jeden na řádek)</li></ul>
+<ul class="notes"><li>Přehrávač musí být online, pořízení snímku může trvat několik sekund.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „Snímek obrazovky - stáhnout“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="show_player_snapshots">
+<h3>Snímek obrazovky - zobrazit</h3>
+<p>Otevře tabulku přehrávačů, stejnou jako tlačítko Live-view: u každého online přehrávače je tlačítko Snímek, které ukáže aktuální snímek obrazovky. Viz stránka o tabulce přehrávačů.</p>
+<p class="kind">Otevře okno.</p>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „Snímek obrazovky - zobrazit“. Pak klikněte na „Spustit“.</p>
+</section>
+<section id="create_label">
+<h3>Vytvoření - kategorie</h3>
+<p>Vytvoření nových kategorií.</p>
+<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
+<h4>Vstup</h4>
+<ul><li>1. nový název kategorie (jeden na řádek)</li></ul>
+<ul class="notes"><li>Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky.</li></ul>
+<p>Příklad řádku:</p><table class="example"><tr><td>&lt;nový název kategorie&gt;</td></tr></table>
+<p class="how">Vyberte kategorii <b>Players</b> a činnost „Vytvoření - kategorie“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
 </section>
 <section id="remove_additional_playlists">
 <h3>Odebrání - additional playlisty</h3>
@@ -171,32 +197,6 @@
 <p>Smaže všechny nepoužívané kategorie. Před smazáním se zobrazí seznam a aplikace se zeptá.</p>
 <p class="kind">Nevyžaduje vstup, spustí se tlačítkem „Spustit“.</p>
 <p class="how">Vyberte kategorii <b>Players</b> a činnost „Smazání všech - nepoužívaných kategorií“. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="create_label">
-<h3>Vytvoření - kategorie</h3>
-<p>Vytvoření nových kategorií.</p>
-<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
-<h4>Vstup</h4>
-<ul><li>1. nový název kategorie (jeden na řádek)</li></ul>
-<ul class="notes"><li>Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky.</li></ul>
-<p>Příklad řádku:</p><table class="example"><tr><td>&lt;nový název kategorie&gt;</td></tr></table>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „Vytvoření - kategorie“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="set_player_snapshot">
-<h3>Snímek obrazovky - stáhnout</h3>
-<p>Snímek obrazovky: uloží obrázek toho, co přehrávač právě zobrazuje. Uloží se do složky DSMediaplay_snapshots ve stažených souborech.</p>
-<p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
-<h4>Vstup</h4>
-<ul><li>1. název přehrávače (jeden na řádek)</li></ul>
-<ul class="notes"><li>Přehrávač musí být online, pořízení snímku může trvat několik sekund.</li></ul>
-<p>Příklad řádku:</p><table class="example"><tr><td>&lt;název přehrávače&gt;</td></tr></table>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „Snímek obrazovky - stáhnout“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
-</section>
-<section id="show_player_snapshots">
-<h3>Snímek obrazovky - zobrazit</h3>
-<p>Otevře tabulku přehrávačů, stejnou jako tlačítko Live-view: u každého online přehrávače je tlačítko Snímek, které ukáže aktuální snímek obrazovky. Viz stránka o tabulce přehrávačů.</p>
-<p class="kind">Otevře okno.</p>
-<p class="how">Vyberte kategorii <b>Players</b> a činnost „Snímek obrazovky - zobrazit“. Pak klikněte na „Spustit“.</p>
 </section>
     <footer>
         <a href="/en/players.html">English</a>

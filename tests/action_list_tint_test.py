@@ -21,20 +21,24 @@ class ActionKindTest(unittest.TestCase):
             with self.subTest(action=action):
                 self.assertEqual(action_kind(action), kind)
 
-    def test_a_list_reads_first_then_changes_then_removes_and_ends_with_creating_and_the_rest(self):
+    def test_a_list_has_its_green_blue_and_red_entries_together_each_block_by_the_alphabet(self):
         import json
+        import unicodedata
         from util.paths import resource_path
         with open(resource_path("assets/messages.json"), encoding="utf-8") as file:
             messages = json.load(file)
+
+        def plain(label):  # the alphabet of a label, the accents aside
+            return "".join(c for c in unicodedata.normalize("NFD", label) if not unicodedata.combining(c)).casefold()
+
         for language in ("cz", "en"):
             for category, actions in entity_actions(messages[language]["actions"]).items():
-                keys = list(actions.values())
-                kinds = [action_kind(key) for key in keys]
-                tail = max((i for i, kind in enumerate(kinds) if kind == "remove"), default=len(kinds) - 1) + 1
-                ordered = kinds[:tail]  # up to the last removing entry; what follows is creating and the rest
-                self.assertEqual(ordered, sorted(ordered, key=("read", "change", "remove").index), (language, category))
-                self.assertTrue(all(key.startswith(("create_", "set_player_snapshot", "show_")) for key in keys[tail:]),
-                                (language, category, keys[tail:]))
+                kinds = [action_kind(key) for key in actions.values()]
+                blocks = [kind for i, kind in enumerate(kinds) if i == 0 or kind != kinds[i - 1]]
+                self.assertEqual(blocks, sorted(set(blocks), key=("read", "change", "remove").index), (language, category))
+                for kind in set(kinds):
+                    labels = [plain(label) for label, key in actions.items() if action_kind(key) == kind]
+                    self.assertEqual(labels, sorted(labels), (language, category, kind))
 
 
 class ActionListTintTest(MainWindowCase):

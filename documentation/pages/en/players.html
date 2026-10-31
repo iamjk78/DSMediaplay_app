@@ -21,27 +21,33 @@
         </ul>
     </nav>
 <section><p>Actions on players: groups, locations, notes, categories, renaming, screenshots and overviews.</p><p>The actions of this category (the name is exactly as in the application):</p><ul>
+<li><a href="#get_additional_playlists">CSV - Additional playlists</a></li>
 <li><a href="#get_players_with_groups">CSV - Groups and Players</a></li>
 <li><a href="#get_player_locations">CSV - Locations</a></li>
 <li><a href="#get_player_notes">CSV - Notes</a></li>
 <li><a href="#get_player_categories">CSV - Player Categories</a></li>
-<li><a href="#get_category_unused">CSV - Unused Categories</a></li>
+<li><a href="#get_player_overview">CSV - Player Overview</a></li>
 <li><a href="#get_player_details">CSV - Player Status</a></li>
 <li><a href="#get_player_versions">CSV - Player version</a></li>
-<li><a href="#get_player_overview">CSV - Player Overview</a></li>
-<li><a href="#get_additional_playlists">CSV - Additional playlists</a></li>
+<li><a href="#get_category_unused">CSV - Unused Categories</a></li>
 <li><a href="#set_groups_to_players">Change - Groups</a></li>
-<li><a href="#set_notes_to_players">Change - Notes</a></li>
 <li><a href="#set_player_config_location">Change - Locations</a></li>
+<li><a href="#set_notes_to_players">Change - Notes</a></li>
 <li><a href="#set_player_labels">Change - Player Categories</a></li>
 <li><a href="#set_player_rename">Change - Player Name</a></li>
-<li><a href="#remove_additional_playlists">Remove - Additional playlists</a></li>
-<li><a href="#remove_unused_labels">Remove - Unused Categories</a></li>
-<li><a href="#remove_all_unused_labels">Remove All - Unused Categories</a></li>
 <li><a href="#create_label">Create - Category</a></li>
 <li><a href="#set_player_snapshot">Screenshot - download</a></li>
 <li><a href="#show_player_snapshots">Screenshot - view</a></li>
+<li><a href="#remove_additional_playlists">Remove - Additional playlists</a></li>
+<li><a href="#remove_unused_labels">Remove - Unused Categories</a></li>
+<li><a href="#remove_all_unused_labels">Remove All - Unused Categories</a></li>
 </ul></section>
+<section id="get_additional_playlists">
+<h3>CSV - Additional playlists</h3>
+<p>Saves to a CSV file the players that have additional playlists assigned, and those playlists.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Players</b> and the action “CSV - Additional playlists”. Then click “Start”.</p>
+</section>
 <section id="get_players_with_groups">
 <h3>CSV - Groups and Players</h3>
 <p>Saves all the players and their groups to a CSV file, in the form the “groups of the players” action takes.</p>
@@ -66,11 +72,11 @@
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
 <p class="how">Select the category <b>Players</b> and the action “CSV - Player Categories”. Then click “Start”.</p>
 </section>
-<section id="get_category_unused">
-<h3>CSV - Unused Categories</h3>
-<p>Saves to a CSV file the categories (labels) that no player, group, asset, playlist or location uses.</p>
+<section id="get_player_overview">
+<h3>CSV - Player Overview</h3>
+<p>Saves an overview of the players to a CSV file: group, version, address, last report, location, temperature, categories, note and the playlist playing now.</p>
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Players</b> and the action “CSV - Unused Categories”. Then click “Start”.</p>
+<p class="how">Select the category <b>Players</b> and the action “CSV - Player Overview”. Then click “Start”.</p>
 </section>
 <section id="get_player_details">
 <h3>CSV - Player Status</h3>
@@ -84,17 +90,11 @@
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
 <p class="how">Select the category <b>Players</b> and the action “CSV - Player version”. Then click “Start”.</p>
 </section>
-<section id="get_player_overview">
-<h3>CSV - Player Overview</h3>
-<p>Saves an overview of the players to a CSV file: group, version, address, last report, location, temperature, categories, note and the playlist playing now.</p>
+<section id="get_category_unused">
+<h3>CSV - Unused Categories</h3>
+<p>Saves to a CSV file the categories (labels) that no player, group, asset, playlist or location uses.</p>
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Players</b> and the action “CSV - Player Overview”. Then click “Start”.</p>
-</section>
-<section id="get_additional_playlists">
-<h3>CSV - Additional playlists</h3>
-<p>Saves to a CSV file the players that have additional playlists assigned, and those playlists.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Players</b> and the action “CSV - Additional playlists”. Then click “Start”.</p>
+<p class="how">Select the category <b>Players</b> and the action “CSV - Unused Categories”. Then click “Start”.</p>
 </section>
 <section id="set_groups_to_players">
 <h3>Change - Groups</h3>
@@ -106,16 +106,6 @@
 <p>An example line:</p><table class="example"><tr><td>&lt;player name&gt;</td><td>&lt;group name&gt;</td></tr></table>
 <p class="how">Select the category <b>Players</b> and the action “Change - Groups”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
-<section id="set_notes_to_players">
-<h3>Change - Notes</h3>
-<p>Set the note of a player.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. player name</li><li>2. note (may be empty = the note is deleted; no tab or line break)</li></ul>
-<ul class="notes"></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;player name&gt;</td><td>&lt;note&gt;</td></tr></table>
-<p class="how">Select the category <b>Players</b> and the action “Change - Notes”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
 <section id="set_player_config_location">
 <h3>Change - Locations</h3>
 <p>Assign a location to a player.</p>
@@ -125,6 +115,16 @@
 <ul class="notes"><li>Each player at most once.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;player name&gt;</td><td>&lt;location name&gt;</td></tr></table>
 <p class="how">Select the category <b>Players</b> and the action “Change - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+<section id="set_notes_to_players">
+<h3>Change - Notes</h3>
+<p>Set the note of a player.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. player name</li><li>2. note (may be empty = the note is deleted; no tab or line break)</li></ul>
+<ul class="notes"></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;player name&gt;</td><td>&lt;note&gt;</td></tr></table>
+<p class="how">Select the category <b>Players</b> and the action “Change - Notes”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
 <section id="set_player_labels">
 <h3>Change - Player Categories</h3>
@@ -145,32 +145,6 @@
 <ul class="notes"><li>The new name must contain an identifier followed by an underscore: PB, PC, PD or PE + 4 digits (e.g. PB1234_), or RPI + 3 digits (e.g. RPI123_). The identifier of the current name must not change. The new name must not contain quotes, commas, semicolons or whitespace and must not exist yet.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;_PB1234_</td></tr></table>
 <p class="how">Select the category <b>Players</b> and the action “Change - Player Name”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
-<section id="remove_additional_playlists">
-<h3>Remove - Additional playlists</h3>
-<p>Remove the additional playlists of players.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. player name (one per line; further columns are ignored)</li></ul>
-<ul class="notes"><li>Only players that have an additional playlist are processed.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;player name&gt;</td></tr></table>
-<p class="how">Select the category <b>Players</b> and the action “Remove - Additional playlists”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
-<section id="remove_unused_labels">
-<h3>Remove - Unused Categories</h3>
-<p>Delete unused categories.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. category name (one per line)</li></ul>
-<ul class="notes"><li>Categories whose name starts with &quot;test&quot; are skipped.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;category name&gt;</td></tr></table>
-<p class="how">Select the category <b>Players</b> and the action “Remove - Unused Categories”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
-<section id="remove_all_unused_labels">
-<h3>Remove All - Unused Categories</h3>
-<p>Deletes all the unused categories. The list is shown and confirmed first.</p>
-<p class="kind">Takes no input, it is run with “Start”.</p>
-<p class="how">Select the category <b>Players</b> and the action “Remove All - Unused Categories”. Then click “Start”.</p>
 </section>
 <section id="create_label">
 <h3>Create - Category</h3>
@@ -197,6 +171,32 @@
 <p>Opens the table of the players, the same as the Live-view button: every online player has a Screenshot button that shows the current screenshot. See the page about the table of players.</p>
 <p class="kind">Opens a window.</p>
 <p class="how">Select the category <b>Players</b> and the action “Screenshot - view”. Then click “Start”.</p>
+</section>
+<section id="remove_additional_playlists">
+<h3>Remove - Additional playlists</h3>
+<p>Remove the additional playlists of players.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. player name (one per line; further columns are ignored)</li></ul>
+<ul class="notes"><li>Only players that have an additional playlist are processed.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;player name&gt;</td></tr></table>
+<p class="how">Select the category <b>Players</b> and the action “Remove - Additional playlists”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+<section id="remove_unused_labels">
+<h3>Remove - Unused Categories</h3>
+<p>Delete unused categories.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. category name (one per line)</li></ul>
+<ul class="notes"><li>Categories whose name starts with &quot;test&quot; are skipped.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;category name&gt;</td></tr></table>
+<p class="how">Select the category <b>Players</b> and the action “Remove - Unused Categories”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+<section id="remove_all_unused_labels">
+<h3>Remove All - Unused Categories</h3>
+<p>Deletes all the unused categories. The list is shown and confirmed first.</p>
+<p class="kind">Takes no input, it is run with “Start”.</p>
+<p class="how">Select the category <b>Players</b> and the action “Remove All - Unused Categories”. Then click “Start”.</p>
 </section>
     <footer>
         <a href="/cz/players.html">Čeština</a>

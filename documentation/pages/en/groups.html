@@ -21,33 +21,39 @@
         </ul>
     </nav>
 <section><p>Actions on groups: their playlists and validity, parameters, renaming and the clean-up.</p><p>The actions of this category (the name is exactly as in the application):</p><ul>
-<li><a href="#get_detailed_groups_with_playlists">CSV - Scheduled Playlists</a></li>
 <li><a href="#get_group_settings">CSV - Group Settings</a></li>
-<li><a href="#get_group_unused">CSV - Unused Groups</a></li>
 <li><a href="#get_identical_groups">CSV - Identical Groups</a></li>
+<li><a href="#get_detailed_groups_with_playlists">CSV - Scheduled Playlists</a></li>
+<li><a href="#get_group_unused">CSV - Unused Groups</a></li>
+<li><a href="#set_add_detailed_playlist_to_group">Add - Playlists to Group (existing stay)</a></li>
+<li><a href="#set_group_rename">Change - Group Name</a></li>
 <li><a href="#set_detailed_playlists_to_groups">Change - Group Playlists (replaces existing)</a></li>
 <li><a href="#set_group_settings">Change - Group settings</a></li>
-<li><a href="#set_group_rename">Change - Group Name</a></li>
-<li><a href="#set_add_detailed_playlist_to_group">Add - Playlists to Group (existing stay)</a></li>
+<li><a href="#create_group">Create - Group</a></li>
+<li><a href="#remove_expired_playlists">Remove - Expired Playlists</a></li>
 <li><a href="#remove_playlists_from_group">Remove - Playlists from Groups</a></li>
 <li><a href="#remove_playlist_list">Remove - selected Playlists from all Groups</a></li>
-<li><a href="#remove_expired_playlists">Remove - Expired Playlists</a></li>
-<li><a href="#remove_all_expired_playlists">Remove All - Expired Playlists</a></li>
 <li><a href="#remove_unused_groups">Remove - Unused Groups</a></li>
+<li><a href="#remove_all_expired_playlists">Remove All - Expired Playlists</a></li>
 <li><a href="#remove_all_unused_groups">Remove All - Unused Groups</a></li>
-<li><a href="#create_group">Create - Group</a></li>
 </ul></section>
-<section id="get_detailed_groups_with_playlists">
-<h3>CSV - Scheduled Playlists</h3>
-<p>Saves the groups and their playlists, with the validity (dates, days of the week, times), to a CSV file. It has the form the “playlists of the groups” action takes, so it can be edited and pasted back.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Groups</b> and the action “CSV - Scheduled Playlists”. Then click “Start”.</p>
-</section>
 <section id="get_group_settings">
 <h3>CSV - Group Settings</h3>
 <p>Saves the settings of the groups to a CSV file: resolution, orientation, automatic restart and deploy, combining the default playlist, the display schedule and the video player. It has the form the group-parameters action takes.</p>
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
 <p class="how">Select the category <b>Groups</b> and the action “CSV - Group Settings”. Then click “Start”.</p>
+</section>
+<section id="get_identical_groups">
+<h3>CSV - Identical Groups</h3>
+<p>Saves to a CSV file the groups that have the same playlists (with the same validity) and the same orientation, that is, groups that could be merged.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Groups</b> and the action “CSV - Identical Groups”. Then click “Start”.</p>
+</section>
+<section id="get_detailed_groups_with_playlists">
+<h3>CSV - Scheduled Playlists</h3>
+<p>Saves the groups and their playlists, with the validity (dates, days of the week, times), to a CSV file. It has the form the “playlists of the groups” action takes, so it can be edited and pasted back.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Groups</b> and the action “CSV - Scheduled Playlists”. Then click “Start”.</p>
 </section>
 <section id="get_group_unused">
 <h3>CSV - Unused Groups</h3>
@@ -55,11 +61,25 @@
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
 <p class="how">Select the category <b>Groups</b> and the action “CSV - Unused Groups”. Then click “Start”.</p>
 </section>
-<section id="get_identical_groups">
-<h3>CSV - Identical Groups</h3>
-<p>Saves to a CSV file the groups that have the same playlists (with the same validity) and the same orientation, that is, groups that could be merged.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Groups</b> and the action “CSV - Identical Groups”. Then click “Start”.</p>
+<section id="set_add_detailed_playlist_to_group">
+<h3>Add - Playlists to Group (existing stay)</h3>
+<p>Add playlists to a group: they are added to the existing ones, which stay.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. group name</li><li>2. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):</li><li>   a) playlist name</li><li>   b) valid from: a date or empty</li><li>   c) valid to: a date or empty</li><li>   d) days of the week or empty</li><li>   e) from what time: a time or empty</li><li>   f) until what time: a time or empty</li></ul>
+<ul class="notes"><li>One line per group (there is no default playlist column).</li><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.</li><li>Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td><td>&lt;playlist name&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>mo,tu,we,th,fr</td><td>08:00</td><td>18:00</td></tr></table>
+<p class="how">Select the category <b>Groups</b> and the action “Add - Playlists to Group (existing stay)”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+<section id="set_group_rename">
+<h3>Change - Group Name</h3>
+<p>Rename groups.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. current group name</li><li>2. new name</li></ul>
+<ul class="notes"><li>The new name must not contain a space, a comma, a semicolon or quotation marks, must not exist yet and must not be repeated.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;</td></tr></table>
+<p class="how">Select the category <b>Groups</b> and the action “Change - Group Name”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
 <section id="set_detailed_playlists_to_groups">
 <h3>Change - Group Playlists (replaces existing)</h3>
@@ -81,25 +101,25 @@
 <p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td><td>1080p</td><td>landscape</td><td>03:00</td><td>04:00</td><td>true</td><td>true</td><td>06:00</td><td>22:00</td><td>default</td></tr></table>
 <p class="how">Select the category <b>Groups</b> and the action “Change - Group settings”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
-<section id="set_group_rename">
-<h3>Change - Group Name</h3>
-<p>Rename groups.</p>
+<section id="create_group">
+<h3>Create - Group</h3>
+<p>Create new groups.</p>
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
-<ul><li>1. current group name</li><li>2. new name</li></ul>
-<ul class="notes"><li>The new name must not contain a space, a comma, a semicolon or quotation marks, must not exist yet and must not be repeated.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;</td></tr></table>
-<p class="how">Select the category <b>Groups</b> and the action “Change - Group Name”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+<ul><li>1. new group name (one per line)</li></ul>
+<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;new group name&gt;</td></tr></table>
+<p class="how">Select the category <b>Groups</b> and the action “Create - Group”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
-<section id="set_add_detailed_playlist_to_group">
-<h3>Add - Playlists to Group (existing stay)</h3>
-<p>Add playlists to a group: they are added to the existing ones, which stay.</p>
+<section id="remove_expired_playlists">
+<h3>Remove - Expired Playlists</h3>
+<p>Remove expired playlists from groups.</p>
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
-<ul><li>1. group name</li><li>2. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):</li><li>   a) playlist name</li><li>   b) valid from: a date or empty</li><li>   c) valid to: a date or empty</li><li>   d) days of the week or empty</li><li>   e) from what time: a time or empty</li><li>   f) until what time: a time or empty</li></ul>
-<ul class="notes"><li>One line per group (there is no default playlist column).</li><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.</li><li>Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td><td>&lt;playlist name&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>mo,tu,we,th,fr</td><td>08:00</td><td>18:00</td></tr></table>
-<p class="how">Select the category <b>Groups</b> and the action “Add - Playlists to Group (existing stay)”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+<ul><li>1. group name (one per line)</li></ul>
+<ul class="notes"></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td></tr></table>
+<p class="how">Select the category <b>Groups</b> and the action “Remove - Expired Playlists”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
 <section id="remove_playlists_from_group">
 <h3>Remove - Playlists from Groups</h3>
@@ -121,22 +141,6 @@
 <p>An example line:</p><table class="example"><tr><td>&lt;playlist name&gt;</td></tr></table>
 <p class="how">Select the category <b>Groups</b> and the action “Remove - selected Playlists from all Groups”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
-<section id="remove_expired_playlists">
-<h3>Remove - Expired Playlists</h3>
-<p>Remove expired playlists from groups.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. group name (one per line)</li></ul>
-<ul class="notes"></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td></tr></table>
-<p class="how">Select the category <b>Groups</b> and the action “Remove - Expired Playlists”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
-<section id="remove_all_expired_playlists">
-<h3>Remove All - Expired Playlists</h3>
-<p>Takes out of all the groups the playlists whose validity (a switched-on date restriction) has ended. The log says which playlists were taken out of which group. The playlist itself is not deleted.</p>
-<p class="kind">Takes no input, it is run with “Start”.</p>
-<p class="how">Select the category <b>Groups</b> and the action “Remove All - Expired Playlists”. Then click “Start”.</p>
-</section>
 <section id="remove_unused_groups">
 <h3>Remove - Unused Groups</h3>
 <p>Delete unused groups.</p>
@@ -147,21 +151,17 @@
 <p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td></tr></table>
 <p class="how">Select the category <b>Groups</b> and the action “Remove - Unused Groups”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
+<section id="remove_all_expired_playlists">
+<h3>Remove All - Expired Playlists</h3>
+<p>Takes out of all the groups the playlists whose validity (a switched-on date restriction) has ended. The log says which playlists were taken out of which group. The playlist itself is not deleted.</p>
+<p class="kind">Takes no input, it is run with “Start”.</p>
+<p class="how">Select the category <b>Groups</b> and the action “Remove All - Expired Playlists”. Then click “Start”.</p>
+</section>
 <section id="remove_all_unused_groups">
 <h3>Remove All - Unused Groups</h3>
 <p>Deletes all the groups that no player belongs to. The list is shown and confirmed first.</p>
 <p class="kind">Takes no input, it is run with “Start”.</p>
 <p class="how">Select the category <b>Groups</b> and the action “Remove All - Unused Groups”. Then click “Start”.</p>
-</section>
-<section id="create_group">
-<h3>Create - Group</h3>
-<p>Create new groups.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. new group name (one per line)</li></ul>
-<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;new group name&gt;</td></tr></table>
-<p class="how">Select the category <b>Groups</b> and the action “Create - Group”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
     <footer>
         <a href="/cz/groups.html">Čeština</a>

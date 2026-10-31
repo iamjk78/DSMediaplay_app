@@ -24,10 +24,10 @@
 <li><a href="#get_locations_plan">CSV - ON/OFF Times</a></li>
 <li><a href="#get_location_unused">CSV - Unused Locations</a></li>
 <li><a href="#set_location_plan">Change - LCD ON/OFF Times</a></li>
+<li><a href="#create_location">Create - Locations</a></li>
 <li><a href="#set_location_rename">Rename - Locations</a></li>
 <li><a href="#remove_unused_locations">Remove - Unused Locations</a></li>
 <li><a href="#remove_all_unused_locations">Remove All - Unused Locations</a></li>
-<li><a href="#create_location">Create - Locations</a></li>
 </ul></section>
 <section id="get_locations_plan">
 <h3>CSV - ON/OFF Times</h3>
@@ -50,6 +50,16 @@
 <ul class="notes"><li>The days start with Sunday, as in the CSV export and in DSMediaplay.</li><li>Always all 15 columns; an empty cell = nothing is set for that day.</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;location name&gt;</td><td></td><td></td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td></td><td></td></tr></table>
 <p class="how">Select the category <b>Locations</b> and the action “Change - LCD ON/OFF Times”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+<section id="create_location">
+<h3>Create - Locations</h3>
+<p>Create new locations.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. new location name (one per line)</li></ul>
+<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;new location name&gt;</td></tr></table>
+<p class="how">Select the category <b>Locations</b> and the action “Create - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
 <section id="set_location_rename">
 <h3>Rename - Locations</h3>
@@ -76,16 +86,6 @@
 <p>Deletes all the locations that no player is in. The list is shown and confirmed first.</p>
 <p class="kind">Takes no input, it is run with “Start”.</p>
 <p class="how">Select the category <b>Locations</b> and the action “Remove All - Unused Locations”. Then click “Start”.</p>
-</section>
-<section id="create_location">
-<h3>Create - Locations</h3>
-<p>Create new locations.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. new location name (one per line)</li></ul>
-<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;new location name&gt;</td></tr></table>
-<p class="how">Select the category <b>Locations</b> and the action “Create - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
     <footer>
         <a href="/cz/locations.html">Čeština</a>

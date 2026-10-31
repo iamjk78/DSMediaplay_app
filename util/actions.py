@@ -1,3 +1,6 @@
+import unicodedata
+
+
 def action_needs_input(action: str) -> bool:
     """
     Whether an action takes input from the user (the "Input Prompt" window): the names or rows to work on.
@@ -7,6 +10,9 @@ def action_needs_input(action: str) -> bool:
     remove_*, deploying selected groups) needs input.
     """
     return not (action.startswith(("get_", "show_")) or "remove_all" in action or action == "set_deploy_all_players")
+
+
+KIND_ORDER = ("read", "change", "remove")  # the blocks of a list of actions, green, blue, red
 
 
 def action_kind(action: str) -> str:
@@ -21,14 +27,22 @@ def action_kind(action: str) -> str:
     return "change"
 
 
+def _list_position(item: tuple) -> tuple:
+    """Sort key of a (label, action key) pair: the block (by colour), then the label by the alphabet, accents aside."""
+    label, action = item
+    plain = "".join(c for c in unicodedata.normalize("NFD", label) if not unicodedata.combining(c))
+    return KIND_ORDER.index(action_kind(action)), plain.casefold(), label
+
+
 def entity_actions(actions: dict) -> dict:
     """
-    The actions of the application by category: {category: {label shown: key of the action}}, in the order the window
-    and the documentation show them: reading (CSV), setting, adding, removing, deleting, creating, the rest. `actions` is the part
+    The actions of the application by category: {category: {label shown: key of the action}}. `actions` is the part
     "actions" of the messages in one language (the label of every action); the keys are the same in all of them.
-    The documentation is made from this too, so it lists exactly what the window offers.
+    Within a category the actions are in the order the window and the documentation show them: the reading ones
+    (green), the changing ones (blue), the removing ones (red), each block by the alphabet of its labels, so the
+    order they are written in below does not matter.
     """
-    return {
+    categories = {
         "Playlists": {
             actions["Playlists"]["get_details_csv"]: "get_playlist_details",
             actions["Playlists"]["get_playlist_settings"]: "get_playlist_settings",
@@ -105,3 +119,4 @@ def entity_actions(actions: dict) -> dict:
             actions["Deploy"]["deploy_selected_groups"]: "set_deploy_selected_groups"
         },
     }
+    return {category: dict(sorted(items.items(), key=_list_position)) for category, items in categories.items()}
