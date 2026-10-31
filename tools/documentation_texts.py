@@ -23,7 +23,7 @@ ACTIONS = {
         "cz": "Uloží do CSV nastavení playlistů (interval dominance). Soubor má tvar, který přijímá „Nastavení - playlisty“.",
         "en": "Saves the settings of the playlists (the domination interval) to a CSV file, in the form the playlist-settings action takes."},
     "get_detailed_groups_with_playlists": {
-        "cz": "Uloží do CSV skupiny a jejich playlisty včetně platnosti (data, dny v týdnu, časy). Soubor má tvar, který přijímá „Nastavení - playlisty ke skupinám“, takže se dá upravit a vložit zpět.",
+        "cz": "Uloží do CSV skupiny a jejich playlisty včetně platnosti (data, dny v týdnu, časy). Soubor má tvar, který přijímá „Nastavení - playlisty skupiny (nahradí stávající)“, takže se dá upravit a vložit zpět.",
         "en": "Saves the groups and their playlists, with the validity (dates, days of the week, times), to a CSV file. It has the form the “playlists of the groups” action takes, so it can be edited and pasted back."},
     "get_group_settings": {
         "cz": "Uloží do CSV nastavení skupin: rozlišení, orientaci, automatický restart a deploy, kombinování výchozího playlistu, spánek displeje a přehrávač videa. Tvar odpovídá akci „Nastavení - parametry skupin“.",

@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import font as tkfont, ttk, messagebox
 from gui_app.color_button import (BLUE, GREEN, GREEN_DARK, PURPLE, RED, YELLOW, button_enabled, equalize_widths,
                                   make_color_button, set_button_colors, set_button_enabled)
 from gui_app.icons import set_window_icon
@@ -23,7 +23,7 @@ from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
 from gui_app.player_browser import PlayerBrowser
 from util import accounts, credentials, input_templates, legacy_import
-from util.actions import action_needs_input, entity_actions
+from util.actions import action_kind, action_needs_input, entity_actions
 from util.paths import legacy_login_file, resource_path
 from util.version import VERSION
 import requests
@@ -38,6 +38,8 @@ ACTION_ROW_GAP_X = 24
 # create_combobox's own padx, right side: _ensure_gap_from_dropdowns resets to this before each measurement,
 # so a previous, possibly wrong top-up is never compounded by a later one.
 DROPDOWN_PAD_X = 3
+LIST_EXTRA_WIDTH = 40  # the scrollbar and the padding of the list of actions
+ACTION_TINTS = {"read": GREEN, "change": BLUE, "remove": RED}  # the entries of the list of actions, by what they do
 
 
 def get_download_path():
@@ -168,6 +170,7 @@ class DSMediaplayApp(tk.Tk):
                              self.entity_type_var, list(self.entity_actions.keys()), columnspan=3)
         self.create_combobox(self, "select_action", self._action_row,
                              "option_choose_action", self.reset_data, self.action_var, columnspan=3)
+        self.tint_action_list()
         self.input_prompt_button = self.create_emphasised_button("input_prompt", self._generate_textbox, GREEN,
                                                                  size_offset=0)
         self.add_tooltip(self.input_prompt_button, "tip_input_prompt")
@@ -299,10 +302,33 @@ class DSMediaplayApp(tk.Tk):
         settings_window = SettingsWindow(self, self.lang)
         self.wait_window(settings_window)
 
+    def tint_action_list(self):
+        """
+        Colours the entries of the list of actions by what they do (see ACTION_TINTS). The list is filled again every
+        time it opens, which drops the colours, so they are put on when its window appears.
+        """
+        popdown = self.tk.call("ttk::combobox::PopdownWindow", self.option_choose_action)
+        self.tk.call("bind", popdown, "<Map>", self.register(lambda: self._prepare_action_list(popdown)))
+
+    def _prepare_action_list(self, popdown: str):
+        listbox = f"{popdown}.f.l"
+        actions = self.entity_actions.get(self.entity_type_var.get(), {})
+        labels = self.option_choose_action["values"]
+        for index, label in enumerate(labels):
+            colors = ACTION_TINTS[action_kind(actions.get(label, ""))]
+            # the entry that is selected or under the pointer keeps its colour, one shade darker
+            self.tk.call(listbox, "itemconfigure", index, "-background", colors.normal, "-foreground", colors.text,
+                         "-selectbackground", colors.pressed, "-selectforeground", colors.text)
+        # The list is as wide as the box, and the scrollbar takes some of that: a long label would be cut off
+        font = tkfont.Font(font=self.tk.call(listbox, "cget", "-font"))
+        needed = max((font.measure(label) for label in labels), default=0) + LIST_EXTRA_WIDTH
+        if needed > int(self.tk.call("winfo", "width", popdown)):
+            self.tk.call("wm", "geometry", popdown, f"{needed}x{self.tk.call('winfo', 'height', popdown)}")
+
     def update_action_selection(self, _=None):
         entity_type = self.entity_type_var.get()
         actions_dict = self.entity_actions.get(entity_type, {})
-        actions = sorted(list(actions_dict))
+        actions = list(actions_dict)
         self.option_choose_action['values'] = actions
         if actions:
             default_label = next((label for label, action in actions_dict.items()

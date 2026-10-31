@@ -21,18 +21,40 @@
         </ul>
     </nav>
 <section><p>Actions on assets (files): validity, overviews and the clean-up of unused ones.</p><p>The actions of this category (the name is exactly as in the application):</p><ul>
-<li><a href="#get_asset_unused">CSV - Unused Assets</a></li>
-<li><a href="#remove_unused_assets">Remove - Unused Assets</a></li>
-<li><a href="#remove_all_unused_assets">Remove All - unused Assets</a></li>
 <li><a href="#get_asset_details">CSV - detailed Assets</a></li>
 <li><a href="#get_asset_validity">CSV - validity Assets</a></li>
+<li><a href="#get_asset_unused">CSV - Unused Assets</a></li>
 <li><a href="#set_asset_validity">Change - validity Assets</a></li>
+<li><a href="#remove_unused_assets">Remove - Unused Assets</a></li>
+<li><a href="#remove_all_unused_assets">Remove All - unused Assets</a></li>
 </ul></section>
+<section id="get_asset_details">
+<h3>CSV - detailed Assets</h3>
+<p>Saves the details of all the assets to a CSV file: type, duration, size, resolution, validity period, the playlists that use the asset, and categories.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Assets</b> and the action “CSV - detailed Assets”. Then click “Start”.</p>
+</section>
+<section id="get_asset_validity">
+<h3>CSV - validity Assets</h3>
+<p>Saves the validity of the assets (dates and hours) to a CSV file, in the form the asset-validity action takes.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Assets</b> and the action “CSV - validity Assets”. Then click “Start”.</p>
+</section>
 <section id="get_asset_unused">
 <h3>CSV - Unused Assets</h3>
 <p>Saves to a CSV file the assets that no playlist contains (not even as a logo or in a zone).</p>
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
 <p class="how">Select the category <b>Assets</b> and the action “CSV - Unused Assets”. Then click “Start”.</p>
+</section>
+<section id="set_asset_validity">
+<h3>Change - validity Assets</h3>
+<p>Set the validity of an asset.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. asset name</li><li>2. valid from: a date or empty</li><li>3. valid to: a date or empty</li><li>4. from what hour: a whole hour 0-23 (e.g. 8 or 08:00) or empty</li><li>5. until what hour: a whole hour 1-24 (24 or 00:00 = until midnight) or empty</li></ul>
+<ul class="notes"><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>The hours are used only when at least one date is filled in; with no dates the validity is off.</li><li>The dates and the hours are checked when the input is loaded; the server takes whole hours only (no minutes).</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;asset name&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>08:00</td><td>18:00</td></tr></table>
+<p class="how">Select the category <b>Assets</b> and the action “Change - validity Assets”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
 <section id="remove_unused_assets">
 <h3>Remove - Unused Assets</h3>
@@ -49,28 +71,6 @@
 <p>Deletes all the unused assets. The list is shown and confirmed first; assets labelled “test” are skipped.</p>
 <p class="kind">Takes no input, it is run with “Start”.</p>
 <p class="how">Select the category <b>Assets</b> and the action “Remove All - unused Assets”. Then click “Start”.</p>
-</section>
-<section id="get_asset_details">
-<h3>CSV - detailed Assets</h3>
-<p>Saves the details of all the assets to a CSV file: type, duration, size, resolution, validity period, the playlists that use the asset, and categories.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Assets</b> and the action “CSV - detailed Assets”. Then click “Start”.</p>
-</section>
-<section id="get_asset_validity">
-<h3>CSV - validity Assets</h3>
-<p>Saves the validity of the assets (dates and hours) to a CSV file, in the form the asset-validity action takes.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Assets</b> and the action “CSV - validity Assets”. Then click “Start”.</p>
-</section>
-<section id="set_asset_validity">
-<h3>Change - validity Assets</h3>
-<p>Set the validity of an asset.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. asset name</li><li>2. valid from: a date or empty</li><li>3. valid to: a date or empty</li><li>4. from what hour: a whole hour 0-23 (e.g. 8 or 08:00) or empty</li><li>5. until what hour: a whole hour 1-24 (24 or 00:00 = until midnight) or empty</li></ul>
-<ul class="notes"><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>The hours are used only when at least one date is filled in; with no dates the validity is off.</li><li>The dates and the hours are checked when the input is loaded; the server takes whole hours only (no minutes).</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;asset name&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>08:00</td><td>18:00</td></tr></table>
-<p class="how">Select the category <b>Assets</b> and the action “Change - validity Assets”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
     <footer>
         <a href="/cz/assets.html">Čeština</a>

@@ -22,18 +22,24 @@
     </nav>
 <section><p>Actions on locations: the times the displays are switched on and off, renaming, creating and the clean-up.</p><p>The actions of this category (the name is exactly as in the application):</p><ul>
 <li><a href="#get_locations_plan">CSV - ON/OFF Times</a></li>
+<li><a href="#get_location_unused">CSV - Unused Locations</a></li>
 <li><a href="#set_location_plan">Change - LCD ON/OFF Times</a></li>
 <li><a href="#set_location_rename">Rename - Locations</a></li>
-<li><a href="#create_location">Create - Locations</a></li>
 <li><a href="#remove_unused_locations">Remove - Unused Locations</a></li>
 <li><a href="#remove_all_unused_locations">Remove All - Unused Locations</a></li>
-<li><a href="#get_location_unused">CSV - Unused Locations</a></li>
+<li><a href="#create_location">Create - Locations</a></li>
 </ul></section>
 <section id="get_locations_plan">
 <h3>CSV - ON/OFF Times</h3>
 <p>Saves the times the displays are switched on and off in the locations, by day of the week, to a CSV file, in the form the location-times action takes.</p>
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
 <p class="how">Select the category <b>Locations</b> and the action “CSV - ON/OFF Times”. Then click “Start”.</p>
+</section>
+<section id="get_location_unused">
+<h3>CSV - Unused Locations</h3>
+<p>Saves to a CSV file the locations that no player is in.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Locations</b> and the action “CSV - Unused Locations”. Then click “Start”.</p>
 </section>
 <section id="set_location_plan">
 <h3>Change - LCD ON/OFF Times</h3>
@@ -55,16 +61,6 @@
 <p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;</td></tr></table>
 <p class="how">Select the category <b>Locations</b> and the action “Rename - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
-<section id="create_location">
-<h3>Create - Locations</h3>
-<p>Create new locations.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. new location name (one per line)</li></ul>
-<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;new location name&gt;</td></tr></table>
-<p class="how">Select the category <b>Locations</b> and the action “Create - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
 <section id="remove_unused_locations">
 <h3>Remove - Unused Locations</h3>
 <p>Delete unused locations.</p>
@@ -81,11 +77,15 @@
 <p class="kind">Takes no input, it is run with “Start”.</p>
 <p class="how">Select the category <b>Locations</b> and the action “Remove All - Unused Locations”. Then click “Start”.</p>
 </section>
-<section id="get_location_unused">
-<h3>CSV - Unused Locations</h3>
-<p>Saves to a CSV file the locations that no player is in.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Locations</b> and the action “CSV - Unused Locations”. Then click “Start”.</p>
+<section id="create_location">
+<h3>Create - Locations</h3>
+<p>Create new locations.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. new location name (one per line)</li></ul>
+<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;new location name&gt;</td></tr></table>
+<p class="how">Select the category <b>Locations</b> and the action “Create - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
     <footer>
         <a href="/cz/locations.html">Čeština</a>

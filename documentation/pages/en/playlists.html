@@ -22,20 +22,32 @@
     </nav>
 <section><p>Actions on playlists: their assets, settings and the clean-up of unused ones.</p><p>The actions of this category (the name is exactly as in the application):</p><ul>
 <li><a href="#get_playlist_details">CSV - Playlists Details</a></li>
-<li><a href="#set_assets_to_playlists">Change - Assets to Playlists</a></li>
-<li><a href="#remove_assets_from_playlists">Remove - Assets from Playlists</a></li>
-<li><a href="#create_playlist">Create - Playlist</a></li>
+<li><a href="#get_playlist_settings">CSV - Playlist Settings</a></li>
 <li><a href="#get_playlist_unused">CSV - Unused Playlists</a></li>
+<li><a href="#set_assets_to_playlists">Change - Assets to Playlists</a></li>
+<li><a href="#set_playlist_settings">Change - Playlist settings</a></li>
+<li><a href="#remove_assets_from_playlists">Remove - Assets from Playlists</a></li>
 <li><a href="#remove_unused_playlists">Remove - Unused Playlists</a></li>
 <li><a href="#remove_all_unused_playlists">Remove All - Unused Playlists</a></li>
-<li><a href="#get_playlist_settings">CSV - Playlist Settings</a></li>
-<li><a href="#set_playlist_settings">Change - Playlist settings</a></li>
+<li><a href="#create_playlist">Create - Playlist</a></li>
 </ul></section>
 <section id="get_playlist_details">
 <h3>CSV - Playlists Details</h3>
 <p>Saves every playlist and its assets (the files in it) to a CSV file.</p>
 <p class="kind">Downloads a CSV file to the Downloads folder.</p>
 <p class="how">Select the category <b>Playlists</b> and the action “CSV - Playlists Details”. Then click “Start”.</p>
+</section>
+<section id="get_playlist_settings">
+<h3>CSV - Playlist Settings</h3>
+<p>Saves the settings of the playlists (the domination interval) to a CSV file, in the form the playlist-settings action takes.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Playlists</b> and the action “CSV - Playlist Settings”. Then click “Start”.</p>
+</section>
+<section id="get_playlist_unused">
+<h3>CSV - Unused Playlists</h3>
+<p>Saves to a CSV file the playlists that no group uses, no player as an additional one and no zone of another playlist.</p>
+<p class="kind">Downloads a CSV file to the Downloads folder.</p>
+<p class="how">Select the category <b>Playlists</b> and the action “CSV - Unused Playlists”. Then click “Start”.</p>
 </section>
 <section id="set_assets_to_playlists">
 <h3>Change - Assets to Playlists</h3>
@@ -47,6 +59,16 @@
 <p>An example line:</p><table class="example"><tr><td>&lt;playlist name&gt;</td><td>&lt;asset 1&gt;</td><td>&lt;asset 2&gt;</td><td>&lt;asset 3&gt;</td></tr></table>
 <p class="how">Select the category <b>Playlists</b> and the action “Change - Assets to Playlists”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
+<section id="set_playlist_settings">
+<h3>Change - Playlist settings</h3>
+<p>Set a playlist: the domination interval.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. playlist name</li><li>2. domination interval (a whole number, e.g. 300; empty = domination off)</li></ul>
+<ul class="notes"></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;playlist name&gt;</td><td>300</td></tr></table>
+<p class="how">Select the category <b>Playlists</b> and the action “Change - Playlist settings”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
 <section id="remove_assets_from_playlists">
 <h3>Remove - Assets from Playlists</h3>
 <p>Remove assets from a playlist by a keyword.</p>
@@ -56,22 +78,6 @@
 <ul class="notes"></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;playlist name&gt;</td><td>&lt;keyword&gt;</td></tr></table>
 <p class="how">Select the category <b>Playlists</b> and the action “Remove - Assets from Playlists”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
-<section id="create_playlist">
-<h3>Create - Playlist</h3>
-<p>Create new playlists.</p>
-<p class="kind">Takes input (“Input Prompt”).</p>
-<h4>Input</h4>
-<ul><li>1. new playlist name (one per line)</li></ul>
-<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;new playlist name&gt;</td></tr></table>
-<p class="how">Select the category <b>Playlists</b> and the action “Create - Playlist”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
-</section>
-<section id="get_playlist_unused">
-<h3>CSV - Unused Playlists</h3>
-<p>Saves to a CSV file the playlists that no group uses, no player as an additional one and no zone of another playlist.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Playlists</b> and the action “CSV - Unused Playlists”. Then click “Start”.</p>
 </section>
 <section id="remove_unused_playlists">
 <h3>Remove - Unused Playlists</h3>
@@ -89,21 +95,15 @@
 <p class="kind">Takes no input, it is run with “Start”.</p>
 <p class="how">Select the category <b>Playlists</b> and the action “Remove All - Unused Playlists”. Then click “Start”.</p>
 </section>
-<section id="get_playlist_settings">
-<h3>CSV - Playlist Settings</h3>
-<p>Saves the settings of the playlists (the domination interval) to a CSV file, in the form the playlist-settings action takes.</p>
-<p class="kind">Downloads a CSV file to the Downloads folder.</p>
-<p class="how">Select the category <b>Playlists</b> and the action “CSV - Playlist Settings”. Then click “Start”.</p>
-</section>
-<section id="set_playlist_settings">
-<h3>Change - Playlist settings</h3>
-<p>Set a playlist: the domination interval.</p>
+<section id="create_playlist">
+<h3>Create - Playlist</h3>
+<p>Create new playlists.</p>
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
-<ul><li>1. playlist name</li><li>2. domination interval (a whole number, e.g. 300; empty = domination off)</li></ul>
-<ul class="notes"></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;playlist name&gt;</td><td>300</td></tr></table>
-<p class="how">Select the category <b>Playlists</b> and the action “Change - Playlist settings”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+<ul><li>1. new playlist name (one per line)</li></ul>
+<ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;new playlist name&gt;</td></tr></table>
+<p class="how">Select the category <b>Playlists</b> and the action “Create - Playlist”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
     <footer>
         <a href="/cz/playlists.html">Čeština</a>
