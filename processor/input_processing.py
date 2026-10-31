@@ -738,7 +738,8 @@ class RenameProcessor(EntityValidationProcessor, ABC):
         pass
 
     @abstractmethod
-    def _validate_new_name(self, name: str) -> bool:
+    def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
+        """The key of the message that says why new_name is not acceptable, None if it is."""
         pass
 
     @abstractmethod
@@ -783,13 +784,14 @@ class RenameProcessor(EntityValidationProcessor, ABC):
                     self._wrong_init_counter += 1
                     continue
 
-                if not self._validate_new_name(new_name):
-                    self._write_invalid_name(line_num, old_name, new_name)
+                error_key = self._new_name_error(old_name, new_name)
+                if error_key:
+                    self._write_invalid_name(error_key, line_num, old_name, new_name)
                     self._wrong_init_counter += 1
                     continue
 
                 if (new_name in names[self.entity_type] and new_name != old_name) or new_name in loaded_new_name:
-                    self._write_invalid_name(line_num, old_name, new_name)
+                    self._write_invalid_name(self._invalid_name_message_key(), line_num, old_name, new_name)
                     self._wrong_init_counter += 1
                     continue
 
@@ -835,9 +837,9 @@ class RenameProcessor(EntityValidationProcessor, ABC):
             response["data"]["old_name"] = old_name
             yield Response(200, response)
 
-    def _write_invalid_name(self, line_num: int, old_name: str, new_name: str):
+    def _write_invalid_name(self, message_key: str, line_num: int, old_name: str, new_name: str):
         self._logger.error(
-            self.lang.get_message(self._invalid_name_message_key(),
+            self.lang.get_message(message_key,
                                   line_num=line_num,
                                   old_name=old_name,
                                   new_name=new_name))
@@ -2213,8 +2215,8 @@ class GroupRenameProcessor(RenameProcessor):
     def _rename_method(self, server, old_name: str, new_name: str) -> Response:
         return server.rename_group(old_name, new_name)
 
-    def _validate_new_name(self, name: str) -> bool:
-        return not bool(re.search(r'[",;\s]', name))
+    def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
+        return self._invalid_name_message_key() if re.search(r'[",;\s]', new_name) else None
 
     def _invalid_name_message_key(self) -> str:
         return "invalid_group_name"
@@ -2229,12 +2231,20 @@ class PlayerRenameProcessor(RenameProcessor):
     def _rename_method(self, server, old_name: str, new_name: str) -> Response:
         return server.rename_player(old_name, new_name)
 
-    def _validate_new_name(self, name: str) -> bool:
-        unique_identifier_pattern = r"_?(P[B-E]\d{4}|[Rr][Pp][Ii]\d{3})_?"
-        return bool(re.search(unique_identifier_pattern, name))
+    # The identifier must be followed by "_" in the new name; the old name is only searched for the bare identifier,
+    # because existing names may predate this convention.
+    _IDENTIFIER = r"(?:P[B-E]\d{4}|[Rr][Pp][Ii]\d{3})"
+
+    def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
+        if re.search(r'[",;\s]', new_name) or not re.search(self._IDENTIFIER + "_", new_name):
+            return self._invalid_name_message_key()
+        old_identifiers = re.findall(self._IDENTIFIER, old_name)
+        if old_identifiers and old_identifiers != re.findall(self._IDENTIFIER, new_name):
+            return "player_identifier_changed"
+        return None
 
     def _invalid_name_message_key(self) -> str:
-        return "invalid_name"
+        return "invalid_player_name"
 
     def _success_rename_message_key(self) -> str:
         return "success_rename"
@@ -2246,8 +2256,8 @@ class PlaylistRenameProcessor(RenameProcessor):
     def _rename_method(self, server, old_name: str, new_name: str) -> Response:
         return server.rename_playlist(old_name, new_name)
 
-    def _validate_new_name(self, name: str) -> bool:
-        return not bool(re.search(r'[",;\s]', name))
+    def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
+        return self._invalid_name_message_key() if re.search(r'[",;\s]', new_name) else None
 
     def _invalid_name_message_key(self) -> str:
         return "invalid_name"
@@ -2262,8 +2272,8 @@ class LocationRenameProcessor(RenameProcessor):
     def _rename_method(self, server, old_name: str, new_name: str) -> Response:
         return server.rename_location(old_name, new_name)
 
-    def _validate_new_name(self, name: str) -> bool:
-        return not bool(re.search(r'\s', name))
+    def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
+        return self._invalid_name_message_key() if re.search(r'\s', new_name) else None
 
     def _invalid_name_message_key(self) -> str:
         return "invalid_location_name"

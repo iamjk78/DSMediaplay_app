@@ -307,11 +307,11 @@
           "2. nový název"
         ],
         "notes": [
-          "Nový název musí obsahovat identifikátor: PB, PC, PD nebo PE + 4 číslice (např. PB1234), nebo RPI + 3 číslice (např. RPI123), volitelně obklopený podtržítkem; nesmí už existovat."
+          "Nový název musí obsahovat identifikátor, za kterým následuje podtržítko: PB, PC, PD nebo PE + 4 číslice (např. PB1234_), nebo RPI + 3 číslice (např. RPI123_). Identifikátor stávajícího názvu se nesmí změnit. Nový název nesmí obsahovat uvozovky, čárku, středník ani mezery a nesmí už existovat."
         ],
         "example": [
           "<stávající název>",
-          "<nový název>_PB1234"
+          "<nový název>_PB1234_"
         ]
       },
       "remove_unused_labels": {
@@ -784,11 +784,11 @@
           "2. new name"
         ],
         "notes": [
-          "The new name must contain an identifier: PB, PC, PD or PE + 4 digits (e.g. PB1234), or RPI + 3 digits (e.g. RPI123), optionally surrounded by underscores; it must not exist yet."
+          "The new name must contain an identifier followed by an underscore: PB, PC, PD or PE + 4 digits (e.g. PB1234_), or RPI + 3 digits (e.g. RPI123_). The identifier of the current name must not change. The new name must not contain quotes, commas, semicolons or whitespace and must not exist yet."
         ],
         "example": [
           "<current name>",
-          "<new name>_PB1234"
+          "<new name>_PB1234_"
         ]
       },
       "remove_unused_labels": {

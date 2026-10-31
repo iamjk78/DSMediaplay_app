@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from destructive_actions_test import make_processor
 from pasted_playlists_test import ProcessorCase, line
-from processor.input_processing import (CreateGroupProcessor, CreateLabelProcessor, CreateLocationProcessor,
+from processor.input_processing import (CreateGroupProcessor, CreateLabelProcessor, CreateLocationProcessor, FormatException,
                                         CreatePlayerProcessor, CreatePlaylistProcessor,
                                         DeleteAdditionalPlaylistProcessor, LocationRenameProcessor,
                                         PlayerDetailsCloneProcessor, PlayerRenameProcessor, PlayerUpdateProcessor,
@@ -96,7 +96,7 @@ class CreateTest(ProcessorCase):
 
 
 RENAMES = (  # the action, how the server lists what exists, how it renames, a good new name, a bad one
-    (PlayerRenameProcessor, "get_player_names", "rename_player", "PB1234", "Lobby"),
+    (PlayerRenameProcessor, "get_player_names", "rename_player", "PB1234_", "Lobby"),
     (PlaylistRenameProcessor, "get_playlist_names", "rename_playlist", "Promo2026", "Promo 2026"),
     (LocationRenameProcessor, "get_location_names", "rename_location", "Hall2", "Hall 2"),
 )
@@ -155,6 +155,58 @@ class RenameTest(ProcessorCase):
 
                 getattr(server, renaming).assert_called_once_with("Old", good)
                 logger.info.assert_called_with("success_rename")
+
+
+class PlayerRenameRulesTest(ProcessorCase):
+    PLAYERS = ("abc_PB3434_aktivni", "stary player", "RPI001", "no identifier")
+
+    def load_rename(self, *rows):
+        self.server.get_player_names.return_value = list(self.PLAYERS)
+        return self.load(PlayerRenameProcessor, "\n".join(line(*row) for row in rows))
+
+    def test_the_identifier_has_to_be_followed_by_an_underscore(self):
+        for new_name, accepted in (("x_PB3434_y", True), ("PB3434_", True), ("x_PB3434", False), ("PB3434", False),
+                                   ("x_RPI001_", True), ("x_rpi001_", True), ("x_RPI001", False)):
+            with self.subTest(new_name=new_name):
+                processor, logger = self.load_rename(("no identifier", new_name))
+                self.assertEqual(processor.refused, not accepted)
+                if not accepted:
+                    self.assertEqual(self.messages(logger)[0], "invalid_player_name")
+
+    def test_the_identifier_of_the_old_name_cannot_be_changed(self):
+        for new_name in ("abc_PB3455_aktivni", "abc_PC3434_aktivni", "abc_RPI001_x", "abc_PB3434_PB3434_PB9999_"):
+            with self.subTest(new_name=new_name):
+                processor, logger = self.load_rename(("abc_PB3434_aktivni", new_name))
+                self.assertTrue(processor.refused)
+                self.assertEqual(self.messages(logger)[0], "player_identifier_changed")
+                self.assertEqual(processor.data, {})
+
+    def test_the_rest_of_the_name_can_change_when_the_identifier_stays(self):
+        processor, _ = self.load_rename(("abc_PB3434_aktivni", "Praha_PB3434_lobby"), ("RPI001", "RPI001_Brno"))
+        self.assertFalse(processor.refused)
+        self.assertEqual(processor.data, {"abc_PB3434_aktivni": "Praha_PB3434_lobby", "RPI001": "RPI001_Brno"})
+
+    def test_forbidden_characters_are_refused_in_the_new_name_only(self):
+        for new_name in ("a b_PB3434_", 'a"b_PB3434_', "a,b_PB3434_", "a;b_PB3434_"):
+            with self.subTest(new_name=new_name):
+                processor, logger = self.load_rename(("no identifier", new_name))
+                self.assertTrue(processor.refused)
+                self.assertEqual(self.messages(logger)[0], "invalid_player_name")
+
+        processor, _ = self.load_rename(("stary player", "new_PB1234_"))  # a space in the old name is not a reason
+        self.assertFalse(processor.refused)
+
+    def test_an_old_name_given_twice_is_refused_and_the_line_numbers_are_those_of_the_input(self):
+        text = line("abc_PB3434_aktivni", "x_PB3434_") + "\n\n" + line("abc_PB3434_aktivni", "y_PB3434_")
+        self.server.get_player_names.return_value = list(self.PLAYERS)
+        processor, logger, patcher = make_processor(PlayerRenameProcessor, self.server)
+        self.addCleanup(patcher.stop)
+        processor.lang.get_message.side_effect = lambda key, **kw: (key, kw.get("line_number"))
+
+        with self.assertRaises(FormatException):
+            processor.load(text)
+
+        self.assertIn(("collision", 3), self.messages(logger, "warning"))
 
 
 UNUSED = (  # the action, how the server lists what is unused

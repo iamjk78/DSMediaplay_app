@@ -125,9 +125,10 @@ cz = {
             ["Zpracují se jen přehrávače, které additional playlist mají."]),
         "set_player_rename": action(
             "Přejmenování přehrávačů.", ["1. stávající název přehrávače", "2. nový název"],
-            ["<stávající název>", "<nový název>_PB1234"],
-            ["Nový název musí obsahovat identifikátor: PB, PC, PD nebo PE + 4 číslice (např. PB1234), nebo "
-             "RPI + 3 číslice (např. RPI123), volitelně obklopený podtržítkem; nesmí už existovat."]),
+            ["<stávající název>", "<nový název>_PB1234_"],
+            ["Nový název musí obsahovat identifikátor, za kterým následuje podtržítko: PB, PC, PD nebo PE + 4 číslice "
+             "(např. PB1234_), nebo RPI + 3 číslice (např. RPI123_). Identifikátor stávajícího názvu se nesmí změnit. "
+             "Nový název nesmí obsahovat uvozovky, čárku, středník ani mezery a nesmí už existovat."]),
         "remove_unused_labels": action(
             "Smazání nepoužívaných kategorií.", ["1. název kategorie (jeden na řádek)"], ["<název kategorie>"],
             ["Kategorie, jejichž název začíná \"test\", se přeskočí."]),
@@ -262,9 +263,10 @@ en = {
             ["1. player name (one per line; further columns are ignored)"], ["<player name>"],
             ["Only players that have an additional playlist are processed."]),
         "set_player_rename": action(
-            "Rename players.", ["1. current player name", "2. new name"], ["<current name>", "<new name>_PB1234"],
-            ["The new name must contain an identifier: PB, PC, PD or PE + 4 digits (e.g. PB1234), or RPI + 3 digits "
-             "(e.g. RPI123), optionally surrounded by underscores; it must not exist yet."]),
+            "Rename players.", ["1. current player name", "2. new name"], ["<current name>", "<new name>_PB1234_"],
+            ["The new name must contain an identifier followed by an underscore: PB, PC, PD or PE + 4 digits "
+             "(e.g. PB1234_), or RPI + 3 digits (e.g. RPI123_). The identifier of the current name must not change. "
+             "The new name must not contain quotes, commas, semicolons or whitespace and must not exist yet."]),
         "remove_unused_labels": action(
             "Delete unused categories.", ["1. category name (one per line)"], ["<category name>"],
             ["Categories whose name starts with \"test\" are skipped."]),

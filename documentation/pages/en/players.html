@@ -140,8 +140,8 @@
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
 <ul><li>1. current player name</li><li>2. new name</li></ul>
-<ul class="notes"><li>The new name must contain an identifier: PB, PC, PD or PE + 4 digits (e.g. PB1234), or RPI + 3 digits (e.g. RPI123), optionally surrounded by underscores; it must not exist yet.</li></ul>
-<p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;_PB1234</td></tr></table>
+<ul class="notes"><li>The new name must contain an identifier followed by an underscore: PB, PC, PD or PE + 4 digits (e.g. PB1234_), or RPI + 3 digits (e.g. RPI123_). The identifier of the current name must not change. The new name must not contain quotes, commas, semicolons or whitespace and must not exist yet.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;_PB1234_</td></tr></table>
 <p class="how">Select the category <b>Players</b> and the action “Change - Player Name”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
 <section id="set_player_snapshot">
