@@ -51,7 +51,6 @@ class LoggingTextBoxFactory:
             "create_playlist": CreatePlaylistLogBox,
             "create_label": CreateLabelLogBox,
             "remove_additional_playlists": DeleteAdditionalPlaylistLogBox,
-            "group_files_repair": GroupFilesRepairLogBox,
             "remove_unused_groups": RemoveUnusedGroupsLogBox,
             "remove_unused_playlists": RemoveUnusedPlaylistsLogBox,
             "remove_unused_assets": RemoveUnusedAssetsLogBox,
@@ -553,11 +552,6 @@ class CreatePlaylistLogBox(LoggingTextBox):
 class CreateLabelLogBox(LoggingTextBox):
     def __init__(self, **kwargs):
         super().__init__(processor_type="create_label", **kwargs)
-
-
-class GroupFilesRepairLogBox(LoggingTextBox):
-    def __init__(self, **kwargs):
-        super().__init__(processor_type="group_files_repair", **kwargs)
 
 
 class RemoveUnusedGroupsLogBox(LoggingTextBox):

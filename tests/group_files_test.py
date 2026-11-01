@@ -1,15 +1,12 @@
 """The files of a group (`assets`). The server does not work them out of the playlists of the group: it keeps what a client
 sends and copies it to the players on Deploy. A group written with playlists and without their files has the names of the
 playlists on its players and nothing to play. So every write of the playlists of a group sends the files too, worked out as
-the web interface does it; and a group that was written without them can be repaired."""
+the web interface does it."""
 import copy
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from api_testing.request_calls import ServerApi, prepare_group_playlists
-from destructive_actions_test import make_processor
-from main_buttons_test import MainWindowCase
-from processor.input_processing import InternalException, RepairGroupFilesProcessor
 
 
 def playlist(name, files=(), layout="1", settings=None, template=None, rows=None):
@@ -175,14 +172,11 @@ class FakeServer:
         self.playlists = playlists
         self.posts = []
         self.reads = []
-        self.account_files = []
 
     def request(self, method, endpoint, **kwargs):
         self.reads.append((method, endpoint))
         if method == "get" and endpoint == "/playlists":
             return {"success": True, "data": copy.deepcopy(self.playlists)}
-        if method == "get" and endpoint == "/files":
-            return {"success": True, "data": {"dbdata": [{"name": name} for name in self.account_files]}}
         if method == "get" and endpoint == "/groups":
             if kwargs.get("params"):
                 return {"success": True, "data": [g for g in copy.deepcopy(list(self.groups.values()))
@@ -268,204 +262,6 @@ class WritingAGroupTest(unittest.TestCase):
 
         self.assertEqual(server.reads.count(("get", "/playlists")), 1)
         self.assertEqual(len(server.posts), 2)
-
-
-class RepairPlanTest(unittest.TestCase):
-    BROKEN = {"_id": "g2", "name": "Shop2", "logo": None, "assets": ["d.mp4", "__Default.json"],
-              "playlists": [{"name": "Default", "plType": "regular", "skipForSchedule": False, "settings": {}},
-                            {"name": "Kofola", "settings": {}}]}  # added by the old write: no files, no type
-    FINE = {"_id": "g1", "name": "Shop1", "logo": None,
-            "assets": ["kofola2.jpg", "__Kofola.json", "kofola1.mp4", "d.mp4", "__Default.json"],
-            "playlists": [{"name": "Default", "plType": "regular", "skipForSchedule": False, "settings": {}},
-                          {"name": "Kofola", "plType": "regular", "skipForSchedule": False, "settings": {}}]}
-
-    def test_only_the_groups_that_lack_files_are_planned_and_all_are_counted(self):
-        api, _ = api_with([self.FINE, self.BROKEN], PLAYLISTS)
-
-        plan, total = api.plan_group_files_repair()
-
-        self.assertEqual((total, [item["name"] for item in plan]), (2, ["Shop2"]))
-
-    def test_the_missing_files_are_added_and_none_is_taken_away(self):
-        broken = {**self.BROKEN, "assets": ["d.mp4", "__Default.json", "something-else.mp4"]}
-        api, _ = api_with([broken], PLAYLISTS)
-
-        item = api.plan_group_files_repair()[0][0]
-
-        self.assertEqual(item["assets"][:3], ["d.mp4", "__Default.json", "something-else.mp4"])
-        self.assertEqual(sorted(item["missing"]), ["__Kofola.json", "kofola1.mp4", "kofola2.jpg"])
-        self.assertEqual(sorted(item["assets"]), sorted(["d.mp4", "__Default.json", "something-else.mp4"] + item["missing"]))
-
-    def test_a_template_that_is_no_file_of_the_account_is_taken_away_but_a_real_one_stays(self):
-        group = {**self.FINE, "assets": self.FINE["assets"] + ["custom_layout.html", "custom_layout2.html", "x.mp4"]}
-        api, server = api_with([group], PLAYLISTS)
-        server.account_files = ["custom_layout2.html"]
-
-        item = api.plan_group_files_repair()[0][0]
-
-        self.assertEqual(item["stray"], ["custom_layout.html"])
-        self.assertEqual(item["assets"], self.FINE["assets"] + ["custom_layout2.html", "x.mp4"])
-
-    def test_an_entry_without_the_type_gets_it_and_the_others_stay_as_they_are(self):
-        api, _ = api_with([self.BROKEN], PLAYLISTS)
-
-        item = api.plan_group_files_repair()[0][0]
-
-        self.assertEqual(item["playlists"][0], self.BROKEN["playlists"][0])
-        self.assertEqual((item["playlists"][1]["plType"], item["playlists"][1]["skipForSchedule"]), ("regular", False))
-        self.assertEqual(item["entries_changed"], 1)
-
-    def test_an_entry_that_has_its_type_is_not_touched_even_when_the_interface_would_say_something_else(self):
-        group = {**self.FINE, "playlists": [{"name": "Default", "plType": "audio", "skipForSchedule": False,
-                                            "settings": {"audio": {"enable": True}}}], "assets": ["d.mp4", "__Default.json"]}
-        api, _ = api_with([group], PLAYLISTS)
-
-        plan, _ = api.plan_group_files_repair()
-
-        self.assertEqual(plan, [])
-
-    def test_a_group_without_playlists_needs_nothing(self):
-        api, _ = api_with([{"_id": "g3", "name": "Empty", "assets": [], "playlists": []}], PLAYLISTS)
-
-        self.assertEqual(api.plan_group_files_repair(), ([], 1))
-
-    def test_what_is_written_is_the_files_and_the_entries_of_that_group_only(self):
-        api, server = api_with([self.BROKEN], PLAYLISTS)
-        item = api.plan_group_files_repair()[0][0]
-
-        api.write_group_files(item)
-
-        body = server.posts[-1]
-        self.assertEqual(sorted(body), ["_id", "assets", "name", "playlists"])
-        self.assertEqual(server.groups["g2"]["assets"], item["assets"])
-
-    def test_after_the_repair_the_group_is_fine(self):
-        api, server = api_with([self.BROKEN], PLAYLISTS)
-        api.write_group_files(api.plan_group_files_repair()[0][0])
-        api._playlist_cache = None
-
-        self.assertEqual(api.plan_group_files_repair(), ([], 1))
-
-
-class RepairProcessorTest(unittest.TestCase):
-    def processor(self, plan, total=None, **server_kwargs):
-        server = MagicMock()
-        server.plan_group_files_repair.return_value = (plan, len(plan) + 2 if total is None else total)
-        server.__enter__.return_value = server
-        for name, value in server_kwargs.items():
-            getattr(server, name).side_effect = value
-        processor, logger, patcher = make_processor(RepairGroupFilesProcessor, server, real_text=True)
-        self.addCleanup(patcher.stop)
-        return processor, logger, server
-
-    @staticmethod
-    def item(name, missing=("a.mp4",), entries=1):
-        return {"id": name, "name": name, "playlists": [], "assets": list(missing), "missing": list(missing),
-                "entries_changed": entries, "stray": []}
-
-    def test_it_says_how_many_groups_need_the_repair(self):
-        processor, logger, _ = self.processor([self.item("G1"), self.item("G2")], total=10)
-
-        processor.load("")
-
-        self.assertIn("Skupin celkem: 10, k opravě: 2, v pořádku: 8.", [c.args[0] for c in logger.info.call_args_list])
-
-    def test_it_asks_with_the_names_and_the_count_and_says_deploy_is_still_to_come(self):
-        processor, _, _ = self.processor([self.item("G1"), self.item("G2")])
-        processor.load("")
-
-        question = processor.confirmation()
-
-        self.assertIn("(2)", question.text)
-        self.assertIn("• G1", question.text)
-        self.assertIn("Deploy", question.text)
-
-    def test_when_nothing_needs_the_repair_nothing_is_asked_and_nothing_is_written(self):
-        processor, logger, server = self.processor([])
-        processor.load("")
-
-        self.assertIsNone(processor.confirmation())
-        list(processor.run())
-
-        server.write_group_files.assert_not_called()
-        self.assertIn("není co opravovat", " ".join(c.args[0] for c in logger.info.call_args_list))
-
-    def test_every_planned_group_is_written_and_reported(self):
-        processor, logger, server = self.processor([self.item("G1", ("a.mp4", "b.mp4")), self.item("G2", ())])
-        processor.load("")
-
-        list(processor.run())
-
-        self.assertEqual([c.args[0]["name"] for c in server.write_group_files.call_args_list], ["G1", "G2"])
-        lines = [c.args[0] for c in logger.info.call_args_list]
-        self.assertIn("Skupina G1: doplněno souborů: 2 (a.mp4, b.mp4), upravených položek playlistů: 1, odebráno nepoužitých souborů: 0.", lines)
-        self.assertIn("Skupina G2: doplněno souborů: 0, upravených položek playlistů: 1, odebráno nepoužitých souborů: 0.", lines)
-
-    def test_a_long_list_of_added_files_is_cut(self):
-        processor, logger, _ = self.processor([self.item("G1", tuple(f"f{n}.mp4" for n in range(8)))])
-        processor.load("")
-
-        list(processor.run())
-
-        line = next(c.args[0] for c in logger.info.call_args_list if c.args[0].startswith("Skupina G1"))
-        self.assertIn("f4.mp4", line)
-        self.assertNotIn("f5.mp4", line)
-        self.assertIn("a dalších 3", line)
-
-    def test_a_connection_that_is_lost_stops_it_and_says_what_is_left(self):
-        import requests
-        processor, logger, server = self.processor([self.item("G1"), self.item("G2"), self.item("G3")],
-                                                   write_group_files=[None, requests.exceptions.ConnectTimeout()])
-        processor.load("")
-
-        with self.assertRaises(InternalException):
-            list(processor.run())
-
-        errors = [c.args[0] for c in logger.error.call_args_list]
-        self.assertIn("Server neodpovídá", errors[0])
-        self.assertEqual(errors[1], "Přerušeno po 1 z 3 krocích. Nezpracováno nebo nepotvrzeno (2): G2, G3")
-
-
-class RegistrationTest(unittest.TestCase):
-    def test_the_action_is_among_the_group_actions_in_both_languages_and_needs_no_input(self):
-        import json
-        import os
-        from util.actions import action_kind, action_needs_input, entity_actions
-        with open(os.path.join(os.path.dirname(__file__), "..", "assets", "messages.json"), encoding="utf-8") as file:
-            messages = json.load(file)
-        for language in ("cz", "en"):
-            keys = list(entity_actions(messages[language]["actions"])["Groups"].values())
-            self.assertIn("set_group_files_repair", keys)
-        self.assertFalse(action_needs_input("set_group_files_repair"))
-        self.assertEqual(action_kind("set_group_files_repair"), "change")
-
-    def test_the_processor_and_the_backup_know_it_under_one_name(self):
-        from processor.input_processing import ProcessorFactory
-        from util import backup
-        processor = ProcessorFactory.create_processor("group_files_repair", MagicMock(), "https://x", "u", "p", MagicMock())
-
-        self.assertIsInstance(processor, RepairGroupFilesProcessor)
-        self.assertTrue(backup.csv_tasks_for("group_files_repair"))
-
-
-class RepairWindowTest(MainWindowCase):
-    def test_the_window_makes_its_log_window_for_the_action(self):
-        from gui_app.log_box import GroupFilesRepairLogBox, LoggingTextBoxFactory
-        with patch("gui_app.log_box.ThreadManager.start_thread"):
-            box = LoggingTextBoxFactory.create_log_box("group_files_repair", self.app, "https://x", "u", "p", "Non-empty")
-        self.addCleanup(lambda: box.winfo_exists() and box.destroy())
-
-        self.assertIsInstance(box, GroupFilesRepairLogBox)
-        self.assertEqual(box.processor_type, "group_files_repair")
-
-    def test_the_action_is_offered_in_the_list_of_the_groups_and_starts_without_an_input(self):
-        self.app.entity_type_var.set("Groups")
-        self.app.update_action_selection()
-
-        label = next(label for label, key in self.app.entity_actions["Groups"].items() if key == "set_group_files_repair")
-
-        self.assertIn(label, self.app.option_choose_action["values"])
-        self.assertEqual(label, "Oprava - soubory skupin")
 
 
 if __name__ == "__main__":

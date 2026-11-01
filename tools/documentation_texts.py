@@ -31,9 +31,6 @@ ACTIONS = {
     "remove_all_expired_playlists": {
         "cz": "Ze všech skupin odebere playlisty, jejichž platnost (zapnuté omezení data) už skončila. Log napíše, které playlisty se ze které skupiny odebraly. Playlist samotný se nemaže.",
         "en": "Takes out of all the groups the playlists whose validity (a switched-on date restriction) has ended. The log says which playlists were taken out of which group. The playlist itself is not deleted."},
-    "set_group_files_repair": {
-        "cz": "Opraví skupiny, které mají playlisty, ale ne jejich soubory (stává se, když se playlisty do skupiny zapsaly bez seznamu souborů: přehrávače pak po Deployi dostanou jen názvy playlistů a nemají co přehrávat). Aplikace projde všechny skupiny, vypíše, kolik jich potřebuje opravu, zeptá se a doplní jen chybějící soubory (nic neodebírá). Změna se na přehrávače dostane až po Deployi.",
-        "en": "Repairs the groups that have playlists but not their files (it happens when the playlists were written to a group without the list of files: after Deploy the players then get only the names of the playlists and have nothing to play). The application goes through all the groups, says how many need the repair, asks, and adds only the missing files (it takes nothing away). The players get the change only after Deploy."},
     "get_group_unused": {
         "cz": "Uloží do CSV skupiny, do kterých nepatří žádný přehrávač.",
         "en": "Saves to a CSV file the groups that no player belongs to."},

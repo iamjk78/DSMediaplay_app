@@ -131,8 +131,6 @@ def player_key(player: Dict[str, Any]) -> str:
 ZONE_FIELDS = ("side", "bottom", "zone4", "zone5", "zone6")
 
 
-CUSTOM_LAYOUT_FILE = re.compile(r"custom_layout.*html$", re.IGNORECASE)
-
 # The zones of a layout in which a row of a playlist can name another file (the same table as the web interface has)
 LAYOUT_ZONES = {
     "1": (), "2a": ("side",), "2b": ("side",), "2c": ("side",), "2d": ("side",),
@@ -691,42 +689,6 @@ class ServerApi:
         if len(filtered) == 1:
             return filtered[0]
         raise NameResolutionError(name)
-
-    def plan_group_files_repair(self) -> Tuple[List[Dict[str, Any]], int]:
-        """
-        The groups whose files do not hold the files of their playlists (a group written by this application before the
-        files were sent with the playlists, or by anything else that sends only the playlists), and how many groups
-        there are. For each: its id and name, the entries for its playlists the way the web interface has them (taken
-        over only where an entry lacks the type the interface gives it), its files with the missing ones added at the end
-        (only a template that is no file of the account and no playlist of the group needs is taken away, which an
-        earlier version of this repair wrote), and the missing ones.
-        """
-        groups = self._make_request("get", "/groups").get("data") or []
-        account_files = set(self.get_asset_names())
-        plan = []
-        for group in groups:
-            original = group.get("playlists") or []
-            normalized, files = prepare_group_playlists(original, self._playlist_objects(), group.get("logo"))
-            if len(normalized) == len(original):
-                entries = [new if not ("plType" in old and "skipForSchedule" in old) else old
-                           for old, new in zip(original, normalized)]
-            else:
-                entries = normalized
-            current = group.get("assets") or []
-            missing = [name for name in files if name not in current]
-            stray = [name for name in current if CUSTOM_LAYOUT_FILE.match(name) and name not in files
-                     and name not in account_files]
-            if missing or stray or entries != original:
-                plan.append({"id": group["_id"], "name": group.get("name", ""), "playlists": entries,
-                             "assets": [name for name in current if name not in stray] + missing, "missing": missing,
-                             "stray": stray,
-                             "entries_changed": sum(1 for old, new in zip(original, entries) if old != new)})
-        return plan, len(groups)
-
-    def write_group_files(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Writes what plan_group_files_repair planned for one group: its files and its entries, nothing else."""
-        body = {"_id": item["id"], "name": item["name"], "playlists": item["playlists"], "assets": item["assets"]}
-        return self._make_request("post", f"/groups/{item['id']}", json=body)
 
     def get_group_id_by_name(self, name: str) -> str:
         """

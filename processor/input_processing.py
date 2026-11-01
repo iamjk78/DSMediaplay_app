@@ -121,7 +121,6 @@ def parse_validity_hour(text: str, is_end: bool) -> Optional[int]:
     return hour
 
 
-REPAIR_FILES_SHOWN = 5  # names of the files that were added to a group, listed in the log
 INTERRUPTED_LIST_LIMIT = 20  # names of what was not done, listed after an interrupted batch
 
 
@@ -182,7 +181,6 @@ class ProcessorFactory:
             "create_player": CreatePlayerProcessor,
             "create_playlist": CreatePlaylistProcessor,
             "create_label": CreateLabelProcessor,
-            "group_files_repair": RepairGroupFilesProcessor,
             "remove_unused_groups": RemoveUnusedGroupsProcessor,
             "remove_unused_playlists": RemoveUnusedPlaylistsProcessor,
             "remove_unused_assets": RemoveUnusedAssetsProcessor,
@@ -2126,64 +2124,6 @@ class RemoveUnusedProcessor(RemoveProcessor, ABC):
             if entity not in unused:
                 self._write_log_warning("not_unused_now", name=entity)
         self.data = [entity for entity in self.data if entity in unused]
-
-
-class RepairGroupFilesProcessor(InputProcessor):
-    """
-    Gives the groups the files of their playlists. A group that was written with its playlists and without their files
-    has the names of the playlists on its players on Deploy and nothing to play. Takes no input: it looks at all the
-    groups, shows how many need it and asks, and writes only those (the missing files are added, none is taken away).
-    """
-
-    def load(self, input_text: str):
-        try:
-            self._write_start_loading()
-            server = self._try_server_login()
-            if not server:
-                self._write_no_server_returned()
-                return
-            self.data, total = server.plan_group_files_repair()
-            self._write_log("repair_files_summary", total=total, count=len(self.data), ok=total - len(self.data))
-            if not self.data:
-                self._write_log("repair_files_nothing")
-            self._write_load_finish()
-        except Exception as e:
-            self._write_internal_error(e)
-            raise InternalException()
-
-    def confirmation(self) -> Optional[Confirmation]:
-        if not self.data:
-            return None
-        return Confirmation(
-            self.lang.get_message("repair_files_title"),
-            self.lang.get_message("repair_files_text", count=len(self.data),
-                                  items=self._list_for_question([item["name"] for item in self.data])))
-
-    def run(self) -> Generator[None, None, None]:
-        done = 0
-        try:
-            with self._try_server_login() as server:
-                if not server:
-                    self._write_no_server_returned()
-                    return
-                for item in self.data:
-                    server.write_group_files(item)
-                    done += 1
-                    shown = ", ".join(item["missing"][:REPAIR_FILES_SHOWN])
-                    if len(item["missing"]) > REPAIR_FILES_SHOWN:
-                        shown += " " + self.lang.get_message("confirm_more", count=len(item["missing"]) - REPAIR_FILES_SHOWN)
-                    self._write_log("repair_files_done", group=item["name"], count=len(item["missing"]),
-                                    files=f" ({shown})" if shown else "", entries=item["entries_changed"],
-                                    removed=len(item["stray"]))
-                    yield
-        except Exception as e:
-            self._write_internal_error(e)
-            names = [item["name"] for item in self.data][done:]
-            if names:
-                self._logger.error(self.lang.get_message(
-                    "run_interrupted", done=done, total=len(self.data), count=len(names),
-                    names=", ".join(names[:INTERRUPTED_LIST_LIMIT])))
-            raise InternalException()
 
 
 class RemoveUnusedGroupsProcessor(RemoveUnusedProcessor):
