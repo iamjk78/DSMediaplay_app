@@ -4,6 +4,8 @@ of its buttons and actions (assets/messages.json), the input templates of the ac
 and the list of the actions (util/actions.py), plus the texts in tools/documentation_texts.py. So every action of the
 application is in the guide, under the name the window shows, and none that is not there.
 
+It also writes assets/action_descriptions.json, the one-sentence descriptions the window shows over an action.
+
 Run from the repository root after changing an action or a text:  python tools/generate_documentation.py
 """
 import html
@@ -134,7 +136,23 @@ def render() -> dict:
     return pages
 
 
+def action_descriptions() -> dict:
+    """What every action does, as plain text, for the help the window shows over an action: {language: {key: text}}."""
+    result = {}
+    for language in LANGUAGES:
+        ui = words(language)
+        result[language] = {}
+        for actions in entity_actions(MESSAGES[language]["actions"]).values():
+            for key in actions.values():
+                template = TEMPLATES[language]["actions"].get(key)
+                result[language][key] = template["summary"] if template else fill(ACTIONS[key][language], ui)
+    return result
+
+
 def main() -> None:
+    with open(os.path.join("assets", "action_descriptions.json"), "w", encoding="utf-8") as file:
+        json.dump(action_descriptions(), file, ensure_ascii=False, indent=2)
+        file.write("\n")
     pages = render()
     # Everything the pages could be left over from is replaced: a page of the old guide must not stay behind
     for language in LANGUAGES:

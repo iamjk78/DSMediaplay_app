@@ -1,20 +1,27 @@
+import re
 import threading
 import tkinter as tk
+from typing import Callable, Optional
 from tkinter import ttk, messagebox, filedialog, scrolledtext
 from gui_app.icons import set_window_icon
 import logging
 from util.thread_manager import ThreadManager
-from gui_app.logger import TextHandler, OptionalLevelFormatter
+from gui_app.logger import ProblemCollector, TextHandler, OptionalLevelFormatter
+from processor.csv_generator import CSVTaskFactory
 from processor.input_processing import Confirmation, FormatException, ProcessorFactory, InternalException
+from util import backup
+from util.actions import NO_INPUT_PLACEHOLDER
 
 
+# The number of a line in a message of the log, in both languages
+LINE_NUMBER = re.compile(r"(?:Řádek|Line)\s+(\d+)")
 STOP_POLL_MS = 200  # how often a window that has been asked to close looks whether its operation has ended
 
 
 class LoggingTextBoxFactory:
     @staticmethod
     def create_log_box(processor_type: str, master: "DSMediaplayApp", url: str, login: str, password: str, data: str,
-                       extra_settings: dict = None):
+                       extra_settings: dict = None, backup_path: Optional[Callable[[str], str]] = None):
         class_map = {
             "assets_to_playlists": PlaylistAssetsLogBox,
             "remove_assets_from_playlists": PlaylistRemoveAsset,
@@ -63,12 +70,13 @@ class LoggingTextBoxFactory:
         if not log_box_class:
             raise ValueError(f"Unknown processor type: {processor_type}")
         return log_box_class(master=master, url=url, login=login, password=password, data=data,
-                             extra_settings=extra_settings)
+                             extra_settings=extra_settings, backup_path=backup_path)
 
 
 class LoggingTextBox(tk.Toplevel):
     def __init__(self, processor_type: str, *, url: str, login: str, password: str, data: str,
-                 master: "DSMediaplayApp" = None, extra_settings: dict = None):
+                 master: "DSMediaplayApp" = None, extra_settings: dict = None,
+                 backup_path: Optional[Callable[[str], str]] = None):
         super().__init__(master=master)
         self.indication_label = None
         self._activity_icon = None
@@ -85,6 +93,8 @@ class LoggingTextBox(tk.Toplevel):
         }
         self._raw_data = data
         self._extra_settings = extra_settings or {}
+        self._backup_path = backup_path  # file name of the backup of one kind of data; none: no backups
+        self._problems = ProblemCollector()
         self.log_text = None
         try:
             self._font = self.master.font
@@ -113,6 +123,13 @@ class LoggingTextBox(tk.Toplevel):
         self.run_input_processing()
 
     def run_input_processing(self):
+        """Runs the action; whatever happens, the warnings and errors of the run are listed again at the end."""
+        try:
+            self._process_input()
+        finally:
+            self._write_problems()
+
+    def _process_input(self):
         """Initiates operations and checks for stop/pause events"""
         self.input_processor = ProcessorFactory.create_processor(
             self.processor_type,
@@ -124,7 +141,11 @@ class LoggingTextBox(tk.Toplevel):
             **self._extra_settings
         )
         try:
-            self.input_processor.load(self._raw_data)
+            self._write_input_summary()
+            try:
+                self.input_processor.load(self._raw_data)
+            finally:
+                self._write_repeated_lines()
             confirmation = self.input_processor.confirmation()
             if confirmation and not self._confirm(confirmation):
                 self.logger.info(self.lang.get_message("operation_cancelled"))
@@ -134,6 +155,10 @@ class LoggingTextBox(tk.Toplevel):
             if self.thread_manager.stop_event.is_set():  # asked for while the input was loaded: not even a first step
                 self.logger.info(self.lang.get_message("operation_stopped"))
                 self.update_activity_circle("C")
+                self.setup_buttons()
+                return
+            if not self._back_up():
+                self.update_activity_circle("R")
                 self.setup_buttons()
                 return
             steps = 0
@@ -159,6 +184,72 @@ class LoggingTextBox(tk.Toplevel):
         except Exception as error:  # whatever else a processor lets out: the window must not stay "working" for ever
             self.logger.error(self.lang.get_message("internal_error", error_msg=str(error)))
             self.display_error()
+
+    def _write_input_summary(self):
+        """How many lines were read and how many empty ones between them are skipped; nothing for an action without input."""
+        if self._raw_data is None or self._raw_data == NO_INPUT_PLACEHOLDER:
+            return
+        filled = [index for index, line in enumerate(self._raw_data.split("\n")) if line.strip()]
+        if not filled:
+            return
+        blank = filled[-1] - filled[0] + 1 - len(filled)  # the ones before the first and after the last are no gap
+        self.logger.info(self.lang.get_message("input_loaded", count=len(filled)))
+        if blank:
+            self.logger.info(self.lang.get_message("input_blank_lines", count=blank))
+
+    def _write_repeated_lines(self):
+        """How many lines were left out because the same line was there before (known once the input was read)."""
+        count = getattr(self.input_processor, "skipped_repeated_rows", 0)
+        if isinstance(count, int) and count > 0:
+            self.logger.info(self.lang.get_message("input_repeated_lines", count=count))
+
+    def _back_up(self) -> bool:
+        """
+        Saves what the action is about to change as CSV files (see util/backup.py). False when that failed: the action
+        is not to start without the backup it promises.
+        """
+        tasks = backup.csv_tasks_for(self.processor_type)
+        if not tasks or self._backup_path is None:
+            return True
+        self.logger.info(self.lang.get_message("backup_start"))
+        try:
+            for task_type in tasks:
+                file_path = self._backup_path(task_type)
+                CSVTaskFactory.create_task(task_type=task_type, log_handler=None, url=self._login_info["url"],
+                                           login=self._login_info["login"],
+                                           password=self._login_info["password"]).generate_csv(file_path)
+                self.logger.info(self.lang.get_message("backup_saved", file_path=file_path))
+        except Exception as error:
+            self.logger.error(self.lang.get_message("backup_failed", error=self.master.csv_error_text(error)))
+            return False
+        return True
+
+    def _write_problems(self):
+        """The warnings and errors of the run once more, in one place at the end, in red; those that name a line can be clicked."""
+        messages = list(self._problems.messages)
+        if not messages:
+            return
+        self._problems.enabled = False
+        self.logger.error(self.lang.get_message("errors_found"), extra={"hide_level": True})
+        if any(LINE_NUMBER.search(message) for message in messages):
+            self.logger.info(self.lang.get_message("errors_click_hint"))
+        for message in messages:
+            self.logger.error(message, extra={"hide_level": True, "problem": bool(LINE_NUMBER.search(message))})
+
+    def _open_input_at_clicked_line(self, event):
+        """A click on a line of the list of errors opens the input window with the cursor on the line the error names."""
+        if self.thread_manager.is_running:  # the input is being worked on
+            return
+        text = self.log_text.get(f"@{event.x},{event.y} linestart", f"@{event.x},{event.y} lineend")
+        found = LINE_NUMBER.search(text)
+        if not found:
+            return
+        self.grab_release()  # the input window is modal itself, and the log window holds the grab until then
+        try:
+            self.master.edit_input_at(int(found.group(1)))
+        finally:
+            if self.winfo_exists():
+                self.grab_set()
 
     def _confirm(self, confirmation: Confirmation) -> bool:
         """
@@ -200,6 +291,10 @@ class LoggingTextBox(tk.Toplevel):
         self.log_text.tag_configure('info', foreground='black')
         self.log_text.tag_configure('warning', foreground='orange', font=(self._font[0], self._font[1], 'bold'))
         self.log_text.tag_configure('error', foreground='red', font=(self._font[0], self._font[1], 'bold'))
+        self.log_text.tag_configure('problem', underline=True)
+        self.log_text.tag_bind('problem', '<Button-1>', self._open_input_at_clicked_line)
+        self.log_text.tag_bind('problem', '<Enter>', lambda _: self.log_text.configure(cursor='hand2'))
+        self.log_text.tag_bind('problem', '<Leave>', lambda _: self.log_text.configure(cursor=''))
 
     def setup_buttons(self):
         """The buttons of the window; called again at the end of the run, it replaces them instead of adding more."""
@@ -262,6 +357,7 @@ class LoggingTextBox(tk.Toplevel):
         text_handler = TextHandler(self.log_text)
         text_handler.setFormatter(OptionalLevelFormatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(text_handler)
+        self.logger.addHandler(self._problems)
 
     def setup_activity(self):
         activity_frame = tk.Frame(self, width=60, height=60)

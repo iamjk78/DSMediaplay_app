@@ -3,7 +3,7 @@ from tkinter import font as tkfont, ttk, messagebox
 from gui_app.color_button import (BLUE, GREEN, GREEN_DARK, PURPLE, RED, YELLOW, button_enabled, equalize_widths,
                                   make_color_button, set_button_colors, set_button_enabled)
 from gui_app.icons import set_window_icon
-from gui_app.tooltip import Tooltip
+from gui_app.tooltip import ListTooltip, TclListbox, Tooltip
 import copy
 import json
 import os
@@ -23,7 +23,8 @@ from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
 from gui_app.player_browser import PlayerBrowser
 from util import accounts, credentials, input_templates, legacy_import
-from util.actions import action_kind, action_needs_input, entity_actions
+from util import action_descriptions
+from util.actions import NO_INPUT_PLACEHOLDER, action_kind, action_needs_input, entity_actions
 from util.paths import legacy_login_file, resource_path
 from util.version import VERSION
 import requests
@@ -166,11 +167,11 @@ class DSMediaplayApp(tk.Tk):
         self.create_button(self, "save_login_details", self._save_button_row,
                            self.save_login_details, columnspan=3)
         self.create_combobox(self, "select_entity_type", self._entity_type_row,
-                             "entity_type_combobox", self.update_action_selection,
+                             "entity_type_combobox", self.on_entity_selected,
                              self.entity_type_var, list(self.entity_actions.keys()), columnspan=3)
         self.create_combobox(self, "select_action", self._action_row,
-                             "option_choose_action", self.reset_data, self.action_var, columnspan=3)
-        self.tint_action_list()
+                             "option_choose_action", self.on_action_selected, self.action_var, columnspan=3)
+        self.setup_action_list()
         self.input_prompt_button = self.create_emphasised_button("input_prompt", self._generate_textbox, GREEN,
                                                                  size_offset=0)
         self.add_tooltip(self.input_prompt_button, "tip_input_prompt")
@@ -188,6 +189,7 @@ class DSMediaplayApp(tk.Tk):
         self.create_action_buttons()
         self.refresh_ui()
         self.fill_default_login_details()
+        self.restore_last_action()
 
     def create_combobox(self, parent, label_key, row, var_name, command, text_var=None, values=None, columnspan=1):
         pad_x, pad_y = DROPDOWN_PAD_X, 2
@@ -302,13 +304,20 @@ class DSMediaplayApp(tk.Tk):
         settings_window = SettingsWindow(self, self.lang)
         self.wait_window(settings_window)
 
-    def tint_action_list(self):
+    def setup_action_list(self):
         """
-        Colours the entries of the list of actions by what they do (see ACTION_TINTS). The list is filled again every
-        time it opens, which drops the colours, so they are put on when its window appears.
+        Prepares the list of actions: its entries are coloured by what they do (see ACTION_TINTS), and resting the
+        pointer on one shows what it does. The list is filled again every time it opens, which drops the colours, so
+        they are put on when its window appears.
         """
         popdown = self.tk.call("ttk::combobox::PopdownWindow", self.option_choose_action)
         self.tk.call("bind", popdown, "<Map>", self.register(lambda: self._prepare_action_list(popdown)))
+        ListTooltip(TclListbox(self, f"{popdown}.f.l"), self._action_description)
+
+    def _action_description(self, index: int) -> str:
+        labels = self.option_choose_action["values"]
+        action = self.entity_actions.get(self.entity_type_var.get(), {}).get(labels[index]) if 0 <= index < len(labels) else None
+        return action_descriptions.describe(action, self.lang.language) if action else ""
 
     def _prepare_action_list(self, popdown: str):
         listbox = f"{popdown}.f.l"
@@ -340,6 +349,32 @@ class DSMediaplayApp(tk.Tk):
         self._text_box_data = None
         self.update_input_button()
         self.update_action_buttons()
+
+    def on_entity_selected(self, _=None):
+        self.update_action_selection()
+        self.remember_action()
+
+    def on_action_selected(self, _=None):
+        self.reset_data()
+        self.remember_action()
+
+    def remember_action(self):
+        """Stores the last used category and action, so the next start opens them again."""
+        self.sync_from_disk()
+        if accounts.remember_action(self.all_data, self.entity_type_var.get(), self.current_action() or ""):
+            self.save_account_configs()
+
+    def restore_last_action(self):
+        """Selects the category and action of the last use. A removing action is not restored (see remember_action)."""
+        entity_type, action = accounts.last_action(self.all_data)
+        if entity_type not in self.entity_actions:
+            return
+        self.entity_type_var.set(entity_type)
+        self.update_action_selection()
+        label = next((label for label, key in self.entity_actions[entity_type].items() if key == action), None)
+        if label and action_kind(action) != "remove":
+            self.option_choose_action.set(label)
+            self.reset_data()
 
     def reset_data(self, _=None):
         self._text_box_data = None
@@ -674,7 +709,7 @@ class DSMediaplayApp(tk.Tk):
 
     def perform_set_action(self, action, url, login, password, data):
         if not action_needs_input(action):
-            data = "Non-empty"
+            data = NO_INPUT_PLACEHOLDER
         if self.input_missing(data) or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
             return
@@ -682,7 +717,7 @@ class DSMediaplayApp(tk.Tk):
 
     def perform_remove_action(self, action, url, login, password, data):
         if not action_needs_input(action):
-            data = "Non-empty"
+            data = NO_INPUT_PLACEHOLDER
         if self.input_missing(data) or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
             return
@@ -694,11 +729,13 @@ class DSMediaplayApp(tk.Tk):
             return
         self.open_action_log_box(action, url, login, password, data)
 
-    def csv_file_path(self, task_type: str) -> str:
+    def csv_file_path(self, task_type: str, kind: str = "", account: str = None) -> str:
+        """Where a CSV file goes: the downloads folder, named after the account, `kind` (e.g. backup), the data and the time."""
         date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        administration = self.option_choose_administration.get()
+        administration = self.option_choose_administration.get() if account is None else account
         account_part = re.sub(r'[^\w.-]+', '_', administration).strip('._') or 'account'  # no path, no odd characters
-        return os.path.join(get_download_path(), f'{account_part}-{task_type}-{date}.csv')
+        kind_part = f"{kind}-" if kind else ""
+        return os.path.join(get_download_path(), f'{account_part}-{kind_part}{task_type}-{date}.csv')
 
     def generate_csv(self, task_type, url, login, password):
         file_path = self.csv_file_path(task_type)
@@ -756,6 +793,7 @@ class DSMediaplayApp(tk.Tk):
             }
         elif processor_type == "player_snapshot":
             extra_settings = {"output_dir": os.path.join(get_download_path(), "DSMediaplay_snapshots")}
+        account = self.option_choose_administration.get()  # read here: the backup is written by the thread of the log
         log_box = LoggingTextBoxFactory.create_log_box(
             processor_type=processor_type,
             master=self,
@@ -763,7 +801,8 @@ class DSMediaplayApp(tk.Tk):
             login=login,
             password=password,
             data=data,
-            extra_settings=extra_settings
+            extra_settings=extra_settings,
+            backup_path=lambda task_type: self.csv_file_path(task_type, "backup", account)
         )
         self.wait_window(log_box)
 
@@ -1118,14 +1157,19 @@ class DSMediaplayApp(tk.Tk):
         self._text_box_data = input_templates.strip_template(text, action) if action else text
         self.update_input_button()
 
-    def _generate_textbox(self):
+    def _generate_textbox(self, text: str = "", line: int = None):
         self._input_window_open = True
         self.stop_blinking()  # steady while the input window is open
         try:
-            self.wait_window(InputTextBox(self, self.save_data_from_text_box))
+            options = {name: value for name, value in (("text", text), ("line", line)) if value}
+            self.wait_window(InputTextBox(self, self.save_data_from_text_box, **options))
         finally:
             self._input_window_open = False
             self.update_input_button()  # blinks again when the window was closed without any input
+
+    def edit_input_at(self, line: int):
+        """The input window again, with the input of the last Start and the cursor on the line the log named."""
+        self._generate_textbox(text=self._text_box_data or "", line=line)
 
     def reload_account_configs(self):
         try:

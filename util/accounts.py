@@ -1,6 +1,8 @@
 from typing import List, Tuple
 from urllib.parse import urlparse
 
+from util.actions import action_kind
+
 
 class AccountError(ValueError):
     """Invalid user input; `key` is the messages.json key of the text to show."""
@@ -60,6 +62,28 @@ def remember_selection(data: dict, account: str, login: str) -> bool:
         entry["last"] = login
     data["default"] = [account, entry.get("last", "")]
     return before != (data["default"], entry.get("last"))
+
+
+def remember_action(data: dict, entity_type: str, action: str) -> bool:
+    """
+    Records the last used category and action (the config's `last_action`). A removing action is recorded as its
+    category only: it must not be one click from Start when the application is opened the next time.
+    Returns True when `data` changed and has to be saved.
+    """
+    if not entity_type:
+        return False
+    last = [entity_type, "" if action_kind(action) == "remove" else action]
+    changed = data.get("last_action") != last
+    data["last_action"] = last
+    return changed
+
+
+def last_action(data: dict) -> Tuple[str, str]:
+    """The last used (category, action key), ("", "") when there is none or the file was edited into something else."""
+    last = data.get("last_action")
+    if isinstance(last, list) and len(last) == 2 and all(isinstance(part, str) for part in last):
+        return last[0], last[1]
+    return "", ""
 
 
 def unused_credentials(data: dict, candidates: List[Credential]) -> List[Credential]:

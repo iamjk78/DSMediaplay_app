@@ -218,8 +218,14 @@ class InputProcessor(ABC):
         }
         self._wrong_init_counter = 0
         self._same_key = {}
+        self._repeated_lines: Set[int] = set()
         self.data = {}
         self.lang = lang
+
+    @property
+    def skipped_repeated_rows(self) -> int:
+        """How many lines of the input were left out because the same line was there before."""
+        return len(self._repeated_lines)
 
     @abstractmethod
     def load(self, input_text: str):
@@ -381,13 +387,12 @@ class InputProcessor(ABC):
             return None
         return names
 
-    @staticmethod
-    def _indexed_rows(input_text: str, make_row=None, keep_repeats: bool = False) -> List[Tuple[int, Any]]:
+    def _indexed_rows(self, input_text: str, make_row=None, keep_repeats: bool = False) -> List[Tuple[int, Any]]:
         """
         The lines of the input that have something in them, as (index, row) in the order they were written. The index
-        counts from 0, so `index + 1` is the number of the line as the person sees it. A row that repeats is read once,
-        unless `keep_repeats` (for the actions that report a repeated name themselves). `make_row` turns a line into the
-        row (a text, a tuple of cells); the default is the line itself.
+        counts from 0, so `index + 1` is the number of the line as the person sees it. A row that repeats is read once
+        (and counted in `skipped_repeated_rows`), unless `keep_repeats` (for the actions that report a repeated name
+        themselves). `make_row` turns a line into the row (a text, a tuple of cells); the default is the line itself.
         """
         seen, rows = set(), []
         for index, line in enumerate(input_text.split('\n')):
@@ -396,6 +401,7 @@ class InputProcessor(ABC):
                 continue
             if not keep_repeats:
                 if row in seen:
+                    self._repeated_lines.add(index)
                     continue
                 seen.add(row)
             rows.append((index, row))
@@ -2774,7 +2780,7 @@ class DeploySelectedGroupsProcessor(DeployAllPlayersProcessor):
             self._write_no_server_returned()
             return
 
-        group_names = {line.strip() for line in input_text.split('\n') if line.strip()}
+        group_names = {row for _, row in self._indexed_rows(input_text, str.strip)}
         if not group_names:
             self._write_wrong_format(1)
             raise FormatException

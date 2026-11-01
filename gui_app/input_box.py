@@ -5,7 +5,7 @@ from util import input_templates
 
 
 class InputTextBox(tk.Toplevel):
-    def __init__(self, master=None, callback=None):
+    def __init__(self, master=None, callback=None, text: str = "", line: int = None):
         super().__init__(master=master)
         self.lang = master.lang
         self.details_text = None
@@ -19,8 +19,22 @@ class InputTextBox(tk.Toplevel):
             self._font = ("Helvetica", 12)
         self._button_row = 2
         self.setup_ui()
+        if text:
+            self.details_text.insert("1.0", text.rstrip("\n") + "\n")
+        if line:
+            self.mark_line(line)
         self.grab_set()
         self.focus_set()
+
+    def mark_line(self, line: int):
+        """Shows the line an error of the log names: the cursor is on it and it is coloured."""
+        start = f"{line}.0"
+        if self.details_text.compare(start, ">=", "end-1c"):  # the line is not there (the text was changed meanwhile)
+            return
+        self.details_text.tag_configure("problem_line", background="#ffc7ce", foreground="#000000")
+        self.details_text.tag_add("problem_line", start, f"{line}.end+1c")
+        self.details_text.mark_set("insert", start)
+        self.details_text.see(start)
 
     def _set_geometry(self):
         # macOS reports 72 dpi because its points are already scaled, so only larger-than-96 dpi enlarges the window

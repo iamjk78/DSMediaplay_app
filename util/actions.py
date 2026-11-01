@@ -1,6 +1,10 @@
 import unicodedata
 
 
+# What is handed to an action that takes no input, so that "there is something" holds for every action
+NO_INPUT_PLACEHOLDER = "Non-empty"
+
+
 def action_needs_input(action: str) -> bool:
     """
     Whether an action takes input from the user (the "Input Prompt" window): the names or rows to work on.

@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from gui_app import gui
 from gui_app.log_box import LoggingTextBox
+from gui_app.logger import TextHandler
 from gui_app.settings_dialog import SettingsWindow
 
 
@@ -441,7 +442,9 @@ class LogWindowHousekeepingTest(LogWindowCase):
         self.app.update()
 
         self.assertIn("hello", second.log_text.get("1.0", tk.END))
-        self.assertEqual(len(second.logger.handlers), 1)
+        writing = [handler for handler in second.logger.handlers if isinstance(handler, TextHandler)]
+        self.assertEqual(len(writing), 1)  # the other handler of the window collects its problems, it writes nowhere
+        self.assertIs(writing[0].text_output, second.log_text)
 
 
 if __name__ == "__main__":

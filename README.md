@@ -20,6 +20,8 @@ Nothing secret is stored in this repository or in the build.
 - **Account list** (customer name, URL, login - no passwords) is a JSON file in the per-user config folder:
   `%APPDATA%\DSM_GUI\logins.json` on Windows, `~/Library/Application Support/DSM_GUI/logins.json` on macOS.
   Use `login.example.json` as a template, or pass another file with `-j`.
+- The last used account, login, category and action are remembered in the same file (`default`, `last`, `last_action`) and
+  selected again on the next start. A removing or deleting action is not restored, only its category.
 - **Passwords** are stored in the operating system credential store (Windows Credential Manager / macOS Keychain)
   under the service `DSM_GUI`, per user. Enter them once in the app and press *Save login details*.
 - A legacy config that still contains plaintext passwords is migrated automatically on first start:

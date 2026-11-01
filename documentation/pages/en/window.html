@@ -34,11 +34,14 @@
 <section>
 <h2>Category and action</h2>
 <p>In “Select Category” select a category (Playlists, Groups, Players, Locations, Assets, Deploy), in “Select Action” an action. The actions that start with “CSV” download a file, the others change data on the server. All the actions are described on the pages of the categories.</p>
+<p>The entries of the list of actions are coloured by what they do: <b>green</b> for downloading a CSV file, <b>blue</b> for setting, adding, renaming and creating, <b>red</b> for removing and deleting. Each colour is a block of its own, and the actions in it are in alphabetical order. When the pointer rests on an action in the list, a description of it appears next to it.</p>
+<p>The application remembers the last used account, login, category and action and selects them again the next time it starts. An action that removes or deletes is not restored, only its category.</p>
 </section>
 <section>
 <h2>Input</h2>
 <p>The “Input Prompt” button is shown only for actions that take input. The window holds a template: the grey lines starting with <code>#</code> describe the columns, the last line is an example. You can delete the template or leave it, the lines of it that were not changed are skipped. The columns are separated by tabs (pasting from a spreadsheet does it), one record is one line. The lines are processed in the order they are written, and errors give the number of the line as you see it.</p>
 <p>The input is checked as a whole before anything is changed: when something in it is wrong (an unknown name, a wrong date or time), nothing is done and the log lists all the errors.</p>
+<p>The log first says how many lines it read and how many empty lines between them it skips. A line that is in the input more than once is processed only once; the log says how many repeated lines it skipped. At the end of the log all the errors are listed once more in red under the heading “Errors found:”. A click on an underlined line of such an error opens the input with the text of the last run and the cursor on the line with the error.</p>
 </section>
 <section>
 <h2>Running and the log window</h2>
@@ -49,6 +52,7 @@
 <li><b>Save</b>: saves the log to a text file.</li>
 </ul>
 <p>Before something that cannot be undone (deleting, deploy) the log window shows what is going to happen (the list, the number of players) and asks; the default answer is “No”.</p>
+<p>Before an action that overwrites or deletes data (for example setting the playlists of groups, removing playlists, deleting unused items) the application saves the state before the change to the Downloads folder as CSV files named <code>account-backup-data-time.csv</code>. The log says where they were saved. When the backup cannot be saved, the action does not start. Creating, adding and renaming are not backed up, the log shows the old and the new value.</p>
 </section>
 <section>
 <h2>CSV files</h2>

@@ -15,6 +15,19 @@ class OptionalLevelFormatter(logging.Formatter):
         return super().format(record)
 
 
+class ProblemCollector(logging.Handler):
+    """Remembers the warnings and errors of a run, to list them once more at its end."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.messages = []
+        self.enabled = True  # off while the list is being written, which would otherwise collect itself
+
+    def emit(self, record) -> None:
+        if self.enabled:
+            self.messages.append(record.getMessage())
+
+
 class TextHandler(logging.Handler):
     """
     class allowing logging into tkinter ScrollBox
@@ -30,10 +43,12 @@ class TextHandler(logging.Handler):
 
         def append():
             self.text_output.configure(state='normal')
+            # a line that can be clicked (see LoggingTextBox) is marked by extra={'problem': True}
+            problem = ('problem',) if getattr(record, 'problem', False) else ()
             if record.levelno == logging.WARNING:
-                self.text_output.insert(tk.END, msg + '\n', 'warning')
+                self.text_output.insert(tk.END, msg + '\n', ('warning',) + problem)
             elif record.levelno == logging.ERROR:
-                self.text_output.insert(tk.END, msg + '\n', 'error')
+                self.text_output.insert(tk.END, msg + '\n', ('error',) + problem)
             elif record.levelno == logging.INFO:
                 self.text_output.insert(tk.END, msg + '\n', 'info')
             else:

@@ -3,6 +3,7 @@
 !login.example.json
 !assets/messages.json
 !assets/input_templates.json
+!assets/action_descriptions.json
 !config/admin1_config.json
 
 venv

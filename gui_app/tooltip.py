@@ -14,6 +14,9 @@ IGNORE_ACTIVATE_AFTER_SHOW_MS = 150
 # Distance from the pointer's hotspot: the arrow cursor reaches ~15 px to the right of it, and the tooltip must never
 # sit under the pointer, or entering it would count as leaving the button and the tooltip would flicker
 GAP_RIGHT_OF_POINTER = 20
+# The entries of a list are read one after another, so the help comes sooner and stays while it is being read
+LIST_TOOLTIP_DELAY_MS = 350
+LIST_TOOLTIP_MAX_VISIBLE_MS = 30000
 GAP_LEFT_OF_POINTER = 8
 
 
@@ -34,10 +37,12 @@ class Tooltip:
     those two catches, MAX_VISIBLE_MS does, however that happened.
     """
 
-    def __init__(self, widget: tk.Widget, text: Callable[[], str], delay_ms: int = TOOLTIP_DELAY_MS) -> None:
+    def __init__(self, widget: tk.Widget, text: Callable[[], str], delay_ms: int = TOOLTIP_DELAY_MS,
+                 max_visible_ms: Optional[int] = None) -> None:
         self._widget = widget
         self._text = text
         self._delay_ms = delay_ms
+        self._max_visible_ms = max_visible_ms
         self._after_id: Optional[str] = None
         self._watch_id: Optional[str] = None
         self._expire_id: Optional[str] = None
@@ -142,7 +147,8 @@ class Tooltip:
         self._shown_at = time.monotonic()
         window.deiconify()
         self._watch_id = widget.after(WATCH_INTERVAL_MS, self._watch)
-        self._expire_id = widget.after(MAX_VISIBLE_MS, self._hide)
+        self._expire_id = widget.after(MAX_VISIBLE_MS if self._max_visible_ms is None else self._max_visible_ms,
+                                       self._hide)
 
     def _on_activate(self, event: tk.Event) -> None:
         if self._shown_at is None or time.monotonic() - self._shown_at >= IGNORE_ACTIVATE_AFTER_SHOW_MS / 1000:
@@ -159,6 +165,48 @@ class Tooltip:
             pass
         self._after_id = self._watch_id = self._expire_id = None
         self._shown_at = None
+
+
+class TclListbox(tk.Listbox):
+    """
+    A Listbox that Tcl made (the list of a ttk drop-down has no Python object), taken as a widget a Tooltip can work
+    with: it knows its path and the application, which is all that Tk needs to call its methods.
+    """
+
+    def __init__(self, master: tk.Misc, path: str) -> None:  # deliberately not creating a widget: it is there already
+        self.master, self.tk, self._w, self.children, self.widgetName = master, master.tk, path, {}, "listbox"
+
+    def winfo_toplevel(self) -> tk.Misc:  # the toplevel of the path is a Tcl-made popup that Tk's name lookup cannot find
+        return self.master.winfo_toplevel()
+
+
+class ListTooltip(Tooltip):
+    """
+    A Tooltip for the entries of a Listbox: its text is the one `text_of(index)` gives for the entry under the pointer,
+    and moving the pointer to another entry hides it and starts the delay again. It stays as long as the pointer rests
+    on the entry (the text is read, not glanced at), until the pointer leaves the list.
+    """
+
+    def __init__(self, listbox: tk.Listbox, text_of: Callable[[int], str], delay_ms: int = LIST_TOOLTIP_DELAY_MS) -> None:
+        self._index: Optional[int] = None
+        self._text_of = text_of
+        super().__init__(listbox, self._text_of_entry, delay_ms, max_visible_ms=LIST_TOOLTIP_MAX_VISIBLE_MS)
+
+    def _pointer_over_widget(self) -> bool:  # Tk's own lookup cannot name a widget it has no Python object for
+        try:
+            return str(self._widget.tk.call("winfo", "containing", *self._widget.winfo_pointerxy())) == str(self._widget)
+        except tk.TclError:
+            return False
+
+    def _text_of_entry(self) -> str:
+        return self._text_of(self._index) if self._index is not None else ""
+
+    def _remember_pointer(self, event: tk.Event) -> None:
+        super()._remember_pointer(event)
+        index = self._widget.nearest(event.y)
+        if index != self._index:  # also the first entry: the list can open under a pointer that is already still
+            self._index = index
+            self._schedule()
 
 
 def hide_if_shown(widget: tk.Widget) -> None:

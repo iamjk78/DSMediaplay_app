@@ -166,11 +166,14 @@ do CSV, upravíte a vložíte zpět. Dvě tlačítka otevřou živý přehled p�
 <section>
 <h2>Kategorie a činnost</h2>
 <p>V „{select_entity_type}“ vyberte kategorii (Playlists, Groups, Players, Locations, Assets, Deploy), v „{select_action}“ činnost. Činnosti začínající „CSV“ soubor stahují, ostatní mění data na serveru. Všechny činnosti jsou popsané na stránkách kategorií.</p>
+<p>V seznamu činností jsou položky obarvené podle toho, co dělají: <b>zeleně</b> stažení CSV, <b>modře</b> nastavení, přidání, přejmenování a vytvoření, <b>červeně</b> odebrání a smazání. Každá barva tvoří samostatný blok a v něm jsou činnosti podle abecedy. Když kurzor chvíli spočine na činnosti v seznamu, vedle se zobrazí její popis.</p>
+<p>Aplikace si pamatuje poslední použitý účet, login, kategorii a činnost a při příštím spuštění je vybere znovu. Činnost, která odebírá nebo maže, se neobnoví, jen její kategorie.</p>
 </section>
 <section>
 <h2>Vstup</h2>
 <p>Tlačítko „{input_prompt}“ je vidět jen u činností, které vstup berou. V okně je vzor: šedé řádky začínající <code>#</code> popisují sloupce, poslední řádek je příklad. Vzor můžete smazat, nebo nechat, nezměněné řádky vzoru se při zpracování přeskočí. Sloupce se oddělují tabulátorem (při kopírování z Excelu se vloží samy), jeden záznam je jeden řádek. Řádky se zpracovávají v pořadí, v jakém jsou napsané, a chyby uvádějí číslo řádku tak, jak ho vidíte.</p>
 <p>Vstup se zkontroluje celý, než se cokoli změní: když je v něm chyba (neznámý název, špatné datum nebo čas), nic se neprovede a log vypíše všechny chyby.</p>
+<p>Log nejdřív napíše, kolik řádků načetl a kolik prázdných řádků mezi nimi přeskočí. Stejný řádek, který je ve vstupu víckrát, se zpracuje jen jednou; log napíše, kolik opakujících se řádků přeskočil. Na konci logu se všechny chyby vypíšou ještě jednou červeně pod nadpisem „Zjištěné chyby:“. Kliknutím na podtržený řádek takové chyby se otevře vstup s textem posledního spuštění a kurzorem na chybném řádku.</p>
 </section>
 <section>
 <h2>Spuštění a okno s logem</h2>
@@ -181,6 +184,7 @@ do CSV, upravíte a vložíte zpět. Dvě tlačítka otevřou živý přehled p�
 <li><b>{save}</b>: uloží log do textového souboru.</li>
 </ul>
 <p>Před nevratnou činností (smazání, Deploy) se v okně s logem zobrazí, co se stane (seznam, počet přehrávačů), a aplikace se zeptá; výchozí odpověď je „Ne“.</p>
+<p>Před činností, která přepisuje nebo maže data (například nastavení playlistů skupin, odebrání playlistů, smazání nepoužívaných položek), aplikace uloží stav před změnou do složky Stažené soubory (Downloads) jako CSV soubory s názvem <code>účet-backup-data-čas.csv</code>. Log napíše, kam se uložily. Když se záloha nepodaří, činnost se nespustí. Vytváření, přidávání a přejmenování se nezálohuje, v logu je vidět stará i nová hodnota.</p>
 </section>
 <section>
 <h2>Soubory CSV</h2>
@@ -284,11 +288,14 @@ spreadsheet, or download it to CSV, edit it and paste it back. Two buttons open 
 <section>
 <h2>Category and action</h2>
 <p>In “{select_entity_type}” select a category (Playlists, Groups, Players, Locations, Assets, Deploy), in “{select_action}” an action. The actions that start with “CSV” download a file, the others change data on the server. All the actions are described on the pages of the categories.</p>
+<p>The entries of the list of actions are coloured by what they do: <b>green</b> for downloading a CSV file, <b>blue</b> for setting, adding, renaming and creating, <b>red</b> for removing and deleting. Each colour is a block of its own, and the actions in it are in alphabetical order. When the pointer rests on an action in the list, a description of it appears next to it.</p>
+<p>The application remembers the last used account, login, category and action and selects them again the next time it starts. An action that removes or deletes is not restored, only its category.</p>
 </section>
 <section>
 <h2>Input</h2>
 <p>The “{input_prompt}” button is shown only for actions that take input. The window holds a template: the grey lines starting with <code>#</code> describe the columns, the last line is an example. You can delete the template or leave it, the lines of it that were not changed are skipped. The columns are separated by tabs (pasting from a spreadsheet does it), one record is one line. The lines are processed in the order they are written, and errors give the number of the line as you see it.</p>
 <p>The input is checked as a whole before anything is changed: when something in it is wrong (an unknown name, a wrong date or time), nothing is done and the log lists all the errors.</p>
+<p>The log first says how many lines it read and how many empty lines between them it skips. A line that is in the input more than once is processed only once; the log says how many repeated lines it skipped. At the end of the log all the errors are listed once more in red under the heading “Errors found:”. A click on an underlined line of such an error opens the input with the text of the last run and the cursor on the line with the error.</p>
 </section>
 <section>
 <h2>Running and the log window</h2>
@@ -299,6 +306,7 @@ spreadsheet, or download it to CSV, edit it and paste it back. Two buttons open 
 <li><b>{save}</b>: saves the log to a text file.</li>
 </ul>
 <p>Before something that cannot be undone (deleting, deploy) the log window shows what is going to happen (the list, the number of players) and asks; the default answer is “No”.</p>
+<p>Before an action that overwrites or deletes data (for example setting the playlists of groups, removing playlists, deleting unused items) the application saves the state before the change to the Downloads folder as CSV files named <code>account-backup-data-time.csv</code>. The log says where they were saved. When the backup cannot be saved, the action does not start. Creating, adding and renaming are not backed up, the log shows the old and the new value.</p>
 </section>
 <section>
 <h2>CSV files</h2>
