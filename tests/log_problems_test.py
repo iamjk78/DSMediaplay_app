@@ -374,14 +374,15 @@ class BackupFileNameTest(MainWindowCase):
         with patch("gui_app.gui.get_download_path", return_value="/downloads"):
             path = self.app.csv_file_path("group_settings", "backup", "My Account")
 
-        self.assertRegex(path, r"^/downloads/My_Account-backup-group_settings-\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.csv$")
+        self.assertRegex(path.replace("\\", "/"),
+                         r"^/downloads/My_Account-backup-group_settings-\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.csv$")
 
     def test_an_ordinary_csv_file_keeps_its_name(self):
         self.app.option_choose_administration.set("Demo")
         with patch("gui_app.gui.get_download_path", return_value="/downloads"):
             path = self.app.csv_file_path("group_settings")
 
-        self.assertRegex(path, r"^/downloads/Demo-group_settings-\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.csv$")
+        self.assertRegex(path.replace("\\", "/"), r"^/downloads/Demo-group_settings-\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.csv$")
 
     def test_the_log_window_gets_the_place_for_the_backup_with_the_account_read_in_the_main_thread(self):
         self.app.option_choose_administration.set("Demo")
@@ -392,7 +393,7 @@ class BackupFileNameTest(MainWindowCase):
         with patch("gui_app.gui.get_download_path", return_value="/downloads"):
             path = factory.call_args.kwargs["backup_path"]("group_settings")
 
-        self.assertIn("/downloads/Demo-backup-group_settings-", path)
+        self.assertIn("/downloads/Demo-backup-group_settings-", path.replace("\\", "/"))  # Windows joins with a backslash
 
 
 class InputWindowAtLineTest(MainWindowCase):

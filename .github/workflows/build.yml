@@ -241,18 +241,18 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --require-hashes -r requirements-dev.lock
 
-      - name: Tests
+      # First what depends on the platform and has failed before (file names on Windows, a live image in a Tk window): when
+      # one of these fails the rest is not run. The live view goes apart because a crash of Tk takes the interpreter with
+      # it, and with it the summary of everything else.
+      - name: Tests that depend on the platform
         env:
           DSM_TESTS_VISIBLE: "1"  # nobody works at this computer; and a fully transparent window is not hit by the pointer
-        run: python -m pytest -v -p no:cacheprovider --ignore=tests/snapshot_viewer_test.py
+        run: python -m pytest -v -p no:cacheprovider tests/log_problems_test.py::BackupFileNameTest tests/snapshot_viewer_test.py
 
-      # Apart from the rest: a crash of Tk in a window with a live image takes the whole interpreter with it, and with
-      # it the summary of everything else
-      - name: Tests of the live view
-        if: ${{ !cancelled() }}
+      - name: Tests
         env:
           DSM_TESTS_VISIBLE: "1"
-        run: python -m pytest -v -p no:cacheprovider tests/snapshot_viewer_test.py
+        run: python -m pytest -v -p no:cacheprovider --ignore=tests/snapshot_viewer_test.py --deselect tests/log_problems_test.py::BackupFileNameTest
 
   audit:
     # Known vulnerabilities in what goes into the application and into its build
