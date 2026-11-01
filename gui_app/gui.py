@@ -25,7 +25,8 @@ from gui_app.log_box import LoggingTextBoxFactory
 from gui_app.player_browser import PlayerBrowser
 from util import accounts, credentials, input_templates, legacy_import, updater
 from util import action_descriptions
-from util.actions import NO_INPUT_PLACEHOLDER, action_kind, action_needs_input, entity_actions
+from util.actions import (NO_INPUT_PLACEHOLDER, action_input_optional, action_kind, action_needs_input,
+                          entity_actions)
 from util.paths import legacy_login_file, resource_path
 from util.version import VERSION
 import requests
@@ -415,7 +416,7 @@ class DSMediaplayApp(tk.Tk):
         button = self.input_prompt_button
         if action and action_needs_input(action):
             button.grid()
-            if self.has_input():
+            if self.has_input() or action_input_optional(action):
                 self.stop_blinking()
             else:
                 self.start_blinking()
@@ -769,7 +770,9 @@ class DSMediaplayApp(tk.Tk):
     def perform_set_action(self, action, url, login, password, data):
         if not action_needs_input(action):
             data = NO_INPUT_PLACEHOLDER
-        if self.input_missing(data) or "" in [login, password]:
+        elif action_input_optional(action):
+            data = data or ""
+        if (self.input_missing(data) and not action_input_optional(action)) or "" in [login, password]:
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("missing_data_or_login"))
             return
         self.open_action_log_box(action[4:], url, login, password, data)

@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 import requests.exceptions
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
+                                       PlayerCommandError,
                                        WEEK_DAYS, snapshot_file_stem, snapshot_reason)
 import itertools
 import json
@@ -121,6 +122,7 @@ def parse_validity_hour(text: str, is_end: bool) -> Optional[int]:
     return hour
 
 
+PLAYER_CHECK_PAUSE_SECONDS = 0.2  # between two players of the check of their files
 INTERRUPTED_LIST_LIMIT = 20  # names of what was not done, listed after an interrupted batch
 
 
@@ -160,6 +162,7 @@ class ProcessorFactory:
             "asset_to_playlist": AssetToPlaylistProcessor,
             "player_note": PlayerNoteProcessor,
             "player_snapshot": PlayerSnapshotProcessor,
+            "player_assets_check": PlayerAssetsCheckProcessor,
             "remove_playlists": RemovePlaylistsProcessor,
             "remove_playlist_list": RemovePlaylistsByListProcessor,
             "remove_assets": RemoveAssetsProcessor,
@@ -1387,6 +1390,140 @@ class PlayerSnapshotProcessor(EntityValidationProcessor):
 
     def _write_snapshot_failed(self, player: str, reason: str):
         self._write_log_error("snapshot_failed", player=player, reason=reason)
+
+
+class PlayerAssetsCheckProcessor(EntityValidationProcessor):
+    """
+    Checks that the online players have the files their groups send them: reads the files of the group of each player
+    from the server and asks the player (one fixed command that only lists the names in the folder of the media).
+    The input is the names of the players to check, none = all the online ones. A player is asked one after another,
+    and whether it is still online is read again right before it: one that went offline in the meantime is skipped
+    without waiting for it.
+    """
+    COMMUNICATION_ERRORS = (requests.exceptions.RequestException, ResponseError, NameResolutionError)
+
+    def __init__(self, *args, pause: float = PLAYER_CHECK_PAUSE_SECONDS, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._pause = pause
+        self._offline = 0
+        self.data = []  # the online players to check, sorted by name
+
+    def load(self, input_text: str):
+        self._write_start_loading()
+        server = self._try_server_login()
+        if not server:
+            self._write_no_server_returned()
+            return
+        try:
+            players = server.get_player_objects()
+        except Exception as e:
+            self._write_internal_error(e)
+            raise InternalException()
+
+        if (input_text or "").strip():
+            names = [player.get("name", "") for player in players]
+            chosen = []
+            for i, entity in self._indexed_rows(input_text, str.strip):
+                if not self._validate_entity(entity, names, i + 1):
+                    continue
+                if entity in chosen:
+                    self._write_collision(i + 1, entity)
+                    self._wrong_init_counter += 1
+                    continue
+                chosen.append(entity)
+            if self._wrong_init_counter > 0:
+                self._write_wrong_format(self._wrong_init_counter)
+                raise FormatException
+            players = [player for player in players if player.get("name") in chosen]
+
+        self.data = sorted((player for player in players if player.get("isConnected")), key=lambda p: p.get("name", ""))
+        self._offline = len(players) - len(self.data)
+        self._write_load_finish()
+        self._write_log("assets_check_scope", count=len(self.data), offline=self._offline)
+
+    def confirmation(self) -> Optional[Confirmation]:
+        if not self.data:
+            return None
+        return Confirmation(self.lang.get_message("assets_check_title"),
+                            self.lang.get_message("assets_check_text", count=len(self.data)))
+
+    def run(self) -> Generator[None, None, None]:
+        if not self.data:
+            self._write_log("assets_check_nothing")
+            return
+        results = {"ok": 0, "missing": {}, "unknown": []}
+        try:
+            with self._try_server_login() as server:
+                if not server:
+                    self._write_no_server_returned()
+                    return
+                group_files = {}  # the files of a group are read once for all its players
+                for index, player in enumerate(self.data):
+                    if index:
+                        sleep(self._pause)
+                    self._check_player(server, player, group_files, results)
+                    yield
+        except Exception as e:
+            self._write_internal_error(e)
+            raise InternalException()
+        self._write_assets_check_summary(results)
+
+    def _check_player(self, server: ServerApi, player: Dict[str, Any], group_files: Dict[str, List[str]],
+                      results: Dict[str, Any]):
+        name = player.get("name", "")
+        self._write_log("assets_check_player", player=name)
+        try:
+            if not server.is_player_online(player["_id"]):
+                self._write_log_warning("assets_check_went_offline")
+                self._offline += 1
+                return
+            group_id = (player.get("group") or {}).get("_id")
+            if not group_id:
+                self._write_log_warning("assets_check_no_group")
+                return
+            if group_id not in group_files:
+                group_files[group_id] = server.get_group_files(group_id)
+            expected = group_files[group_id]
+            if not expected:
+                self._write_log_warning("assets_check_group_empty")
+                results["ok"] += 1
+                return
+            self._write_log("assets_check_should_have", count=len(expected), files=", ".join(expected))
+            present = set(server.list_player_files(player["_id"]))
+        except PlayerCommandError as e:
+            self._write_log_error(f"assets_check_{e.reason}")
+            results["unknown"].append(name)
+            return
+        except self.COMMUNICATION_ERRORS:
+            self._write_log_error("assets_check_unknown_state")
+            results["unknown"].append(name)
+            return
+
+        missing = [file for file in expected if file not in present]
+        if missing:
+            results["missing"][name] = missing
+            self._write_log_error("assets_check_missing", count=len(missing), files=", ".join(missing))
+        else:
+            results["ok"] += 1
+            self._write_log("assets_check_all_present")
+
+    def _write_assets_check_summary(self, results: Dict[str, Any]):
+        """The result at the end; written as errors where something is wrong (red), but not as problems once more."""
+        missing, unknown = results["missing"], results["unknown"]
+        self._write_log("assets_check_summary", checked=results["ok"] + len(missing),
+                        ok=results["ok"], missing=len(missing), unknown=len(unknown), offline=self._offline)
+        if not missing and not unknown:
+            self._write_log("assets_check_all_ok")
+        if missing:
+            self._logger.error(self.lang.get_message("assets_check_summary_missing", count=len(missing)),
+                               extra={"hide_level": True, "progress": True})
+        for player, files in missing.items():
+            self._logger.error(self.lang.get_message("assets_check_summary_player", player=player, files=", ".join(files)),
+                               extra={"hide_level": True, "progress": True})
+        if unknown:
+            self._logger.error(self.lang.get_message("assets_check_summary_unknown", count=len(unknown),
+                                                     players=", ".join(unknown)),
+                               extra={"hide_level": True, "progress": True})
 
 
 class PlayerConfigLocationProcessor(AssignProcessor):

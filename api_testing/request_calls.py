@@ -19,6 +19,10 @@ REQUEST_TIMEOUT = (10, 60)
 # trouble on the way to the server, or a server that answers only some of many requests in a row)
 CONNECT_RETRY_DELAYS = (2, 5)
 TOKEN_HEADER = "x-access-token"
+# The one command of the check of the files on a player: it only reads the names in the folder of the media
+PLAYER_MEDIA_DIR = "/home/pi/media"
+PLAYER_FILES_COMMAND = f"ls -1A {PLAYER_MEDIA_DIR}"
+PLAYER_COMMAND_TIMEOUT = (10, 30)  # (connect, read) seconds; a player that is silent for 30 s is skipped
 SNAPSHOT_MAX_BYTES = 20 * 1024 * 1024
 IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF8", ".gif"))
 
@@ -314,6 +318,20 @@ class ResponseError(ServerApiError):
     def __str__(self):
         parts = [part for part in (f"HTTP {self.status}" if self.status else "", self.request, self.message) if part]
         return "The server refused the request" + (": " + ", ".join(parts) if parts else "")
+
+
+class PlayerCommandError(ServerApiError):
+    """
+    A command on a player gave no usable answer.
+
+    Attributes
+    ----------
+    reason : str
+        "no_answer" (the player did not answer in time) or "failed" (it answered with an error).
+    """
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class SnapshotError(ServerApiError):
@@ -2179,6 +2197,35 @@ class ServerApi:
         api_end_point = f"/pishell/{player_id}"
         request_body = {"cmd": command}
         return self._make_request("post", api_end_point, json=request_body)
+
+    def is_player_online(self, player_id: str) -> bool:
+        """The current state of one player (a small request, not the whole list of players)."""
+        return bool(self._make_request("get", f"/players/{player_id}")["data"].get("isConnected"))
+
+    def get_group_files(self, group_id: str) -> List[str]:
+        """The files the group sends to its players (what the players are to have on their disks)."""
+        return list(self.get_group_details(group_id).get("assets") or [])
+
+    def list_player_files(self, player_id: str) -> List[str]:
+        """
+        The names of the files in the folder of the media on the player, read by a fixed command that only lists them.
+
+        Raises
+        ------
+        PlayerCommandError
+            The player did not answer in time ("no_answer") or answered with an error ("failed").
+        """
+        try:
+            answer = self._make_request("post", f"/pishell/{player_id}", json={"cmd": PLAYER_FILES_COMMAND},
+                                        timeout=PLAYER_COMMAND_TIMEOUT)["data"]
+        except requests.exceptions.Timeout:
+            raise PlayerCommandError("no_answer")
+        # A player that does not answer is a successful request with `err` set
+        if answer.get("err"):
+            raise PlayerCommandError("no_answer")
+        if answer.get("stderr") and not answer.get("stdout"):
+            raise PlayerCommandError("failed")
+        return [line for line in (answer.get("stdout") or "").splitlines() if line]
 
     def take_player_snapshot(self, player_name: str) -> Dict[str, Any]:
         """

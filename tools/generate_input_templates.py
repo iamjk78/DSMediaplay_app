@@ -174,6 +174,10 @@ cz = {
             "DSMediaplay_snapshots ve stažených souborech.",
             ["1. název přehrávače (jeden na řádek)"], ["<název přehrávače>"],
             ["Přehrávač musí být online, pořízení snímku může trvat několik sekund."]),
+        "set_player_assets_check": action(
+            "Kontrola assetů přehrávačů: ověří, zda mají online přehrávače soubory, které mají mít podle své skupiny.",
+            ["1. název přehrávače (jeden na řádek)"], ["<název přehrávače>"],
+            ["Vstup je volitelný: prázdný vstup zkontroluje všechny online přehrávače."]),
         "set_deploy_selected_groups": action(
             "Deploy vybraných skupin: obsah se nasadí na všechny online přehrávače těchto skupin.",
             ["1. název skupiny (jeden na řádek)"], ["<název skupiny>"]),
@@ -308,6 +312,10 @@ en = {
             "DSMediaplay_snapshots folder in Downloads.",
             ["1. player name (one per line)"], ["<player name>"],
             ["The player must be online; taking the screenshot can take a few seconds."]),
+        "set_player_assets_check": action(
+            "Check player assets: verifies that the online players have the files they should have according to their group.",
+            ["1. player name (one per line)"], ["<player name>"],
+            ["The input is optional: an empty input checks all the online players."]),
         "set_deploy_selected_groups": action(
             "Deploy the selected groups: the content is deployed to all online players of these groups.",
             ["1. group name (one per line)"], ["<group name>"]),

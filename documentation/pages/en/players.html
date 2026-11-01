@@ -35,6 +35,7 @@
 <li><a href="#set_notes_to_players">Change - Notes</a></li>
 <li><a href="#set_player_labels">Change - Player Categories</a></li>
 <li><a href="#set_player_rename">Change - Player Name</a></li>
+<li><a href="#set_player_assets_check">Check player assets</a></li>
 <li><a href="#create_label">Create - Category</a></li>
 <li><a href="#set_player_snapshot">Screenshot - download</a></li>
 <li><a href="#show_player_snapshots">Screenshot - view</a></li>
@@ -145,6 +146,16 @@
 <ul class="notes"><li>The new name must contain an identifier followed by an underscore: PB, PC, PD or PE + 4 digits (e.g. PB1234_), or RPI + 3 digits (e.g. RPI123_). The identifier of the current name must not change. The new name must not contain quotes, commas, semicolons or whitespace and must not exist yet.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;_PB1234_</td></tr></table>
 <p class="how">Select the category <b>Players</b> and the action “Change - Player Name”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+<section id="set_player_assets_check">
+<h3>Check player assets</h3>
+<p>Check player assets: verifies that the online players have the files they should have according to their group.</p>
+<p class="kind">Takes input (“Input Prompt”).</p>
+<h4>Input</h4>
+<ul><li>1. player name (one per line)</li></ul>
+<ul class="notes"><li>The input is optional: an empty input checks all the online players.</li></ul>
+<p>An example line:</p><table class="example"><tr><td>&lt;player name&gt;</td></tr></table>
+<p class="how">Select the category <b>Players</b> and the action “Check player assets”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
 <section id="create_label">
 <h3>Create - Category</h3>

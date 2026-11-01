@@ -17,6 +17,15 @@ def action_needs_input(action: str) -> bool:
                 or action == "set_deploy_all_players")
 
 
+# Actions that take input but also run without it (the input narrows them down)
+OPTIONAL_INPUT_ACTIONS = ("set_player_assets_check",)
+
+
+def action_input_optional(action: str) -> bool:
+    """Whether the action may start with an empty input (then it works on everything it can)."""
+    return action in OPTIONAL_INPUT_ACTIONS
+
+
 KIND_ORDER = ("read", "change", "remove")  # the blocks of a list of actions, green, blue, red
 
 
@@ -100,7 +109,8 @@ def entity_actions(actions: dict) -> dict:
             actions["Players"]["remove_all_unused_labels"]: "remove_all_unused_labels",
             actions["Players"]["create_label"]: "create_label",
             actions["Players"]["set_player_snapshot"]: "set_player_snapshot",
-            actions["Players"]["show_player_snapshots"]: "show_player_snapshots"
+            actions["Players"]["show_player_snapshots"]: "show_player_snapshots",
+            actions["Players"]["set_player_assets_check"]: "set_player_assets_check"
         },
         "Locations": {
             actions["Locations"]["get_locations_plan"]: "get_locations_plan",

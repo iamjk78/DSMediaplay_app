@@ -16,6 +16,7 @@ from util.actions import NO_INPUT_PLACEHOLDER
 # The number of a line in a message of the log, in both languages
 LINE_NUMBER = re.compile(r"(?:Řádek|Line)\s+(\d+)")
 STEP_PAUSE_SECONDS = 0.1  # between two steps (rows) of a batch, so as not to overload the server with requests
+SELF_PACED = ("player_assets_check",)  # actions that pause between their steps themselves
 STOP_POLL_MS = 200  # how often a window that has been asked to close looks whether its operation has ended
 
 
@@ -33,6 +34,7 @@ class LoggingTextBoxFactory:
             "groups_to_players": GroupToPlayerLogBox,
             "notes_to_players": NotesToPlayerLogBox,
             "player_snapshot": PlayerSnapshotLogBox,
+            "player_assets_check": PlayerAssetsCheckLogBox,
             "player_config_location": PlayerConfigLocationLogBox,
             "location_plan": LocationsPlanLogBox,
             "group_rename": GroupRenameLogBox,
@@ -178,7 +180,8 @@ class LoggingTextBox(tk.Toplevel):
 
                 # A pause before the next step; the deploys pace themselves by the interval between their batches. STOP
                 # ends the pause at once
-                if not self.processor_type.startswith("deploy_") and self.thread_manager.stop_event.wait(STEP_PAUSE_SECONDS):
+                if self.processor_type not in SELF_PACED and not self.processor_type.startswith("deploy_") \
+                        and self.thread_manager.stop_event.wait(STEP_PAUSE_SECONDS):
                     self.logger.info(self.lang.get_message("operation_stopped_after", steps=steps))
                     self.update_activity_circle("T")
                     self.setup_buttons()
@@ -492,6 +495,11 @@ class GroupSettingsLogBox(LoggingTextBox):
 class PlaylistSettingsLogBox(LoggingTextBox):
     def __init__(self, **kwargs):
         super().__init__(processor_type="playlist_settings", **kwargs)
+
+
+class PlayerAssetsCheckLogBox(LoggingTextBox):
+    def __init__(self, **kwargs):
+        super().__init__(processor_type="player_assets_check", **kwargs)
 
 
 class PlayerSnapshotLogBox(LoggingTextBox):
