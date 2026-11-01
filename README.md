@@ -86,3 +86,9 @@ The app icon comes from `assets/ds_media_icon.jpg`; `python packaging/make_icons
 
 The builds are unsigned: Windows SmartScreen and macOS Gatekeeper will warn on first launch.
 The macOS build is a zip with `DSMediaplay_app.app`.
+
+## License
+
+No license is granted: all rights are reserved by the author. The source code is published so that the installed
+application can look for updates here and so that its behaviour can be inspected. It may not be copied, modified or
+distributed without the written permission of the author.
