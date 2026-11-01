@@ -46,22 +46,29 @@ class DescriptionsTest(unittest.TestCase):
 
 
 class ListTooltipTest(unittest.TestCase):
+    """
+    The pointer is looked for, not waited for: the list of a drop-down is open under a grab, and its pointer events do not
+    reach a binding reliably. So the tests move the pointer by changing what the list is told about it, and send no events.
+    """
+
     def setUp(self):
         try:
             self.root = tk.Tk()
         except tk.TclError:
             self.skipTest("no display available")
         self.addCleanup(self.root.destroy)
-        # The synthetic events do not move the real pointer, so it is taken to be on the list
-        patcher = patch.object(ListTooltip, "_pointer_over_widget", lambda tooltip: True)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        poll = patch("gui_app.tooltip.POINTER_POLL_MS", 10)
+        poll.start()
+        self.addCleanup(poll.stop)
         self.listbox = tk.Listbox(self.root, height=4)
         for entry in ("one", "two", "three", "four"):
             self.listbox.insert(tk.END, entry)
         self.listbox.pack()
-        self.tooltip = ListTooltip(self.listbox, lambda index: f"about entry {index}", delay_ms=40)
+        self.pointer = (-1, -1)
+        self.listbox.winfo_pointerxy = lambda: self.pointer
+        self.tooltip = ListTooltip(self.listbox, lambda index: f"about entry {index}", delay_ms=60)
         self.root.update()
+        self.tooltip.watch()
 
     def wait(self, milliseconds):
         end = time.monotonic() + milliseconds / 1000
@@ -71,8 +78,7 @@ class ListTooltipTest(unittest.TestCase):
 
     def point_at(self, index):
         x, y, width, height = self.listbox.bbox(index)
-        self.listbox.event_generate("<Motion>", x=x + 5, y=y + height // 2, rootx=self.listbox.winfo_rootx() + x + 5,
-                                    rooty=self.listbox.winfo_rooty() + y + height // 2)
+        self.pointer = (self.listbox.winfo_rootx() + x + 5, self.listbox.winfo_rooty() + y + height // 2)
 
     def shown(self):
         window = self.tooltip._window
@@ -80,49 +86,76 @@ class ListTooltipTest(unittest.TestCase):
 
     def test_the_help_of_the_entry_under_the_pointer_appears_after_the_delay(self):
         self.point_at(1)
-        self.wait(10)
+        self.wait(30)
         self.assertFalse(self.shown())
 
-        self.wait(120)
+        self.wait(250)
 
         self.assertEqual(self.shown(), "about entry 1")
 
     def test_moving_to_another_entry_hides_it_and_shows_the_help_of_the_new_one(self):
         self.point_at(1)
-        self.wait(120)
+        self.wait(250)
+        self.assertEqual(self.shown(), "about entry 1")
 
         self.point_at(2)
+        self.wait(30)
         self.assertFalse(self.shown())
-        self.wait(120)
+        self.wait(250)
 
         self.assertEqual(self.shown(), "about entry 2")
 
     def test_moving_inside_the_same_entry_does_not_start_over(self):
         self.point_at(1)
-        self.wait(120)
+        self.wait(250)
         self.assertEqual(self.shown(), "about entry 1")
 
+        x, y = self.pointer
+        self.pointer = (x + 3, y)
+        self.wait(60)
+
+        self.assertEqual(self.shown(), "about entry 1")
+
+    def test_leaving_the_list_hides_it(self):
         self.point_at(1)
-        self.wait(10)
+        self.wait(250)
+        self.assertTrue(self.shown())
 
-        self.assertEqual(self.shown(), "about entry 1")
+        self.pointer = (-1, -1)
+        self.wait(60)
+
+        self.assertFalse(self.shown())
 
     def test_it_is_shown_to_the_right_of_the_pointer(self):
         self.point_at(1)
-        pointer_x = self.listbox.winfo_rootx() + self.listbox.bbox(1)[0] + 5
-        self.wait(120)
+        self.wait(250)
 
-        self.assertGreaterEqual(self.tooltip._window.winfo_rootx(), pointer_x)
+        self.assertGreaterEqual(self.tooltip._window.winfo_rootx(), self.pointer[0])
 
     def test_an_entry_without_a_description_shows_nothing(self):
         self.tooltip._text_of = lambda index: ""
         self.point_at(1)
-        self.wait(120)
+        self.wait(250)
 
         self.assertFalse(self.shown())
 
     def test_it_stays_long_enough_to_be_read(self):
         self.assertGreater(self.tooltip._max_visible_ms, MAX_VISIBLE_MS)
+
+    def test_the_pointer_is_followed_only_while_the_list_is_on_the_screen(self):
+        self.assertIsNotNone(self.tooltip._poll_id)
+
+        self.listbox.pack_forget()
+        self.wait(100)
+
+        self.assertIsNone(self.tooltip._poll_id)
+        self.assertIsNone(self.tooltip._index)
+
+    def test_watching_twice_does_not_follow_the_pointer_twice(self):
+        first = self.tooltip._poll_id
+        self.tooltip.watch()
+
+        self.assertEqual(self.tooltip._poll_id, first)
 
 
 class ActionListHelpTest(MainWindowCase):
@@ -139,6 +172,27 @@ class ActionListHelpTest(MainWindowCase):
                 with self.subTest(language=language, action=action):
                     self.assertEqual(self.app._action_description(index), action_descriptions.describe(action, language))
         self.assertTrue(labels)
+
+    def test_opening_the_list_starts_following_the_pointer_and_closing_it_stops(self):
+        box = self.app.option_choose_action
+        self.app.entity_type_var.set("Groups")
+        self.app.update_action_selection()
+        help_ = self.app._action_list_help
+
+        self.app.tk.call("ttk::combobox::Post", box)
+        self.addCleanup(self.app.tk.call, "ttk::combobox::Unpost", box)
+        deadline = time.monotonic() + 2
+        while help_._poll_id is None and time.monotonic() < deadline:
+            self.app.update()
+            time.sleep(0.01)
+        self.assertIsNotNone(help_._poll_id)
+
+        self.app.tk.call("ttk::combobox::Unpost", box)
+        deadline = time.monotonic() + 2
+        while help_._poll_id is not None and time.monotonic() < deadline:
+            self.app.update()
+            time.sleep(0.01)
+        self.assertIsNone(help_._poll_id)
 
     def test_an_entry_that_is_not_there_has_no_text(self):
         self.app.entity_type_var.set("Groups")

@@ -16,6 +16,7 @@ IGNORE_ACTIVATE_AFTER_SHOW_MS = 150
 GAP_RIGHT_OF_POINTER = 20
 # The entries of a list are read one after another, so the help comes sooner and stays while it is being read
 LIST_TOOLTIP_DELAY_MS = 350
+POINTER_POLL_MS = 80  # how often the pointer is looked for while the list of a drop-down is open
 LIST_TOOLTIP_MAX_VISIBLE_MS = 30000
 GAP_LEFT_OF_POINTER = 8
 
@@ -185,28 +186,56 @@ class ListTooltip(Tooltip):
     A Tooltip for the entries of a Listbox: its text is the one `text_of(index)` gives for the entry under the pointer,
     and moving the pointer to another entry hides it and starts the delay again. It stays as long as the pointer rests
     on the entry (the text is read, not glanced at), until the pointer leaves the list.
+
+    The list of a drop-down is open under a grab of the combobox, and the pointer events of such a list do not reach
+    a binding reliably, so the pointer is not waited for: while the list is on the screen (`watch`) it is asked where
+    the pointer is, like the tooltips ask it whether the pointer is still where they were shown.
     """
 
     def __init__(self, listbox: tk.Listbox, text_of: Callable[[int], str], delay_ms: int = LIST_TOOLTIP_DELAY_MS) -> None:
         self._index: Optional[int] = None
         self._text_of = text_of
+        self._poll_id: Optional[str] = None
         super().__init__(listbox, self._text_of_entry, delay_ms, max_visible_ms=LIST_TOOLTIP_MAX_VISIBLE_MS)
-
-    def _pointer_over_widget(self) -> bool:  # Tk's own lookup cannot name a widget it has no Python object for
-        try:
-            return str(self._widget.tk.call("winfo", "containing", *self._widget.winfo_pointerxy())) == str(self._widget)
-        except tk.TclError:
-            return False
 
     def _text_of_entry(self) -> str:
         return self._text_of(self._index) if self._index is not None else ""
 
-    def _remember_pointer(self, event: tk.Event) -> None:
-        super()._remember_pointer(event)
-        index = self._widget.nearest(event.y)
-        if index != self._index:  # also the first entry: the list can open under a pointer that is already still
-            self._index = index
-            self._schedule()
+    def watch(self) -> None:
+        """
+        Follows the pointer for as long as the list is on the screen; called when it appears. The first look is a
+        moment later: the event that says the list appears comes before the list itself is mapped.
+        """
+        if self._poll_id is None:
+            self._poll_id = self._widget.after(POINTER_POLL_MS, self._poll)
+
+    def _poll(self) -> None:
+        self._poll_id = None
+        widget = self._widget
+        try:
+            if not widget.winfo_ismapped():
+                self._index = None
+                self._hide()
+                return
+            pointer_x, pointer_y = widget.winfo_pointerxy()
+            x, y = pointer_x - widget.winfo_rootx(), pointer_y - widget.winfo_rooty()
+            index = widget.nearest(y) if 0 <= x < widget.winfo_width() and 0 <= y < widget.winfo_height() else None
+            self._pointer = (pointer_x, pointer_y)
+            if index != self._index:
+                self._index = index
+                if index is None:
+                    self._hide()
+                else:
+                    self._schedule()
+            self._poll_id = widget.after(POINTER_POLL_MS, self._poll)
+        except tk.TclError:  # the list is gone
+            self._index = None
+
+    def _on_enter(self, event: tk.Event) -> None:  # the poll knows better than an <Enter> that may not come
+        pass
+
+    def _pointer_over_widget(self) -> bool:
+        return self._index is not None
 
 
 def hide_if_shown(widget: tk.Widget) -> None:

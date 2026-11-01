@@ -312,7 +312,7 @@ class DSMediaplayApp(tk.Tk):
         """
         popdown = self.tk.call("ttk::combobox::PopdownWindow", self.option_choose_action)
         self.tk.call("bind", popdown, "<Map>", self.register(lambda: self._prepare_action_list(popdown)))
-        ListTooltip(TclListbox(self, f"{popdown}.f.l"), self._action_description)
+        self._action_list_help = ListTooltip(TclListbox(self, f"{popdown}.f.l"), self._action_description)
 
     def _action_description(self, index: int) -> str:
         labels = self.option_choose_action["values"]
@@ -320,6 +320,7 @@ class DSMediaplayApp(tk.Tk):
         return action_descriptions.describe(action, self.lang.language) if action else ""
 
     def _prepare_action_list(self, popdown: str):
+        self._action_list_help.watch()
         listbox = f"{popdown}.f.l"
         actions = self.entity_actions.get(self.entity_type_var.get(), {})
         labels = self.option_choose_action["values"]
