@@ -87,6 +87,23 @@ The app icon comes from `assets/ds_media_icon.jpg`; `python packaging/make_icons
 The builds are unsigned: Windows SmartScreen and macOS Gatekeeper will warn on first launch.
 The macOS build is a zip with `DSMediaplay_app.app`.
 
+## Updates
+
+The application looks for a newer version in the [releases](https://github.com/iamjk78/DSMediaplay_app/releases) of this repository: the "Update" button next to
+"Help" does it on request, and five seconds after the start it is done by itself. A newer version is offered, to install
+now or at the next start. The only thing sent is the request for the latest release; nothing about the user or the
+accounts is.
+
+- **Windows:** the installer of the release (`DSMediaplay_app-Setup-<version>.exe`) is downloaded and started silently
+  (`/SILENT /RELAUNCH=1`); it replaces the installed files and starts the new version.
+- **macOS:** the zip of the release (`DSMediaplay_app-macos.zip`) is downloaded and unpacked next to the installed app;
+  once the application has ended, the old bundle is replaced by the new one, which is then opened. This needs write
+  permission to the folder the app is in; otherwise the page of the release is offered.
+- **Trust:** the builds are not signed. A file is installed only when it comes from a release of this repository and
+  its SHA-256 equals the `digest` GitHub reports for the asset; without it the release is only offered for download in the
+  browser. The names of the assets are those the `Build` workflow gives them, and `util/updater.py` depends on them.
+- Run from the source code, the application only reports what it finds.
+
 ## License
 
 No license is granted: all rights are reserved by the author. The source code is published so that the installed

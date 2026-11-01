@@ -62,7 +62,7 @@ def main():
     server_thread.daemon = True  # Thread will exit when the main program exits
     server_thread.start()
 
-    app = DSMediaplayApp(logins_file)
+    app = DSMediaplayApp(logins_file, check_updates_at_start=True)
     app.mainloop()
 
 

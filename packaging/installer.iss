@@ -58,12 +58,19 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; The update started from the application (/SILENT /RELAUNCH=1) starts the new version when it is done
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RelaunchRequested
 
 [Code]
 const
   // The key Inno Setup writes for the AppId above (AppId + _is1)
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{DB940A40-CA4A-48BB-B2CA-1A0D44974506}_is1';
   RemovalTimeoutMs = 60000;
+
+function RelaunchRequested(): Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
 
 function InstalledUninstaller(): String;
 var

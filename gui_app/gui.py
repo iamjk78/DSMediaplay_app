@@ -4,6 +4,7 @@ from gui_app.color_button import (BLUE, GREEN, GREEN_DARK, PURPLE, RED, YELLOW, 
                                   make_color_button, set_button_colors, set_button_enabled)
 from gui_app.icons import set_window_icon
 from gui_app.tooltip import ListTooltip, TclListbox, Tooltip
+from gui_app.update_dialog import DownloadDialog, UpdateOfferDialog
 import copy
 import json
 import os
@@ -22,7 +23,7 @@ from datetime import datetime
 from util.language import LanguageManager
 from gui_app.log_box import LoggingTextBoxFactory
 from gui_app.player_browser import PlayerBrowser
-from util import accounts, credentials, input_templates, legacy_import
+from util import accounts, credentials, input_templates, legacy_import, updater
 from util import action_descriptions
 from util.actions import NO_INPUT_PLACEHOLDER, action_kind, action_needs_input, entity_actions
 from util.paths import legacy_login_file, resource_path
@@ -58,6 +59,11 @@ def get_download_path():
 
 BLINK_INTERVAL_MS = 500
 CSV_POLL_MS = 100  # how often the window looks whether what the server was asked for (a file, a login) is ready
+LAST_COLUMN = 4  # of the grid of the main window: the one with the "+" and "-" buttons, right of the drop-downs
+BOTTOM_ROW_GAP_X = 10  # the least space between the two groups of buttons in the bottom row
+AUTO_UPDATE_DELAY_MS = 5000  # the check for a newer version, after the start
+UPDATE_RETRY_MS = 10000  # the offer of one, when a window of the application is in the way
+UPDATE_POLL_MS = 100  # how often the window looks whether the check or the download of a version has ended
 
 
 class DSMediaplayApp(tk.Tk):
@@ -65,9 +71,11 @@ class DSMediaplayApp(tk.Tk):
     Main application class for the DSMediaplay control panel.
     """
 
-    def __init__(self, logins_file: str, *, language_file: str = str(resource_path("assets/messages.json"))):
+    def __init__(self, logins_file: str, *, language_file: str = str(resource_path("assets/messages.json")),
+                 check_updates_at_start: bool = False):
         """
-        Initializes the DSMediaplayApp with the given logins file.
+        Initializes the DSMediaplayApp with the given logins file. `check_updates_at_start`: look for a newer version
+        a few seconds after the start (the application turns it on, the tests do not).
         """
         super().__init__()
         self.title(f"DSMediaplay Control Panel {VERSION}")
@@ -108,6 +116,7 @@ class DSMediaplayApp(tk.Tk):
         self.text_box = None
         self.settings_button = None
         self.help_button = None
+        self.update_button = None
         self.start_button = None
         self.deploy_all_button = None
         self.live_view_button = None
@@ -129,6 +138,7 @@ class DSMediaplayApp(tk.Tk):
         self._player_browser = None
         self._csv_running = False
         self._login_check_running = False
+        self._update_running = False  # a check, or a download, of a newer version is going on
 
         self._admin_row = 0
         self._profile_row = 1
@@ -146,6 +156,8 @@ class DSMediaplayApp(tk.Tk):
         self.update_action_buttons()
         self.bind("<FocusIn>", self.on_focus_in)
         self.resizable(False, False)
+        if check_updates_at_start:
+            self.after(AUTO_UPDATE_DELAY_MS, self.start_update_check, True)
 
     def load_actions(self):
         return entity_actions(self.lang.get_message("actions"))
@@ -183,7 +195,7 @@ class DSMediaplayApp(tk.Tk):
                 (self._profile_row, self.open_add_login_dialog, self.remove_login,
                  ("tip_add_login", "tip_remove_login"))):
             group = tk.Frame(self)
-            group.grid(row=row, column=4, sticky="w")
+            group.grid(row=row, column=4, sticky="e")
             self.create_symbol_button(group, 0, "+", add_command, tips[0])
             self.create_symbol_button(group, 1, "\u2212", remove_command, tips[1])
         self.create_action_buttons()
@@ -242,12 +254,24 @@ class DSMediaplayApp(tk.Tk):
         self.quit_button = self.create_emphasised_button("quit", self.quit, RED, size_offset=0)
         self.quit_button.grid(row=self._action_buttons_row, column=0, padx=pad_x, pady=pad_y, sticky="w")
         self.add_tooltip(self.quit_button, "tip_quit")
-        self.help_button = tk.Button(self, text=self.lang.get_message("help"), font=self.font, command=self.open_help)
-        self.help_button.grid(row=self._action_buttons_row, column=1, padx=pad_x, pady=pad_y, sticky="w")
+        # One row for both groups: "Help" and "Update" on the left, "Settings" and "Start" on the right. They are in a frame
+        # of their own, so that the window is as wide as the two groups need and they never overlap, in any language or font
+        bottom_row = tk.Frame(self)
+        bottom_row.grid(row=self._action_buttons_row, column=1, columnspan=4, sticky="ew")
+        bottom_row.grid_columnconfigure(0, weight=1)
+        help_buttons = tk.Frame(bottom_row)
+        help_buttons.grid(row=0, column=0, sticky="w")
+        self.help_button = tk.Button(help_buttons, text=self.lang.get_message("help"), font=self.font,
+                                     command=self.open_help)
+        self.help_button.grid(row=0, column=0, padx=pad_x, pady=pad_y, sticky="w")
         self.add_tooltip(self.help_button, "tip_help")
-        # Spans the columns to its left, so it does not widen the window: its right edge is the one of the "+ -" buttons
-        right_buttons = tk.Frame(self)
-        right_buttons.grid(row=self._action_buttons_row, column=1, columnspan=4, sticky="e")
+        self.update_button = tk.Button(help_buttons, text=self.lang.get_message("update"), font=self.font,
+                                       command=self.start_update_check)
+        self.update_button.grid(row=0, column=1, padx=pad_x, pady=pad_y, sticky="w")
+        self.add_tooltip(self.update_button, "tip_update")
+        # Its right edge is the one of the "+ -" buttons
+        right_buttons = tk.Frame(bottom_row)
+        right_buttons.grid(row=0, column=1, padx=(BOTTOM_ROW_GAP_X, 0), sticky="e")
         self.create_button(right_buttons, "settings", 0, self.open_settings_window, column=0)
         self.start_button = self.create_emphasised_button("start", self.execute_action, GREEN, size_offset=2,
                                                           parent=right_buttons, padding_x=DEPLOY_PADDING_X)
@@ -448,6 +472,8 @@ class DSMediaplayApp(tk.Tk):
             self.settings_button.config(text=self.lang.get_message("settings"))
         if self.help_button:
             self.help_button.config(text=self.lang.get_message("help"))
+        if self.update_button:
+            self.update_button.config(text=self.lang.get_message("update"))
         if self.save_login_details_button:
             self.save_login_details_button.config(text=self.lang.get_message("save_login_details"))
         if self.input_prompt_button:
@@ -462,10 +488,12 @@ class DSMediaplayApp(tk.Tk):
 
     def update_all_widgets_font(self):
         """Updates the font for all widgets to the current font settings."""
-        for widget in self.winfo_children():
-            self._update_widget_font(widget)
-            for child in widget.winfo_children():
-                self._update_widget_font(child)
+        def update(parent):
+            for widget in parent.winfo_children():
+                self._update_widget_font(widget)
+                update(widget)
+
+        update(self)
         self._equalize_action_buttons()  # the size follows the font
 
     def _update_widget_font(self, widget):
@@ -554,10 +582,27 @@ class DSMediaplayApp(tk.Tk):
                 set_button_enabled(button, enabled and (bool(self.current_action()) or not needs_action), colors)
 
     def _equalize_action_buttons(self):
+        self._equalize_help_buttons()
         buttons = [self.start_button, self.deploy_all_button, self.live_view_button, self.outage_button]
         if all(buttons):
             equalize_widths(*buttons)
             self._ensure_gap_from_dropdowns()
+
+    def _equalize_help_buttons(self):
+        """
+        "Help" and "Update" are equally wide: the width of the wider one, measured in pixels. (A width in characters
+        would make both wider than the longer text needs, and the bottom row of buttons would not fit in the window.)
+        """
+        buttons = [button for button in (self.help_button, self.update_button) if button]
+        if len(buttons) < 2:
+            return
+        for button in buttons:
+            button.configure(width=0)
+            button.grid_configure(ipadx=0)
+        self.update_idletasks()
+        widest = max(button.winfo_reqwidth() for button in buttons)
+        for button in buttons:
+            button.grid_configure(ipadx=(widest - button.winfo_reqwidth()) // 2)
 
     def _ensure_gap_from_dropdowns(self):
         """Live-view/Deploy all only reserve their own padx as a floor within whatever width their row already
@@ -567,6 +612,12 @@ class DSMediaplayApp(tk.Tk):
         back from a sibling column that the drop-down's own 3-column span also touches, leaving the drop-down's
         total footprint - and so the gap - unchanged. The drop-down's own right padx is not up for stealing like
         that, so growing it is what actually reserves the space.
+
+        That holds while the drop-down is what makes the window as wide as it is. When something else does (the row
+        of buttons at the bottom, in a language with long names), the columns the drop-down spans have room to spare
+        and its padx is absorbed there. So the last column, which the drop-down does not span and which has contents of its
+        own, is made as much wider as is missing. The window gets wider, the buttons on the right move away from the
+        drop-downs, and the "+" and "-" buttons stay in line with "Start" (they sit at the right edge of that column).
 
         Uses winfo_x(), position within this window, not winfo_rootx() (position on the screen): the latter is
         only valid once the window manager has actually placed the window, which on some platforms can still be
@@ -579,6 +630,7 @@ class DSMediaplayApp(tk.Tk):
             left = box.grid_info()["padx"]
             left = left[0] if isinstance(left, tuple) else left
             box.grid_configure(padx=(left, DROPDOWN_PAD_X))
+        self.grid_columnconfigure(LAST_COLUMN, minsize=0)
         self.update_idletasks()
         for box, button in ((self.entity_type_combobox, self.live_view_button),
                             (self.option_choose_action, self.deploy_all_button)):
@@ -591,6 +643,12 @@ class DSMediaplayApp(tk.Tk):
                 left = box.grid_info()["padx"]
                 left = left[0] if isinstance(left, tuple) else left
                 box.grid_configure(padx=(left, DROPDOWN_PAD_X + deficit))
+        self.update_idletasks()
+        missing = max(ACTION_ROW_GAP_X - (button.winfo_x() - (box.winfo_x() + box.winfo_width()))
+                      for box, button in ((self.entity_type_combobox, self.live_view_button),
+                                          (self.option_choose_action, self.deploy_all_button)))
+        if 0 < missing <= 300:  # what the padx did not reserve (it did where the drop-down makes the window as wide as it is)
+            self.grid_columnconfigure(LAST_COLUMN, minsize=self.grid_bbox(column=LAST_COLUMN, row=0)[2] + missing)
 
     def _selected_connection(self):
         """(url, login, password) of the selected account and login, or None with a hint when no login is selected."""
@@ -1193,6 +1251,118 @@ class DSMediaplayApp(tk.Tk):
                 self.option_choose_name.set("")
 
             self.fill_password_details()
+
+    def start_update_check(self, automatic: bool = False):
+        """
+        Looks in the releases of the repository for a newer version and offers it. `automatic`: the check after the
+        start, which says nothing unless there is something to offer; the button reports the outcome either way.
+        """
+        if self._update_running:
+            return
+        self._update_running = True
+        outcome = queue.Queue()
+
+        def work():  # asking the server takes a moment, so not in the thread of the window; it touches nothing of Tk
+            try:
+                outcome.put((updater.fetch_latest_release(), None))
+            except updater.UpdateError as error:
+                outcome.put((None, error))
+            except Exception:
+                outcome.put((None, updater.UpdateError("update_check_failed")))
+
+        if not automatic:
+            self.config(cursor="watch")
+        threading.Thread(target=work, daemon=True).start()
+        self.after(UPDATE_POLL_MS, self._finish_update_check, outcome, automatic)
+
+    def _finish_update_check(self, outcome: queue.Queue, automatic: bool):
+        try:
+            release, error = outcome.get_nowait()
+        except queue.Empty:
+            self.after(UPDATE_POLL_MS, self._finish_update_check, outcome, automatic)
+            return
+        self._update_running = False
+        self.config(cursor="")
+        title = self.lang.get_message("update_title")
+        if error:
+            if not automatic:
+                messagebox.showwarning(title, self.update_text(error))
+            return
+        if release is None:
+            if not automatic:
+                messagebox.showinfo(title, self.lang.get_message("update_none_published"))
+            return
+        if not updater.is_newer(release.version, VERSION):
+            if not automatic:
+                messagebox.showinfo(title, self.lang.get_message("update_up_to_date", version=VERSION))
+            return
+        self.offer_update(release, automatic)
+
+    def update_text(self, error: "updater.UpdateError") -> str:
+        return self.lang.get_message(error.key, **error.values)
+
+    def offer_update(self, release: "updater.Release", automatic: bool = False):
+        """Asks whether to install the version now; "later" leaves it for the next start of the application."""
+        if automatic and (self.grab_current() is not None or self._input_window_open):
+            self.after(UPDATE_RETRY_MS, self.offer_update, release, True)  # a window of the application is in the way
+            return
+        offer = UpdateOfferDialog(self, VERSION, release.version)
+        self.wait_window(offer)
+        if offer.install:
+            self.install_update(release)
+
+    def install_update(self, release: "updater.Release"):
+        try:
+            asset = updater.check_installable(release)
+        except updater.UpdateError as error:
+            self.offer_release_page(release, error)
+            return
+        self._update_running = True
+        dialog = DownloadDialog(self, release.version)
+        progress = {"received": 0, "total": asset.size}
+        outcome = queue.Queue()
+
+        def work():
+            try:
+                outcome.put((updater.download(asset, updater.update_directory(),
+                                              lambda received, total: progress.update(received=received, total=total),
+                                              lambda: dialog.cancelled), None))
+            except updater.UpdateError as error:
+                outcome.put((None, error))
+            except Exception:
+                outcome.put((None, updater.UpdateError("update_download_failed")))
+
+        threading.Thread(target=work, daemon=True).start()
+        self.after(UPDATE_POLL_MS, self._finish_download, release, dialog, progress, outcome)
+
+    def _finish_download(self, release, dialog, progress, outcome: queue.Queue):
+        try:
+            package, error = outcome.get_nowait()
+        except queue.Empty:
+            dialog.set_progress(progress["received"], progress["total"])
+            self.after(UPDATE_POLL_MS, self._finish_download, release, dialog, progress, outcome)
+            return
+        dialog.destroy()
+        self._update_running = False
+        title = self.lang.get_message("update_title")
+        if error is None:
+            try:
+                updater.install(package, release)
+            except updater.UpdateError as install_error:
+                error = install_error
+            else:
+                messagebox.showinfo(title, self.lang.get_message("update_installing"))
+                self.destroy()  # the installer, or the script that swaps the bundle, goes on without it
+                return
+        if error.key != "update_cancelled":
+            self.offer_release_page(release, error)
+
+    def offer_release_page(self, release: "updater.Release", error: "updater.UpdateError"):
+        """The update cannot be installed from here: says why, and offers the page of the release to download it by hand."""
+        if messagebox.askyesno(self.lang.get_message("update_title"),
+                               self.lang.get_message("update_open_page", reason=self.update_text(error),
+                                                     version=release.version)):
+            webbrowser.open(release.page)
 
     def open_help(self):
         if not documentation_server.bound_port:  # the server has not started, or no port could be had for it

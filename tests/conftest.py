@@ -65,3 +65,20 @@ def isolated_from_the_users_data(tmp_path, monkeypatch):
     # Tk variables and images are finalized by whichever thread happens to run the garbage collector; one that is not
     # the thread of the interpreter that made them aborts the whole process. So the garbage of a test goes here.
     gc.collect()
+
+
+@pytest.fixture(autouse=True)
+def no_real_call_to_github(monkeypatch):
+    """
+    The application looks for updates on GitHub, and a test that forgets to replace that would ask the real server (and
+    show a real window with the answer). Every request to GitHub that gets this far is a mistake of the test.
+    """
+    import requests.sessions
+    request = requests.sessions.Session.request
+
+    def guarded(self, method, url, *args, **kwargs):
+        if "github.com" in str(url):
+            raise AssertionError(f"a test asked GitHub for real: {method} {url}")
+        return request(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(requests.sessions.Session, "request", guarded)

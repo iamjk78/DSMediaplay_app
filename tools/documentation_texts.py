@@ -203,6 +203,12 @@ do CSV, upravíte a vložíte zpět. Dvě tlačítka otevřou živý přehled p�
 <p>Tlačítko „{settings}“: jazyk, písmo, velikost písma a Deploy (velikost dávky a interval mezi dávkami v sekundách). Jazyk nebo písmo se po uložení použijí v celém okně; změna dávky nic nezavírá. „{default}“ vrátí výchozí hodnoty. Název okna ukazuje verzi aplikace. Tlačítko „{help}“ otevře tuto příručku.</p>
 </section>
 <section>
+<h2>Aktualizace aplikace</h2>
+<p>Tlačítko „{update}“ vedle „{help}“ zjistí, jestli je mezi zveřejněnými verzemi aplikace na GitHubu novější. Když je, nabídne její instalaci: stáhne se instalační soubor pro váš systém, ověří se jeho kontrolní součet a aplikace se přepíše novou verzí. Účty a hesla zůstanou a aplikace se po instalaci sama znovu spustí.</p>
+<p>Totéž se pět sekund po spuštění aplikace zkontroluje samo. Když je k dispozici novější verze, ukáže se okno, ve kterém ji můžete <b>nainstalovat hned</b>, nebo <b>odložit</b>: nabídne se znovu při příštím spuštění. Když žádná aktualizace není, nebo se kontrola nepovede (třeba bez internetu), nestane se nic.</p>
+<p>Instalace z aplikace nejde, když aplikace běží ze zdrojového kódu, když nemáte právo zápisu do složky, kde je nainstalovaná (macOS), nebo když verze nemá zveřejněný kontrolní součet. Aplikace pak nabídne otevřít stránku verze v prohlížeči, odkud ji lze stáhnout a nainstalovat ručně. Sestavení nejsou podepsaná, proto systém při ruční instalaci zobrazí varování.</p>
+</section>
+<section>
 <h2>Kdyby něco nešlo</h2>
 <ul>
 <li><b>Přihlášení se nepodařilo ověřit</b>: zkontrolujte heslo a připojení k internetu. Chyba serveru (kód 5xx) se hlásí zvlášť, není to špatné heslo.</li>
@@ -323,6 +329,12 @@ spreadsheet, or download it to CSV, edit it and paste it back. Two buttons open 
 <section>
 <h2>Settings and help</h2>
 <p>The “{settings}” button: language, font, font size and Deploy (the size of a batch and the interval between batches in seconds). A new language or font applies to the whole window after saving; changing the batch closes nothing. “{default}” returns the defaults. The title of the window shows the version of the application. The “{help}” button opens this guide.</p>
+</section>
+<section>
+<h2>Updating the application</h2>
+<p>The “{update}” button next to “{help}” checks whether a newer version of the application is among the versions published on GitHub. If there is one, it offers to install it: the installation file for your system is downloaded, its checksum is verified and the application is overwritten with the new version. Your accounts and passwords stay, and the application starts again by itself when it is done.</p>
+<p>The same check is made by itself five seconds after the application starts. When a newer version is available, a window lets you <b>install it now</b> or <b>postpone it</b>: it is offered again the next time the application starts. When there is no update, or the check fails (without internet, for example), nothing happens.</p>
+<p>The installation cannot be done from the application when it runs from the source code, when you have no permission to write to the folder it is installed in (macOS), or when the version has no published checksum. The application then offers to open the page of the version in the browser, where it can be downloaded and installed by hand. The builds are not signed, so the system shows a warning when installing by hand.</p>
 </section>
 <section>
 <h2>If something does not work</h2>

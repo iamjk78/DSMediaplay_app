@@ -71,6 +71,12 @@
 <p>The “Settings” button: language, font, font size and Deploy (the size of a batch and the interval between batches in seconds). A new language or font applies to the whole window after saving; changing the batch closes nothing. “Restore defaults” returns the defaults. The title of the window shows the version of the application. The “Help” button opens this guide.</p>
 </section>
 <section>
+<h2>Updating the application</h2>
+<p>The “Update” button next to “Help” checks whether a newer version of the application is among the versions published on GitHub. If there is one, it offers to install it: the installation file for your system is downloaded, its checksum is verified and the application is overwritten with the new version. Your accounts and passwords stay, and the application starts again by itself when it is done.</p>
+<p>The same check is made by itself five seconds after the application starts. When a newer version is available, a window lets you <b>install it now</b> or <b>postpone it</b>: it is offered again the next time the application starts. When there is no update, or the check fails (without internet, for example), nothing happens.</p>
+<p>The installation cannot be done from the application when it runs from the source code, when you have no permission to write to the folder it is installed in (macOS), or when the version has no published checksum. The application then offers to open the page of the version in the browser, where it can be downloaded and installed by hand. The builds are not signed, so the system shows a warning when installing by hand.</p>
+</section>
+<section>
 <h2>If something does not work</h2>
 <ul>
 <li><b>The login could not be verified</b>: check the password and the internet connection. A server error (code 5xx) is reported separately, it is not a wrong password.</li>
