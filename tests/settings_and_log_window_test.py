@@ -198,8 +198,11 @@ class SettingsDialogTest(WindowCase):
         self.assertEqual(list(combobox.cget("values")), ["English", "Čeština"])
         self.assertEqual(combobox.get(), "Čeština")  # the config of the test is Czech
         combobox.set("English")
-        combobox.event_generate("<<ComboboxSelected>>")
-        self.app.update()
+        deadline = time.monotonic() + 5
+        while window.language_var.get() != "en" and time.monotonic() < deadline:  # a loaded machine delivers it late
+            combobox.event_generate("<<ComboboxSelected>>")
+            self.app.update()
+            time.sleep(0.05)
 
         self.assertEqual(window.language_var.get(), "en")
 

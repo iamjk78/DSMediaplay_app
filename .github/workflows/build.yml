@@ -241,18 +241,18 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --require-hashes -r requirements-dev.lock
 
-      # First what depends on the platform and has failed before (file names on Windows, a live image in a Tk window): when
+      # First what depends on the platform and has failed before (file names on Windows, a live image in a Tk window, the choice of a language on macOS): when
       # one of these fails the rest is not run. The live view goes apart because a crash of Tk takes the interpreter with
       # it, and with it the summary of everything else.
       - name: Tests that depend on the platform
         env:
           DSM_TESTS_VISIBLE: "1"  # nobody works at this computer; and a fully transparent window is not hit by the pointer
-        run: python -m pytest -v -p no:cacheprovider tests/log_problems_test.py::BackupFileNameTest tests/snapshot_viewer_test.py
+        run: python -m pytest -v -p no:cacheprovider tests/log_problems_test.py::BackupFileNameTest tests/snapshot_viewer_test.py tests/settings_and_log_window_test.py::SettingsDialogTest::test_the_languages_are_named_not_given_as_codes_and_the_choice_is_the_code
 
       - name: Tests
         env:
           DSM_TESTS_VISIBLE: "1"
-        run: python -m pytest -v -p no:cacheprovider --ignore=tests/snapshot_viewer_test.py --deselect tests/log_problems_test.py::BackupFileNameTest
+        run: python -m pytest -v -p no:cacheprovider --ignore=tests/snapshot_viewer_test.py --deselect tests/log_problems_test.py::BackupFileNameTest --deselect tests/settings_and_log_window_test.py::SettingsDialogTest::test_the_languages_are_named_not_given_as_codes_and_the_choice_is_the_code
 
   audit:
     # Known vulnerabilities in what goes into the application and into its build
