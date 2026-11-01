@@ -368,7 +368,10 @@ class MacBundleTest(unittest.TestCase):
         return package
 
     def marker(self):
-        return (self.installed / "Contents" / "marker.txt").read_text()
+        try:
+            return (self.installed / "Contents" / "marker.txt").read_text()
+        except FileNotFoundError:  # read in the very moment the script swaps the bundles
+            return None
 
     def leftovers(self):
         return [name for name in os.listdir(self.installed.parent) if name != updater.BUNDLE_NAME]
@@ -395,7 +398,7 @@ class MacBundleTest(unittest.TestCase):
             updater.stage_macos_update(package, version, self.installed, opener, pid)
 
     def test_the_bundle_is_replaced_once_the_application_has_ended_and_nothing_is_left_behind(self):
-        waiting = self.application(1.5)
+        waiting = self.application(4)  # long enough for a machine that is busy with the whole suite
         self.stage(self.package(), pid=waiting.pid)
 
         self.assertEqual(self.marker(), "old")  # the application is still running: nothing changes yet
