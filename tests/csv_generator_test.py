@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import DEFAULT, patch, MagicMock
 import tempfile
 import os
 import csv
@@ -28,7 +28,7 @@ from processor.csv_generator import (
 class CSVTaskTestCase(unittest.TestCase):
     def setUp(self):
         self.log_handler = MagicMock()
-        self.url = "http://testserver"
+        self.url = "https://testserver"
         self.login = "testuser"
         self.password = "testpassword"
 
@@ -38,6 +38,18 @@ class CSVTaskTestCase(unittest.TestCase):
         self.mock_post.return_value.json.return_value = {"token": "testtoken"}
         self.mock_request.return_value.json.return_value = {"success": True, "data": {"objects": []}}
         self.mock_request.return_value.ok = True
+        self.mock_request.side_effect = self._login_aware
+
+    @staticmethod
+    def _login_aware(method, url, **kwargs):
+        """The login goes through `requests.request` too: it gets a token, everything else the answer a test set."""
+        if method == "post" and url.endswith("/session"):
+            response = MagicMock()
+            response.ok = True
+            response.status_code = 200
+            response.json.return_value = {"token": "testtoken"}
+            return response
+        return DEFAULT
 
     def tearDown(self):
         patch.stopall()
@@ -56,6 +68,11 @@ class CSVTaskTestCase(unittest.TestCase):
         DELETE /session) gets a bare success response.
         """
         def side_effect(method, url, **kwargs):
+            if method == "post" and url.endswith("/session"):  # the login
+                response = MagicMock()
+                response.ok = True
+                response.json.return_value = {"token": "testtoken"}
+                return response
             for suffix, payload in mapping.items():
                 if url.endswith(suffix):
                     response = MagicMock()
@@ -131,11 +148,11 @@ class CSVTaskTestCase(unittest.TestCase):
     def test_detailed_groups_playlists_csv_task(self):
         self.mock_request.return_value.json.return_value = {"success": True, "data": [{"name": "Group 1", "playlists": [
             {"name": "Playlist 1",
-             "settings": {"startdate": "2023-07-15T12:00:00Z", "enddate": "2023-07-20T12:00:00Z", "weekdays": [1, 2, 3],
-                          "starttime": "08:00", "endtime": "20:00"}},
+             "settings": {"durationEnable": "true", "startdate": "2023-07-15T12:00:00Z", "enddate": "2023-07-20T12:00:00Z",
+                          "weekdays": [1, 2, 3], "timeEnable": "true", "starttime": "08:00", "endtime": "20:00"}},
             {"name": "Playlist 2",
-             "settings": {"startdate": "2023-07-15T12:00:00Z", "enddate": "2023-07-20T12:00:00Z", "weekdays": [1, 2, 3],
-                          "starttime": "08:00", "endtime": "20:00"}}
+             "settings": {"durationEnable": "true", "startdate": "2023-07-15T12:00:00Z", "enddate": "2023-07-20T12:00:00Z",
+                          "weekdays": [1, 2, 3], "timeEnable": "true", "starttime": "08:00", "endtime": "20:00"}}
         ]}]}
         task = DetailedGroupsPlaylistsCSVTask(self.log_handler, url=self.url, login=self.login, password=self.password)
 

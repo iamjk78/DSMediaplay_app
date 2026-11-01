@@ -261,6 +261,10 @@ class ServerApiError(Exception):
     pass
 
 
+class InsecureAddressError(ServerApiError):
+    """The address of the account is not an https one: the password would travel in the clear."""
+
+
 class LoginError(Exception):
     """During login the token wasn't retrieved."""
     pass
@@ -322,7 +326,7 @@ class ResponseError(ServerApiError):
 
 def is_redirect_status(response: requests.Response) -> bool:
     """A redirect is not followed (see `ServerApi._request`), so it is no answer to work with."""
-    return 300 <= response.status_code < 400
+    return response.status_code in range(300, 400)
 
 
 class PlayerCommandError(ServerApiError):
@@ -384,6 +388,8 @@ class ServerApi:
             The password for API access.
         """
         self._url = main_account_url(url)
+        if urlparse(self._url).scheme != "https":  # an account is added only with https, a hand-edited config may not
+            raise InsecureAddressError()
         # What the log says when the address was replaced: the credentials go to another address than the one typed
         self.redirected_to = self._url if self._url != url else None
         self._login = login

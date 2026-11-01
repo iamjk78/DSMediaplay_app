@@ -374,14 +374,14 @@ class TestProcessors(unittest.TestCase):
     @patch('api_testing.request_calls.ServerApi._get_session_token', return_value='valid_token')
     def test_try_login(self, mock_get_token, mock_post):
         mock_post.return_value = self.valid_token_response
-        mock_server = ServerApi(url='http://example.com', login='user', password='pass')
+        mock_server = ServerApi(url='https://example.com', login='user', password='pass')
 
         with patch.object(ServerApi, '__enter__', return_value=mock_server), \
                 patch.object(ServerApi, '__exit__', return_value=False):
-            self.assertTrue(try_login("http://example.com", "user", "pass"))
+            self.assertTrue(try_login("https://example.com", "user", "pass"))
 
         with patch.object(ServerApi, '__enter__', side_effect=LoginError):
-            self.assertFalse(try_login("http://example.com", "user", "pass"))
+            self.assertFalse(try_login("https://example.com", "user", "pass"))
 
     def test_compare_time(self):
         self.assertTrue(compare_time("08:00", "18:00"))

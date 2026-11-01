@@ -52,7 +52,7 @@ waited=0
 while kill -0 "$pid" 2>/dev/null; do
   sleep 0.5
   waited=$((waited + 1))
-  if [ "$waited" -gt 120 ]; then echo "the application did not end, nothing changed"; exit 1; fi
+  if [ "$waited" -gt 120 ]; then echo "the application did not end, nothing changed"; rm -rf "$staging"; exit 1; fi
 done
 old="$target.replaced-$$"
 if mv "$target" "$old" && mv "$new" "$target"; then
@@ -237,9 +237,12 @@ def launch_windows_installer(installer: Path) -> None:
     still runs, replaces its files and, with /RELAUNCH=1, starts the new one).
     """
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen([str(installer), "/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS", "/RELAUNCH=1"], close_fds=True,
-                     creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL)
+    try:
+        subprocess.Popen([str(installer), "/SILENT", "/NORESTART", "/CLOSEAPPLICATIONS", "/RELAUNCH=1"], close_fds=True,
+                         creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    except OSError:  # the file is gone (a virus scanner took it) or cannot be run
+        raise UpdateError("update_invalid_package")
 
 
 def stage_macos_update(package: Path, version: str, bundle: Path, opener: str = "open",

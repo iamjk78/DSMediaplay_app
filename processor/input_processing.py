@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 import requests.exceptions
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
-                                       PlayerCommandError,
+                                       PlayerCommandError, InsecureAddressError,
                                        WEEK_DAYS, snapshot_file_stem, snapshot_reason)
 import itertools
 import json
@@ -368,6 +368,9 @@ class InputProcessor(ABC):
         except LoginError:
             self._wrong_init_counter += 1
             self._write_incorrect_login_error()
+        except InsecureAddressError:
+            self._wrong_init_counter += 1
+            self._write_log_error("insecure_address")
         except ResponseError as error:  # the server answered the login with an error of its own
             self._wrong_init_counter += 1
             self._write_fail_response(error.status or 4004)

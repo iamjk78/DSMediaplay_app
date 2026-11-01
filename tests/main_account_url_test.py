@@ -63,21 +63,21 @@ class ServerApiUsesTheMainAccountTest(unittest.TestCase):
         return response
 
     def test_the_login_goes_to_the_main_account(self):
-        with patch("api_testing.request_calls.requests.post", return_value=self.login_answer()) as post:
+        with patch("api_testing.request_calls.requests.request", return_value=self.login_answer()) as post:
             api = ServerApi(url=f"{COLLABORATOR}/api", login="jdoe", password="secret")
 
-        self.assertEqual(post.call_args.args[0], f"{MAIN}/api/session")
+        self.assertEqual(post.call_args.args[1], f"{MAIN}/api/session")
         self.assertEqual(api._url, f"{MAIN}/api")
         self.assertEqual(post.call_args.kwargs["json"]["email"], "jdoe")  # the login itself is unchanged
 
     def test_the_hostname_is_verified_normally_after_the_change(self):
-        with patch("api_testing.request_calls.requests.post", return_value=self.login_answer()):
+        with patch("api_testing.request_calls.requests.request", return_value=self.login_answer()):
             api = ServerApi(url=f"{COLLABORATOR}/api", login="jdoe", password="secret")
 
         self.assertIsNone(api._assert_hostname)  # no underscore left: the certificate matches as it is
 
     def test_the_later_requests_go_to_the_main_account_too(self):
-        with patch("api_testing.request_calls.requests.post", return_value=self.login_answer()):
+        with patch("api_testing.request_calls.requests.request", return_value=self.login_answer()):
             api = ServerApi(url=f"{COLLABORATOR}/api", login="jdoe", password="secret")
         answer = MagicMock(ok=True)
         answer.json.return_value = {"success": True, "data": {"objects": []}}
@@ -88,7 +88,7 @@ class ServerApiUsesTheMainAccountTest(unittest.TestCase):
         self.assertEqual(request.call_args.args[:2], ("get", f"{MAIN}/api/players"))
 
     def test_an_image_of_the_main_account_gets_the_token(self):
-        with patch("api_testing.request_calls.requests.post", return_value=self.login_answer()):
+        with patch("api_testing.request_calls.requests.request", return_value=self.login_answer()):
             api = ServerApi(url=f"{COLLABORATOR}/api", login="jdoe", password="secret")
         image = MagicMock(ok=True, headers={})
         image.iter_content.side_effect = lambda chunk_size: iter([b"\x89PNG\r\n\x1a\nxx"])  # a streamed download
@@ -116,7 +116,7 @@ class SaidInTheLogTest(unittest.TestCase):
         answer = MagicMock()
         answer.status_code = 200
         answer.json.return_value = {"token": "abc"}
-        with patch("api_testing.request_calls.requests.post", return_value=answer):
+        with patch("api_testing.request_calls.requests.request", return_value=answer):
             servers = [processor._try_server_login() for _ in range(tries)]
         return servers, logger
 
