@@ -22,6 +22,7 @@ class ProcessorCase(unittest.TestCase):
         self.server.get_player_objects.return_value = [player("B"), player("A"), player("C", online=False)]
         self.server.is_player_online.return_value = True
         self.server.get_group_files.return_value = ["a.mp4", "__P.json"]
+        self.server.get_files_without_content.return_value = set()
         self.server.list_player_files.return_value = ["a.mp4", "__P.json", "other.mp4"]
         self.processor, self.logger, patcher = make_processor(PlayerAssetsCheckProcessor, self.server, real_text=True)
         self.addCleanup(patcher.stop)
@@ -97,13 +98,23 @@ class RunTest(ProcessorCase):
         self.assertIn("B: a.mp4, __P.json", errors)
         self.assertNotIn("Všechny zkontrolované online přehrávače mají soubory, které mají mít.", self.lines("info"))
 
-    def test_the_summary_of_the_problems_is_not_collected_as_problems_once_more(self):
+    def test_the_red_lines_are_not_collected_as_problems_once_more_because_the_summary_names_the_players(self):
         self.server.list_player_files.return_value = []
 
         self.run_all()
 
-        progress = [c for c in self.logger.error.call_args_list if c.kwargs.get("extra", {}).get("progress")]
-        self.assertEqual(len(progress), 3)  # the heading and a line for each of the two players
+        errors = self.logger.error.call_args_list
+        self.assertEqual(len(errors), 2 + 3)  # a line for each of the two players, then the heading and a line for each
+        self.assertTrue(all(c.kwargs["extra"]["progress"] for c in errors))
+
+    def test_the_file_of_a_playlist_without_content_is_not_expected_on_the_players(self):
+        self.server.get_group_files.return_value = ["a.mp4", "__P.json", "__TV_OFF.json"]
+        self.server.get_files_without_content.return_value = {"__TV_OFF.json"}
+
+        self.run_all()
+
+        self.assertIn("  Má mít (2): a.mp4, __P.json", self.lines("info"))
+        self.assertEqual(self.lines("error"), [])
 
     def test_a_player_that_went_offline_is_not_asked_and_is_not_waited_for(self):
         self.server.is_player_online.side_effect = [True, False]
@@ -111,7 +122,7 @@ class RunTest(ProcessorCase):
         self.run_all()
 
         self.assertEqual(self.server.list_player_files.call_count, 1)
-        self.assertIn("  Přehrávač je mezitím offline, přeskočeno.", self.lines("warning"))
+        self.assertIn("  B: přehrávač je mezitím offline, přeskočeno.", self.lines("warning"))
         self.assertIn("offline 2.", self.lines("info")[-2])
 
     def test_a_player_that_does_not_answer_is_skipped_and_the_next_one_is_checked(self):
@@ -147,7 +158,7 @@ class RunTest(ProcessorCase):
 
         self.run_all()
 
-        self.assertIn("  Přehrávač nemá skupinu, přeskočeno.", self.lines("warning"))
+        self.assertIn("  A: přehrávač nemá skupinu, přeskočeno.", self.lines("warning"))
         self.server.list_player_files.assert_not_called()
 
     def test_every_step_is_given_back_to_the_window_so_that_stop_can_work(self):
@@ -191,6 +202,13 @@ class ServerApiTest(unittest.TestCase):
             api.list_player_files("pid")
 
         self.assertEqual(raised.exception.reason, "failed")
+
+    def test_only_a_playlist_without_rows_has_a_file_that_no_player_gets(self):
+        api = self.api()
+        api._playlist_objects = MagicMock(return_value=[{"name": "TV_OFF", "assets": []}, {"name": "P", "assets": [{}]},
+                                                        {"name": "Q"}])
+
+        self.assertEqual(api.get_files_without_content(), {"__TV_OFF.json", "__Q.json"})
 
     def test_the_state_of_one_player_is_read_with_one_small_request(self):
         api = self.api({"data": {"isConnected": True}})

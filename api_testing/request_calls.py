@@ -2202,6 +2202,14 @@ class ServerApi:
         """The current state of one player (a small request, not the whole list of players)."""
         return bool(self._make_request("get", f"/players/{player_id}")["data"].get("isConnected"))
 
+    def get_files_without_content(self) -> set:
+        """
+        The `__name.json` files of the playlists that have no rows (TV_OFF): the interface lists them among the files of
+        a group, but the server makes no such file for a playlist without content, so no player has it.
+        """
+        return {f"__{playlist.get('name')}.json" for playlist in self._playlist_objects()
+                if not (playlist.get("assets") or [])}
+
     def get_group_files(self, group_id: str) -> List[str]:
         """The files the group sends to its players (what the players are to have on their disks)."""
         return list(self.get_group_details(group_id).get("assets") or [])

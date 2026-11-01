@@ -1474,38 +1474,43 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
         self._write_log("assets_check_player", player=name)
         try:
             if not server.is_player_online(player["_id"]):
-                self._write_log_warning("assets_check_went_offline")
+                self._write_log_warning("assets_check_went_offline", player=name)
                 self._offline += 1
                 return
             group_id = (player.get("group") or {}).get("_id")
             if not group_id:
-                self._write_log_warning("assets_check_no_group")
+                self._write_log_warning("assets_check_no_group", player=name)
                 return
             if group_id not in group_files:
-                group_files[group_id] = server.get_group_files(group_id)
+                without_content = server.get_files_without_content()
+                group_files[group_id] = [file for file in server.get_group_files(group_id) if file not in without_content]
             expected = group_files[group_id]
             if not expected:
-                self._write_log_warning("assets_check_group_empty")
+                self._write_log_warning("assets_check_group_empty", player=name)
                 results["ok"] += 1
                 return
             self._write_log("assets_check_should_have", count=len(expected), files=", ".join(expected))
             present = set(server.list_player_files(player["_id"]))
         except PlayerCommandError as e:
-            self._write_log_error(f"assets_check_{e.reason}")
+            self._write_progress_error(f"assets_check_{e.reason}")
             results["unknown"].append(name)
             return
         except self.COMMUNICATION_ERRORS:
-            self._write_log_error("assets_check_unknown_state")
+            self._write_progress_error("assets_check_unknown_state")
             results["unknown"].append(name)
             return
 
         missing = [file for file in expected if file not in present]
         if missing:
             results["missing"][name] = missing
-            self._write_log_error("assets_check_missing", count=len(missing), files=", ".join(missing))
+            self._write_progress_error("assets_check_missing", count=len(missing), files=", ".join(missing))
         else:
             results["ok"] += 1
             self._write_log("assets_check_all_present")
+
+    def _write_progress_error(self, key_word: str, **kwargs):
+        """A red line of the check of one player; the summary at the end lists these players once more with their names."""
+        self._logger.error(self.lang.get_message(key_word, **kwargs), extra={"progress": True})
 
     def _write_assets_check_summary(self, results: Dict[str, Any]):
         """The result at the end; written as errors where something is wrong (red), but not as problems once more."""
