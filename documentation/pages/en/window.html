@@ -52,6 +52,7 @@
 <li><b>Save</b>: saves the log to a text file.</li>
 </ul>
 <p>Before something that cannot be undone (deleting, deploy) the log window shows what is going to happen (the list, the number of players) and asks; the default answer is “No”.</p>
+<p>There is a pause of 0.1 second between the steps of a batch (the lines of the input), so as not to overload the server with requests; STOP ends it at once. When a connection to the server cannot be made, the request is repeated up to twice (after 2 and after 5 seconds). If the server does not answer even then, the log gives a clear error and, at the end, how many steps were done and which are left. The remaining lines can then be pasted into the input again.</p>
 <p>Before an action that overwrites or deletes data (for example setting the playlists of groups, removing playlists, deleting unused items) the application saves the state before the change to the Downloads folder as CSV files named <code>account-backup-data-time.csv</code>. The log says where they were saved. When the backup cannot be saved, the action does not start. Creating, adding and renaming are not backed up, the log shows the old and the new value.</p>
 </section>
 <section>

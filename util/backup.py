@@ -21,6 +21,7 @@ BACKUPS: Dict[str, Tuple[str, ...]] = {
     "remove_expired_playlists": _GROUPS_WITH_PLAYLISTS,
     "remove_all_expired_playlists": _GROUPS_WITH_PLAYLISTS,
     "group_settings": ("group_settings",),
+    "group_files_repair": _GROUPS_WITH_PLAYLISTS,
     "remove_unused_groups": _UNUSED_GROUPS,
     "remove_all_unused_groups": _UNUSED_GROUPS,
     "asset_to_playlist": ("playlist_details",),

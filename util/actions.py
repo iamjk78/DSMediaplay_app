@@ -13,7 +13,8 @@ def action_needs_input(action: str) -> bool:
     all players. The show_* actions open a window of their own. Everything else (set_*, create_*, the other
     remove_*, deploying selected groups) needs input.
     """
-    return not (action.startswith(("get_", "show_")) or "remove_all" in action or action == "set_deploy_all_players")
+    return not (action.startswith(("get_", "show_")) or "remove_all" in action
+                or action in ("set_deploy_all_players", "set_group_files_repair"))
 
 
 KIND_ORDER = ("read", "change", "remove")  # the blocks of a list of actions, green, blue, red
@@ -68,6 +69,7 @@ def entity_actions(actions: dict) -> dict:
             actions["Groups"]["get_identical_groups"]: "get_identical_groups",
             actions["Groups"]["set_detailed_playlists_to_groups"]: "set_detailed_playlists_to_groups",
             actions["Groups"]["set_group_settings"]: "set_group_settings",
+            actions["Groups"]["set_group_files_repair"]: "set_group_files_repair",
             actions["Groups"]["group_rename"]: "set_group_rename",
             actions["Groups"]["set_add_detailed_playlist_to_group"]: "set_add_detailed_playlist_to_group",
             actions["Groups"]["remove_playlists_from_group"]: "remove_playlists_from_group",

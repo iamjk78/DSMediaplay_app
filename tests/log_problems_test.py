@@ -1,6 +1,7 @@
 """What the log window adds around an action: how many lines were read and how many empty ones are skipped, a backup of what
 the action changes (the action does not start without it), the warnings and errors once more at the end under "Zjištěné
 chyby:" in red, and a click on such a line, which opens the input at the line the error names."""
+import logging
 import threading
 import time
 import tkinter as tk
@@ -15,6 +16,18 @@ from processor.csv_generator import CSVTaskFactory
 from processor.input_processing import DeploySelectedGroupsProcessor, GroupRenameProcessor, ProcessorFactory
 from util import backup
 from util.actions import NO_INPUT_PLACEHOLDER
+
+
+class ProblemCollectorTest(unittest.TestCase):
+    def test_progress_lines_logged_as_errors_are_not_collected(self):
+        from gui_app.logger import ProblemCollector
+        logger = logging.getLogger("problem_collector_test")
+        collector = ProblemCollector()
+        logger.addHandler(collector)
+        self.addCleanup(logger.removeHandler, collector)
+        logger.error("Zbývá 11 playerů", extra={"progress": True})
+        logger.error("real problem")
+        self.assertEqual(collector.messages, ["real problem"])
 
 
 class BackupMapTest(unittest.TestCase):
@@ -95,7 +108,8 @@ class RepeatedRowsTest(unittest.TestCase):
 
 
 class LogCase(MainWindowCase):
-    def run_box(self, processor=None, data="", processor_type="group_rename", backup_path=None, factory=None):
+    def run_box(self, processor=None, data="", processor_type="group_rename", backup_path=None, factory=None,
+                on_ready=None):
         """
         The log window with `processor` (or what `factory` makes of the logger of the window, as the application's own
         factory does) running in it, the way the application does it: in a thread, Tk in the main loop.
@@ -107,6 +121,8 @@ class LogCase(MainWindowCase):
                                  master=self.app, backup_path=backup_path)
             self.addCleanup(lambda: box.winfo_exists() and box.destroy())
             self.app.update()
+            if on_ready:
+                on_ready(box)
             worker = threading.Thread(target=box.run_input_processing, daemon=True)
             deadline = time.monotonic() + 10
 

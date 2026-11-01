@@ -118,7 +118,7 @@
         "notes": [
           "Jeden řádek na skupinu.",
           "Datum: DD.MM.RRRR (např. 31.12.2026).",
-          "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.",
+          "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí. Když čas od i čas do zůstanou prázdné, nastaví se celý den: od 00:00 do 23:59 (vyplníte-li jen jeden, druhý se doplní stejně).",
           "Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny."
         ],
         "example": [
@@ -147,7 +147,7 @@
         "notes": [
           "Jeden řádek na skupinu (bez sloupce výchozího playlistu).",
           "Datum: DD.MM.RRRR (např. 31.12.2026).",
-          "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.",
+          "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí. Když čas od i čas do zůstanou prázdné, nastaví se celý den: od 00:00 do 23:59 (vyplníte-li jen jeden, druhý se doplní stejně).",
           "Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny."
         ],
         "example": [
@@ -595,7 +595,7 @@
         "notes": [
           "One line per group.",
           "Date: DD.MM.YYYY (e.g. 31.12.2026).",
-          "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.",
+          "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time. When both the from and the to time are left empty, the whole day is set: from 00:00 to 23:59 (if only one is filled, the other is filled in the same way).",
           "Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day."
         ],
         "example": [
@@ -624,7 +624,7 @@
         "notes": [
           "One line per group (there is no default playlist column).",
           "Date: DD.MM.YYYY (e.g. 31.12.2026).",
-          "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.",
+          "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time. When both the from and the to time are left empty, the whole day is set: from 00:00 to 23:59 (if only one is filled, the other is filled in the same way).",
           "Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day."
         ],
         "example": [

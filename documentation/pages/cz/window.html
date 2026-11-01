@@ -52,6 +52,7 @@
 <li><b>Ulož</b>: uloží log do textového souboru.</li>
 </ul>
 <p>Před nevratnou činností (smazání, Deploy) se v okně s logem zobrazí, co se stane (seznam, počet přehrávačů), a aplikace se zeptá; výchozí odpověď je „Ne“.</p>
+<p>Mezi jednotlivými kroky dávky (řádky vstupu) je pauza 0,1 sekundy, aby se server nezahltil požadavky; STOP ji ukončí okamžitě. Když se spojení se serverem nepodaří navázat, požadavek se až dvakrát zopakuje (po 2 a po 5 sekundách). Když server neodpovídá ani potom, log napíše srozumitelnou chybu a na konci, kolik kroků proběhlo a které zbývají. Zbylé řádky pak stačí vložit do vstupu znovu.</p>
 <p>Před činností, která přepisuje nebo maže data (například nastavení playlistů skupin, odebrání playlistů, smazání nepoužívaných položek), aplikace uloží stav před změnou do složky Stažené soubory (Downloads) jako CSV soubory s názvem <code>účet-backup-data-čas.csv</code>. Log napíše, kam se uložily. Když se záloha nepodaří, činnost se nespustí. Vytváření, přidávání a přejmenování se nezálohuje, v logu je vidět stará i nová hodnota.</p>
 </section>
 <section>

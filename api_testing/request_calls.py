@@ -1,8 +1,11 @@
+import copy
 import re
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple, Optional, Union
 from urllib.parse import quote, urljoin, urlparse
 import requests
+import urllib3.exceptions
 from requests.adapters import HTTPAdapter
 import json
 from dataclasses import dataclass
@@ -12,6 +15,9 @@ SNAPSHOT_TIMEOUT = 60  # seconds; the server asks the player for the screenshot 
 # (connect, read) seconds of every other request; without a timeout one request that never answers holds a whole
 # deploy (and its STOP button) for good
 REQUEST_TIMEOUT = (10, 60)
+# Seconds to wait before the second and the third try of a request whose connection could not be made (a moment of
+# trouble on the way to the server, or a server that answers only some of many requests in a row)
+CONNECT_RETRY_DELAYS = (2, 5)
 TOKEN_HEADER = "x-access-token"
 SNAPSHOT_MAX_BYTES = 20 * 1024 * 1024
 IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF8", ".gif"))
@@ -19,6 +25,19 @@ IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (
 # The order of the days in the server's location schedule (`weekDays`, index 0 = Sunday), the way the web UI shows them
 # (SU MO TU ... SA). Reading, writing, the CSV export and the input all use this one order.
 WEEK_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+
+def never_reached_the_server(error: requests.exceptions.RequestException) -> bool:
+    """
+    The connection was not made, so nothing of the request was sent and sending it again cannot do it twice. (A request
+    that was sent and not answered is different: it may have been done, and only a reading one could be repeated.)
+    """
+    if isinstance(error, requests.exceptions.ConnectTimeout):
+        return True
+    if isinstance(error, requests.exceptions.ConnectionError):
+        reason = getattr(error.args[0] if error.args else None, "reason", None)
+        return isinstance(reason, (urllib3.exceptions.NewConnectionError, urllib3.exceptions.ConnectTimeoutError))
+    return False
 
 
 class _AssertHostnameAdapter(HTTPAdapter):
@@ -110,6 +129,116 @@ def player_key(player: Dict[str, Any]) -> str:
 
 # Rows of a playlist can hold the name of an asset or of another playlist in these zones, next to the main file
 ZONE_FIELDS = ("side", "bottom", "zone4", "zone5", "zone6")
+
+
+CUSTOM_LAYOUT_FILE = re.compile(r"custom_layout.*html$", re.IGNORECASE)
+
+# The zones of a layout in which a row of a playlist can name another file (the same table as the web interface has)
+LAYOUT_ZONES = {
+    "1": (), "2a": ("side",), "2b": ("side",), "2c": ("side",), "2d": ("side",),
+    "3a": ("side", "bottom"), "3b": ("side", "bottom"), "3c": ("side", "bottom"), "3d": ("side", "bottom"),
+    "4a": ("side", "bottom"), "4b": ("side", "bottom"), "4c": ("side", "bottom"), "4d": ("side", "bottom"),
+    "2ap": (), "2bp": ("bottom",), "2ap270": (), "2bp270": ("bottom",),
+    "custom": ZONE_FIELDS, "customp": ZONE_FIELDS, "customp270": ZONE_FIELDS,
+}
+# What a group's entry for a playlist takes over from the playlist itself
+COPIED_PLAYLIST_SETTINGS = ("ads", "domination", "event", "keyPress", "onlineOnly", "audio")
+NO_FILE_PREFIX = "_system"  # the files of the system are not synced as the files of a group
+
+
+def _truthy(value: Any) -> bool:
+    """What is true for the web interface (JavaScript): the string "false" is true, an empty list is true."""
+    if value is None or value is False:
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0 and value == value
+    return value != ""
+
+
+def _playlist_type(playlist: Dict[str, Any]) -> str:
+    settings = playlist.get("settings") or {}
+    for key, label in (("ads", "advt"), ("domination", "domination"), ("event", "event"), ("keyPress", "keyPress"),
+                       ("audio", "audio")):
+        feature = settings.get(key)
+        if isinstance(feature, dict) and _truthy(feature.get("adPlaylist" if key == "ads" else "enable")):
+            return label
+    return "regular"
+
+
+def prepare_group_playlists(entries: List[Dict[str, Any]], playlists: List[Dict[str, Any]],
+                            logo: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """
+    What the web interface does with a group before it saves it (`GroupFunctions.listFiles`): the list of the files the
+    group has to have on its players (`assets`), and in every entry for a playlist what is taken from the playlist.
+
+    The server does not work the files of a group out of its playlists, it keeps what it is sent, and copies it to the
+    players on Deploy: a group written with playlists and without their files has the names of the playlists on its
+    players and nothing to play. The files are the files of every playlist of the group, what its rows name in the
+    zones of the layout, the files of a playlist that is in a zone, the file of the playlist itself (`__name.json`), the
+    template of the playlist, and the logo of the group.
+
+    `entries` are the entries of the group for its playlists, `playlists` all the playlists of the account as the
+    server has them. Returns copies: the entries (an entry without a name is dropped, the others have what the
+    interface gives them) and the list of the files.
+    """
+    known: Dict[str, Dict[str, Any]] = {}
+    for playlist in playlists:
+        known.setdefault(playlist.get("name"), playlist)
+    entries = copy.deepcopy(entries)
+    files: List[str] = []
+
+    def add(name: Any) -> None:
+        if isinstance(name, str) and name and name not in files and not name.startswith(NO_FILE_PREFIX):
+            files.append(name)
+
+    for index in range(len(entries) - 1, -1, -1):  # from the last entry to the first, as the interface does
+        entry = entries[index]
+        name = entry.get("name")
+        playlist = known.get(name) if name else None
+        if playlist is None:
+            if not name:
+                del entries[index]
+            continue
+        rows = playlist.get("assets") or []
+        zones = LAYOUT_ZONES.get(str(playlist.get("layout")), ZONE_FIELDS)
+        for row in rows:
+            add(row.get("filename"))
+            for zone in zones:
+                reference = row.get(zone)
+                if not (isinstance(reference, str) and reference) or reference.startswith(NO_FILE_PREFIX):
+                    continue
+                add(reference)
+                if reference.startswith("__"):  # another playlist in the zone: its files are needed too
+                    end = reference.find(".json")
+                    nested = known.get(reference[2:end] if end != -1 else reference[2:-1])
+                    if nested and isinstance(nested.get("assets"), list):
+                        for nested_row in nested["assets"]:
+                            add(nested_row.get("filename"))
+        own = f"__{name}.json"
+        if own not in files:
+            files.append(own)
+        # other layouts keep a default templateName that is not a file of the account
+        if str(playlist.get("layout")).startswith("custom") and playlist.get("templateName") \
+                and playlist["templateName"] not in files:
+            files.append(playlist["templateName"])
+
+        settings = entry.get("settings") or {}
+        taken = playlist.get("settings") or {}
+        for key in COPIED_PLAYLIST_SETTINGS:
+            if key in taken:
+                settings[key] = taken[key]
+            else:
+                settings.pop(key, None)
+        entry["settings"] = settings
+        if name == "TV_OFF":
+            entry["plType"] = "special"
+        elif not rows:
+            entry["skipForSchedule"], entry["plType"] = True, "no assets"
+        else:
+            entry["skipForSchedule"], entry["plType"] = False, _playlist_type(playlist)
+    if logo and logo not in files:
+        files.append(logo)
+    return entries, files
 
 
 def require_keyword(keyword: str) -> str:
@@ -328,7 +457,14 @@ class ServerApi:
         kwargs["headers"] = {"Content-Type": "application/json", TOKEN_HEADER: self._session_token,
                              **kwargs.get("headers", {})}
         kwargs.setdefault("timeout", REQUEST_TIMEOUT)
-        response = self._request(method, url, **kwargs)
+        for delay in (*CONNECT_RETRY_DELAYS, None):
+            try:
+                response = self._request(method, url, **kwargs)
+                break
+            except requests.exceptions.RequestException as error:
+                if delay is None or not never_reached_the_server(error):
+                    raise
+                time.sleep(delay)
 
         failure = {"params": kwargs.get("params") or {}, "status": response.status_code,
                    "request": f"{method.upper()} {endpoint}"}
@@ -556,6 +692,42 @@ class ServerApi:
             return filtered[0]
         raise NameResolutionError(name)
 
+    def plan_group_files_repair(self) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        The groups whose files do not hold the files of their playlists (a group written by this application before the
+        files were sent with the playlists, or by anything else that sends only the playlists), and how many groups
+        there are. For each: its id and name, the entries for its playlists the way the web interface has them (taken
+        over only where an entry lacks the type the interface gives it), its files with the missing ones added at the end
+        (only a template that is no file of the account and no playlist of the group needs is taken away, which an
+        earlier version of this repair wrote), and the missing ones.
+        """
+        groups = self._make_request("get", "/groups").get("data") or []
+        account_files = set(self.get_asset_names())
+        plan = []
+        for group in groups:
+            original = group.get("playlists") or []
+            normalized, files = prepare_group_playlists(original, self._playlist_objects(), group.get("logo"))
+            if len(normalized) == len(original):
+                entries = [new if not ("plType" in old and "skipForSchedule" in old) else old
+                           for old, new in zip(original, normalized)]
+            else:
+                entries = normalized
+            current = group.get("assets") or []
+            missing = [name for name in files if name not in current]
+            stray = [name for name in current if CUSTOM_LAYOUT_FILE.match(name) and name not in files
+                     and name not in account_files]
+            if missing or stray or entries != original:
+                plan.append({"id": group["_id"], "name": group.get("name", ""), "playlists": entries,
+                             "assets": [name for name in current if name not in stray] + missing, "missing": missing,
+                             "stray": stray,
+                             "entries_changed": sum(1 for old, new in zip(original, entries) if old != new)})
+        return plan, len(groups)
+
+    def write_group_files(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Writes what plan_group_files_repair planned for one group: its files and its entries, nothing else."""
+        body = {"_id": item["id"], "name": item["name"], "playlists": item["playlists"], "assets": item["assets"]}
+        return self._make_request("post", f"/groups/{item['id']}", json=body)
+
     def get_group_id_by_name(self, name: str) -> str:
         """
         Creates request to find unique id of group by its name.
@@ -620,9 +792,18 @@ class ServerApi:
         response = self._make_request("get", "/playlists")
         return [obj.get("name", "") for obj in response.get("data", "")]
 
-    def _set_group_playlists(self, group_id: str, group: str, playlists: List[Dict]) -> Dict[str, Any]:
+    def _playlist_objects(self) -> List[Dict[str, Any]]:
+        """All playlists of the account as the server has them (with their rows), read once for the whole session."""
+        if getattr(self, "_playlist_cache", None) is None:
+            self._playlist_cache = self._make_request("get", "/playlists").get("data") or []
+        return self._playlist_cache
+
+    def _set_group_playlists(self, group_id: str, group: str, playlists: List[Dict],
+                             details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Helper function to set playlists for a group.
+        Helper function to set playlists for a group. The files of the group (`assets`) are sent with them, worked
+        out as the web interface does (see prepare_group_playlists): without them the players of the group get the names
+        of the playlists on Deploy and nothing to play.
 
         Parameters
         ----------
@@ -632,22 +813,28 @@ class ServerApi:
             The name of the group.
         playlists : list of dict
             A list of playlist dictionaries.
+        details : dict, optional
+            The group as the server has it now (its logo is one of its files); read here when not given.
 
         Returns
         -------
         json
             The response from the server.
         """
+        if details is None:
+            details = self.get_group_details(group_id)
+        playlists, assets = prepare_group_playlists(playlists, self._playlist_objects(), details.get("logo"))
         request_body = {
             "_id": group_id,
             "name": group,
             "playAllEligiblePlaylists": "true",  # on purpose: the CMS depends on it, do not make it optional
-            "playlists": playlists
+            "playlists": playlists,
+            "assets": assets
         }
         return self._make_request("post", f"/groups/{group_id}", json=request_body)
 
     def _keep_what_the_group_has(self, group_id: str, written: List[Tuple[Dict, Dict]],
-                                 managed: Tuple[str, ...]) -> List[Dict]:
+                                 managed: Tuple[str, ...], details: Optional[Dict[str, Any]] = None) -> List[Dict]:
         """
         The tables and the CSV know only a few settings of a playlist in a group (dates, days of the week, times).
         The server keeps more of them (ads, audio, dominance, "skip for schedule", the type of the playlist) and takes
@@ -659,7 +846,7 @@ class ServerApi:
         are replaced and all the others stay.
         """
         current = {}
-        for existing in self.get_group_details(group_id).get("playlists", []):
+        for existing in (details if details is not None else self.get_group_details(group_id)).get("playlists", []):
             current.setdefault(existing.get("name", ""), []).append(existing)
 
         result = []
@@ -711,7 +898,9 @@ class ServerApi:
             for playlist_name, start_date, end_date, start_time, end_time in playlists
         ]
         managed = ("durationEnable", "startdate", "enddate", "timeEnable", "starttime", "endtime")
-        return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed))
+        details = self.get_group_details(group_id)
+        return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed, details),
+                                         details)
 
     def set_playlist_to_group_detailed(self, group: str,
                                        playlists: List[Tuple[str, Optional[str], Optional[str], Optional[List[int]], Optional[str], Optional[str]]]) -> Dict[str, Any]:
@@ -758,7 +947,9 @@ class ServerApi:
                                        "starttime": starttime, "endtime": endtime}))
 
         managed = ("durationEnable", "startdate", "enddate", "weekdays", "timeEnable", "starttime", "endtime")
-        return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed))
+        details = self.get_group_details(group_id)
+        return self._set_group_playlists(group_id, group, self._keep_what_the_group_has(group_id, written, managed, details),
+                                         details)
 
     def set_group_to_player(self, group: str, player: str) -> Dict[str, Any]:
         """
@@ -2132,7 +2323,7 @@ class ServerApi:
             removed = [playlist.get("name", "") for playlist in group.get("playlists", [])
                        if playlist.get("name", "") in names_to_remove]
             if removed:
-                self._set_group_playlists(group["_id"], group.get("name", ""), kept)  # the others exactly as they are
+                self._set_group_playlists(group["_id"], group.get("name", ""), kept, group)  # the others as they are
                 removed_playlists[group.get("name", "")] = removed
 
         return removed_playlists

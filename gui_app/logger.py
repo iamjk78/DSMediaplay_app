@@ -24,7 +24,8 @@ class ProblemCollector(logging.Handler):
         self.enabled = True  # off while the list is being written, which would otherwise collect itself
 
     def emit(self, record) -> None:
-        if self.enabled:
+        # progress lines are logged as errors only to be coloured, they are not problems of the run
+        if self.enabled and not getattr(record, 'progress', False):
             self.messages.append(record.getMessage())
 
 

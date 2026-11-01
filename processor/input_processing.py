@@ -53,6 +53,10 @@ def try_login(url: str, login: str, password: str) -> bool:
         return False
 
 
+WHOLE_DAY_FROM = "00:00"  # the times of a playlist of a group that has none: the whole day
+WHOLE_DAY_TO = "23:59"
+
+
 def compare_time(start_time: str, end_time: str) -> bool:
     start = datetime.strptime(start_time, "%H:%M")
     end = datetime.strptime(end_time, "%H:%M")
@@ -117,6 +121,10 @@ def parse_validity_hour(text: str, is_end: bool) -> Optional[int]:
     return hour
 
 
+REPAIR_FILES_SHOWN = 5  # names of the files that were added to a group, listed in the log
+INTERRUPTED_LIST_LIMIT = 20  # names of what was not done, listed after an interrupted batch
+
+
 class FormatException(Exception):
     """Format of loaded data is wrong."""
     pass
@@ -174,6 +182,7 @@ class ProcessorFactory:
             "create_player": CreatePlayerProcessor,
             "create_playlist": CreatePlaylistProcessor,
             "create_label": CreateLabelProcessor,
+            "group_files_repair": RepairGroupFilesProcessor,
             "remove_unused_groups": RemoveUnusedGroupsProcessor,
             "remove_unused_playlists": RemoveUnusedPlaylistsProcessor,
             "remove_unused_assets": RemoveUnusedAssetsProcessor,
@@ -304,7 +313,14 @@ class InputProcessor(ABC):
         self._logger.error(self.lang.get_message("recognition_errors", n=n))
 
     def _write_internal_error(self, exception: Exception):
-        self._logger.error(self.lang.get_message("internal_error", error_msg=str(exception)))
+        if isinstance(exception, requests.exceptions.ConnectTimeout):
+            self._logger.error(self.lang.get_message("server_unreachable_connect"))
+        elif isinstance(exception, requests.exceptions.Timeout):
+            self._logger.error(self.lang.get_message("server_unreachable_read"))
+        elif isinstance(exception, requests.exceptions.ConnectionError):
+            self._logger.error(self.lang.get_message("server_unreachable_other"))
+        else:
+            self._logger.error(self.lang.get_message("internal_error", error_msg=str(exception)))
 
     def _write_no_server_returned(self):
         self._logger.error(self.lang.get_message("no_server_returned"))
@@ -490,8 +506,8 @@ class AssignProcessor(EntityValidationProcessor):
         pass
 
     def run(self) -> Generator[None, None, None]:
+        i = 0
         try:
-            i = 0
             with self._try_server_login() as server:
                 if not server:
                     self._write_no_server_returned()
@@ -508,7 +524,19 @@ class AssignProcessor(EntityValidationProcessor):
                     yield
         except Exception as e:
             self._write_internal_error(e)
+            self._write_interrupted(i)
             raise InternalException()
+
+    def _write_interrupted(self, done: int):
+        """Where an interrupted batch stopped: the steps are the entries of the data, one after another."""
+        names = [str(name) for name in self.data][done:] if isinstance(self.data, dict) else []
+        if not names:
+            return
+        shown = ", ".join(names[:INTERRUPTED_LIST_LIMIT])
+        if len(names) > INTERRUPTED_LIST_LIMIT:
+            shown += " " + self.lang.get_message("confirm_more", count=len(names) - INTERRUPTED_LIST_LIMIT)
+        self._logger.error(self.lang.get_message("run_interrupted", done=done, total=len(self.data), count=len(names),
+                                                 names=shown))
 
 
 class CreateProcessor(EntityValidationProcessor):
@@ -984,6 +1012,7 @@ class DetailedPlaylistProcessor(AssignProcessor):
             self._wrong_init_counter += 1
             self._write_invalid_time(line_num, group, playlist_name, str(e))
             return None
+        start_time, end_time = start_time or WHOLE_DAY_FROM, end_time or WHOLE_DAY_TO  # a time left empty is not "no time"
 
         if playlist_name not in playlist_names:
             self._wrong_init_counter += 1
@@ -2099,6 +2128,64 @@ class RemoveUnusedProcessor(RemoveProcessor, ABC):
         self.data = [entity for entity in self.data if entity in unused]
 
 
+class RepairGroupFilesProcessor(InputProcessor):
+    """
+    Gives the groups the files of their playlists. A group that was written with its playlists and without their files
+    has the names of the playlists on its players on Deploy and nothing to play. Takes no input: it looks at all the
+    groups, shows how many need it and asks, and writes only those (the missing files are added, none is taken away).
+    """
+
+    def load(self, input_text: str):
+        try:
+            self._write_start_loading()
+            server = self._try_server_login()
+            if not server:
+                self._write_no_server_returned()
+                return
+            self.data, total = server.plan_group_files_repair()
+            self._write_log("repair_files_summary", total=total, count=len(self.data), ok=total - len(self.data))
+            if not self.data:
+                self._write_log("repair_files_nothing")
+            self._write_load_finish()
+        except Exception as e:
+            self._write_internal_error(e)
+            raise InternalException()
+
+    def confirmation(self) -> Optional[Confirmation]:
+        if not self.data:
+            return None
+        return Confirmation(
+            self.lang.get_message("repair_files_title"),
+            self.lang.get_message("repair_files_text", count=len(self.data),
+                                  items=self._list_for_question([item["name"] for item in self.data])))
+
+    def run(self) -> Generator[None, None, None]:
+        done = 0
+        try:
+            with self._try_server_login() as server:
+                if not server:
+                    self._write_no_server_returned()
+                    return
+                for item in self.data:
+                    server.write_group_files(item)
+                    done += 1
+                    shown = ", ".join(item["missing"][:REPAIR_FILES_SHOWN])
+                    if len(item["missing"]) > REPAIR_FILES_SHOWN:
+                        shown += " " + self.lang.get_message("confirm_more", count=len(item["missing"]) - REPAIR_FILES_SHOWN)
+                    self._write_log("repair_files_done", group=item["name"], count=len(item["missing"]),
+                                    files=f" ({shown})" if shown else "", entries=item["entries_changed"],
+                                    removed=len(item["stray"]))
+                    yield
+        except Exception as e:
+            self._write_internal_error(e)
+            names = [item["name"] for item in self.data][done:]
+            if names:
+                self._logger.error(self.lang.get_message(
+                    "run_interrupted", done=done, total=len(self.data), count=len(names),
+                    names=", ".join(names[:INTERRUPTED_LIST_LIMIT])))
+            raise InternalException()
+
+
 class RemoveUnusedGroupsProcessor(RemoveUnusedProcessor):
     entity_type = 'group_names'
 
@@ -2752,7 +2839,7 @@ class DeployAllPlayersProcessor(EntityValidationProcessor):
 
     def _write_deploy_remaining(self, remaining: int):
         self._logger.error(self.lang.get_message("deploy_remaining", remaining=remaining),
-                           extra={'hide_level': True})
+                           extra={'hide_level': True, 'progress': True})
 
     def _write_deploy_final_summary(self, total_online: int, succeeded: int, failed: List[Tuple[str, str]]):
         self._logger.info(self.lang.get_message(

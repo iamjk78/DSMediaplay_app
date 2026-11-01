@@ -15,6 +15,7 @@ from util.actions import NO_INPUT_PLACEHOLDER
 
 # The number of a line in a message of the log, in both languages
 LINE_NUMBER = re.compile(r"(?:Řádek|Line)\s+(\d+)")
+STEP_PAUSE_SECONDS = 0.1  # between two steps (rows) of a batch, so as not to overload the server with requests
 STOP_POLL_MS = 200  # how often a window that has been asked to close looks whether its operation has ended
 
 
@@ -50,6 +51,7 @@ class LoggingTextBoxFactory:
             "create_playlist": CreatePlaylistLogBox,
             "create_label": CreateLabelLogBox,
             "remove_additional_playlists": DeleteAdditionalPlaylistLogBox,
+            "group_files_repair": GroupFilesRepairLogBox,
             "remove_unused_groups": RemoveUnusedGroupsLogBox,
             "remove_unused_playlists": RemoveUnusedPlaylistsLogBox,
             "remove_unused_assets": RemoveUnusedAssetsLogBox,
@@ -174,6 +176,14 @@ class LoggingTextBox(tk.Toplevel):
                 # Check if the thread is paused
                 if self.thread_manager.is_paused():
                     self.thread_manager.pause_event.wait()  # Wait until resume is called
+
+                # A pause before the next step; the deploys pace themselves by the interval between their batches. STOP
+                # ends the pause at once
+                if not self.processor_type.startswith("deploy_") and self.thread_manager.stop_event.wait(STEP_PAUSE_SECONDS):
+                    self.logger.info(self.lang.get_message("operation_stopped_after", steps=steps))
+                    self.update_activity_circle("T")
+                    self.setup_buttons()
+                    return
 
             self.logger.info(self.lang.get_message("operation_successful"))
             self.setup_buttons()
@@ -543,6 +553,11 @@ class CreatePlaylistLogBox(LoggingTextBox):
 class CreateLabelLogBox(LoggingTextBox):
     def __init__(self, **kwargs):
         super().__init__(processor_type="create_label", **kwargs)
+
+
+class GroupFilesRepairLogBox(LoggingTextBox):
+    def __init__(self, **kwargs):
+        super().__init__(processor_type="group_files_repair", **kwargs)
 
 
 class RemoveUnusedGroupsLogBox(LoggingTextBox):

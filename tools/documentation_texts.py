@@ -31,6 +31,9 @@ ACTIONS = {
     "remove_all_expired_playlists": {
         "cz": "Ze všech skupin odebere playlisty, jejichž platnost (zapnuté omezení data) už skončila. Log napíše, které playlisty se ze které skupiny odebraly. Playlist samotný se nemaže.",
         "en": "Takes out of all the groups the playlists whose validity (a switched-on date restriction) has ended. The log says which playlists were taken out of which group. The playlist itself is not deleted."},
+    "set_group_files_repair": {
+        "cz": "Opraví skupiny, které mají playlisty, ale ne jejich soubory (stává se, když se playlisty do skupiny zapsaly bez seznamu souborů: přehrávače pak po Deployi dostanou jen názvy playlistů a nemají co přehrávat). Aplikace projde všechny skupiny, vypíše, kolik jich potřebuje opravu, zeptá se a doplní jen chybějící soubory (nic neodebírá). Změna se na přehrávače dostane až po Deployi.",
+        "en": "Repairs the groups that have playlists but not their files (it happens when the playlists were written to a group without the list of files: after Deploy the players then get only the names of the playlists and have nothing to play). The application goes through all the groups, says how many need the repair, asks, and adds only the missing files (it takes nothing away). The players get the change only after Deploy."},
     "get_group_unused": {
         "cz": "Uloží do CSV skupiny, do kterých nepatří žádný přehrávač.",
         "en": "Saves to a CSV file the groups that no player belongs to."},
@@ -184,6 +187,7 @@ do CSV, upravíte a vložíte zpět. Dvě tlačítka otevřou živý přehled p�
 <li><b>{save}</b>: uloží log do textového souboru.</li>
 </ul>
 <p>Před nevratnou činností (smazání, Deploy) se v okně s logem zobrazí, co se stane (seznam, počet přehrávačů), a aplikace se zeptá; výchozí odpověď je „Ne“.</p>
+<p>Mezi jednotlivými kroky dávky (řádky vstupu) je pauza 0,1 sekundy, aby se server nezahltil požadavky; STOP ji ukončí okamžitě. Když se spojení se serverem nepodaří navázat, požadavek se až dvakrát zopakuje (po 2 a po 5 sekundách). Když server neodpovídá ani potom, log napíše srozumitelnou chybu a na konci, kolik kroků proběhlo a které zbývají. Zbylé řádky pak stačí vložit do vstupu znovu.</p>
 <p>Před činností, která přepisuje nebo maže data (například nastavení playlistů skupin, odebrání playlistů, smazání nepoužívaných položek), aplikace uloží stav před změnou do složky Stažené soubory (Downloads) jako CSV soubory s názvem <code>účet-backup-data-čas.csv</code>. Log napíše, kam se uložily. Když se záloha nepodaří, činnost se nespustí. Vytváření, přidávání a přejmenování se nezálohuje, v logu je vidět stará i nová hodnota.</p>
 </section>
 <section>
@@ -312,6 +316,7 @@ spreadsheet, or download it to CSV, edit it and paste it back. Two buttons open 
 <li><b>{save}</b>: saves the log to a text file.</li>
 </ul>
 <p>Before something that cannot be undone (deleting, deploy) the log window shows what is going to happen (the list, the number of players) and asks; the default answer is “No”.</p>
+<p>There is a pause of 0.1 second between the steps of a batch (the lines of the input), so as not to overload the server with requests; STOP ends it at once. When a connection to the server cannot be made, the request is repeated up to twice (after 2 and after 5 seconds). If the server does not answer even then, the log gives a clear error and, at the end, how many steps were done and which are left. The remaining lines can then be pasted into the input again.</p>
 <p>Before an action that overwrites or deletes data (for example setting the playlists of groups, removing playlists, deleting unused items) the application saves the state before the change to the Downloads folder as CSV files named <code>account-backup-data-time.csv</code>. The log says where they were saved. When the backup cannot be saved, the action does not start. Creating, adding and renaming are not backed up, the log shows the old and the new value.</p>
 </section>
 <section>

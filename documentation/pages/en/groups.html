@@ -30,6 +30,7 @@
 <li><a href="#set_detailed_playlists_to_groups">Change - Group Playlists (replaces existing)</a></li>
 <li><a href="#set_group_settings">Change - Group settings</a></li>
 <li><a href="#create_group">Create - Group</a></li>
+<li><a href="#set_group_files_repair">Repair - Group files</a></li>
 <li><a href="#remove_expired_playlists">Remove - Expired Playlists</a></li>
 <li><a href="#remove_playlists_from_group">Remove - Playlists from Groups</a></li>
 <li><a href="#remove_playlist_list">Remove - selected Playlists from all Groups</a></li>
@@ -67,7 +68,7 @@
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
 <ul><li>1. group name</li><li>2. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):</li><li>   a) playlist name</li><li>   b) valid from: a date or empty</li><li>   c) valid to: a date or empty</li><li>   d) days of the week or empty</li><li>   e) from what time: a time or empty</li><li>   f) until what time: a time or empty</li></ul>
-<ul class="notes"><li>One line per group (there is no default playlist column).</li><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.</li><li>Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day.</li></ul>
+<ul class="notes"><li>One line per group (there is no default playlist column).</li><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time. When both the from and the to time are left empty, the whole day is set: from 00:00 to 23:59 (if only one is filled, the other is filled in the same way).</li><li>Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td><td>&lt;playlist name&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>mo,tu,we,th,fr</td><td>08:00</td><td>18:00</td></tr></table>
 <p class="how">Select the category <b>Groups</b> and the action “Add - Playlists to Group (existing stay)”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
@@ -87,7 +88,7 @@
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
 <ul><li>1. group name</li><li>2. default playlist (no restrictions; may be empty)</li><li>3. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):</li><li>   a) playlist name</li><li>   b) valid from: a date or empty</li><li>   c) valid to: a date or empty</li><li>   d) days of the week or empty</li><li>   e) from what time: a time or empty</li><li>   f) until what time: a time or empty</li></ul>
-<ul class="notes"><li>One line per group.</li><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.</li><li>Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day.</li></ul>
+<ul class="notes"><li>One line per group.</li><li>Date: DD.MM.YYYY (e.g. 31.12.2026).</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time. When both the from and the to time are left empty, the whole day is set: from 00:00 to 23:59 (if only one is filled, the other is filled in the same way).</li><li>Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). Empty = every day.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;group name&gt;</td><td>&lt;default playlist&gt;</td><td>&lt;playlist name&gt;</td><td>01.01.2026</td><td>31.12.2026</td><td>mo,tu,we,th,fr</td><td>08:00</td><td>18:00</td></tr></table>
 <p class="how">Select the category <b>Groups</b> and the action “Change - Group Playlists (replaces existing)”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
 </section>
@@ -110,6 +111,12 @@
 <ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;new group name&gt;</td></tr></table>
 <p class="how">Select the category <b>Groups</b> and the action “Create - Group”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
+</section>
+<section id="set_group_files_repair">
+<h3>Repair - Group files</h3>
+<p>Repairs the groups that have playlists but not their files (it happens when the playlists were written to a group without the list of files: after Deploy the players then get only the names of the playlists and have nothing to play). The application goes through all the groups, says how many need the repair, asks, and adds only the missing files (it takes nothing away). The players get the change only after Deploy.</p>
+<p class="kind">Takes no input, it is run with “Start”.</p>
+<p class="how">Select the category <b>Groups</b> and the action “Repair - Group files”. Then click “Start”.</p>
 </section>
 <section id="remove_expired_playlists">
 <h3>Remove - Expired Playlists</h3>

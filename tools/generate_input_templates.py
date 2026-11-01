@@ -7,6 +7,8 @@ import json
 
 CZ_DATE = "Datum: DD.MM.RRRR (např. 31.12.2026)."
 CZ_TIME = "Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí."
+CZ_TIME_WHOLE_DAY = (CZ_TIME + " Když čas od i čas do zůstanou prázdné, nastaví se celý den: od 00:00 do 23:59 "
+                     "(vyplníte-li jen jeden, druhý se doplní stejně).")
 CZ_DAYS = ("Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, "
            "sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny.")
 CZ_BLOCK = ["   a) název playlistu", "   b) platí od: datum nebo prázdné", "   c) platí do: datum nebo prázdné",
@@ -17,6 +19,8 @@ CZ_CREATE = ("Název ještě nesmí existovat. Nesmí obsahovat středník, tabu
 
 EN_DATE = "Date: DD.MM.YYYY (e.g. 31.12.2026)."
 EN_TIME = "Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time."
+EN_TIME_WHOLE_DAY = (EN_TIME + " When both the from and the to time are left empty, the whole day is set: from 00:00 to "
+                     "23:59 (if only one is filled, the other is filled in the same way).")
 EN_DAYS = ("Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, "
            "fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). "
            "Empty = every day.")
@@ -75,14 +79,14 @@ cz = {
              "3. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, "
              "tabulátory ponechte):"] + CZ_BLOCK,
             ["<název skupiny>", "<výchozí playlist>", "<název playlistu>", "01.01.2026", "31.12.2026",
-             "mo,tu,we,th,fr", "08:00", "18:00"], ["Jeden řádek na skupinu.", CZ_DATE, CZ_TIME, CZ_DAYS]),
+             "mo,tu,we,th,fr", "08:00", "18:00"], ["Jeden řádek na skupinu.", CZ_DATE, CZ_TIME_WHOLE_DAY, CZ_DAYS]),
         "set_add_detailed_playlist_to_group": action(
             "Přidání playlistů ke skupině: přidají se ke stávajícím, ty zůstanou.",
             ["1. název skupiny",
              "2. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, "
              "tabulátory ponechte):"] + CZ_BLOCK,
             ["<název skupiny>", "<název playlistu>", "01.01.2026", "31.12.2026", "mo,tu,we,th,fr", "08:00", "18:00"],
-            ["Jeden řádek na skupinu (bez sloupce výchozího playlistu).", CZ_DATE, CZ_TIME, CZ_DAYS]),
+            ["Jeden řádek na skupinu (bez sloupce výchozího playlistu).", CZ_DATE, CZ_TIME_WHOLE_DAY, CZ_DAYS]),
         "remove_expired_playlists": action(
             "Odebrání neplatných (prošlých) playlistů ze skupin.", ["1. název skupiny (jeden na řádek)"],
             ["<název skupiny>"]),
@@ -217,14 +221,14 @@ en = {
              "3. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):"]
             + EN_BLOCK,
             ["<group name>", "<default playlist>", "<playlist name>", "01.01.2026", "31.12.2026", "mo,tu,we,th,fr",
-             "08:00", "18:00"], ["One line per group.", EN_DATE, EN_TIME, EN_DAYS]),
+             "08:00", "18:00"], ["One line per group.", EN_DATE, EN_TIME_WHOLE_DAY, EN_DAYS]),
         "set_add_detailed_playlist_to_group": action(
             "Add playlists to a group: they are added to the existing ones, which stay.",
             ["1. group name",
              "2. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):"]
             + EN_BLOCK,
             ["<group name>", "<playlist name>", "01.01.2026", "31.12.2026", "mo,tu,we,th,fr", "08:00", "18:00"],
-            ["One line per group (there is no default playlist column).", EN_DATE, EN_TIME, EN_DAYS]),
+            ["One line per group (there is no default playlist column).", EN_DATE, EN_TIME_WHOLE_DAY, EN_DAYS]),
         "remove_expired_playlists": action(
             "Remove expired playlists from groups.", ["1. group name (one per line)"], ["<group name>"]),
         "remove_playlists_from_group": action(

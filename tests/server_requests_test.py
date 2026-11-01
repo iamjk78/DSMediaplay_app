@@ -250,17 +250,19 @@ class KeepWhatTheGroupHasTest(unittest.TestCase):
         api._make_request = MagicMock(side_effect=[
             {"data": [{"_id": "g1", "name": "G1", "playlists": copy.deepcopy([TV_OFF, PROMO, SWITCHED_OFF])},
                       {"_id": "g2", "name": "G2", "playlists": [copy.deepcopy(TV_OFF)]}]},
+            {"data": []},  # the playlists of the account (needed for the files of the group; none known here)
             {"success": True}])
 
         removed = api.remove_playlists_from_groups(["Promo"])
 
         self.assertEqual(removed, {"G1": ["Promo"]})
-        self.assertEqual(api._make_request.call_count, 2)  # the group without it is not written at all
+        self.assertEqual(api._make_request.call_count, 3)  # the groups, the playlists, one write: G2 is not written at all
         method, endpoint = api._make_request.call_args.args
         body = api._make_request.call_args.kwargs["json"]
         self.assertEqual((method, endpoint), ("post", "/groups/g1"))
         self.assertEqual(body["playlists"], [TV_OFF, SWITCHED_OFF])
         self.assertEqual(body["playAllEligiblePlaylists"], "true")
+        self.assertEqual(body["assets"], [])  # the files of the group are sent with its playlists (see group_files_test)
 
 
 class NamesInRequestsTest(unittest.TestCase):

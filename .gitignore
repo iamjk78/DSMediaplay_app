@@ -24,3 +24,6 @@ csv_exports
 
 # Local reference material (not versioned)
 docs_private/
+
+# Local notes (not published)
+tools/player_command_tester.md
