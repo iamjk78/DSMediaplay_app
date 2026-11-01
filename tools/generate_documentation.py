@@ -65,10 +65,11 @@ def page(language: str, name: str, title: str, body: str, links: dict) -> str:
         </ul>
     </nav>
 {body}
-    <footer>
+    <footer id="language-bar">
         <a href="/{other}/{name}.html">{html.escape(WORDS[other]['english'] if other == 'en' else WORDS[other]['czech'])}</a>
         | <a href="/{language}/{name}.html">{html.escape(ui['czech'] if language == 'cz' else ui['english'])}</a>
     </footer>
+    <script src="/assets/js/language-bar.js"></script>
 </body>
 </html>
 """

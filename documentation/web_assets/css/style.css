@@ -68,14 +68,17 @@ section h2 {
 }
 
 /* Footer Styles */
+/* At the end of the page, in the flow of it: a bar fixed to the bottom of the window covers the last lines of the text */
 footer {
     text-align: center;
     padding: 20px;
+    margin-top: 40px;
     background-color: #0056b3;
     color: #fff;
-    position: fixed;
-    width: 100%;
-    bottom: 0;
+}
+
+footer[hidden] {
+    display: none;
 }
 
 footer p {

@@ -96,5 +96,58 @@ class GuideTest(unittest.TestCase):
                 self.assertNotIn("bez dalšího potvrzení", text)
 
 
+class LanguageBarTest(unittest.TestCase):
+    """The bar that switches the language is at the end of the page, under the text, and goes away once a language is picked."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rendered = generator.render()
+
+    def test_on_every_page_it_comes_after_the_whole_text(self):
+        for (language, name), text in self.rendered.items():
+            with self.subTest(language=language, page=name):
+                self.assertEqual(text.count('<footer id="language-bar">'), 1)
+                self.assertGreater(text.index('<footer id="language-bar">'), text.rindex("</section>"))
+
+    def test_every_page_loads_the_script_that_hides_it(self):
+        for (language, name), text in self.rendered.items():
+            with self.subTest(language=language, page=name):
+                self.assertIn('<script src="/assets/js/language-bar.js"></script>', text)
+
+    def test_it_is_not_fixed_to_the_bottom_of_the_window_where_it_would_cover_the_last_lines(self):
+        with open(os.path.join(ROOT, "documentation", "web_assets", "css", "style.css"), encoding="utf-8") as file:
+            css = file.read()
+        rule = re.search(r"(?m)^footer\s*\{([^}]*)\}", css).group(1)
+
+        self.assertNotRegex(rule, r"position\s*:\s*(fixed|sticky|absolute)")
+        self.assertNotIn("bottom", rule)
+        self.assertRegex(css, r"footer\[hidden\]\s*\{\s*display\s*:\s*none")
+
+    def test_the_server_serves_the_script(self):
+        handler = CustomHTTPRequestHandler.__new__(CustomHTTPRequestHandler)
+        self.assertTrue(os.path.isfile(handler.resolve_path("/assets/js/language-bar.js")))
+
+    def test_the_script_remembers_a_click_on_a_language_and_hides_the_bar_from_then_on(self):
+        with open(os.path.join(ROOT, "documentation", "web_assets", "js", "language-bar.js"), encoding="utf-8") as file:
+            script = file.read()
+
+        for part in ('getElementById("language-bar")', 'localStorage.getItem(KEY)', 'localStorage.setItem(KEY',
+                     "bar.hidden = true", 'addEventListener("click"', 'closest("a")'):
+            self.assertIn(part, script)
+        self.assertEqual(script.count("bar.hidden = true"), 2)  # at the load when it was picked before, and at the click
+
+    def test_without_storage_the_bar_stays_and_nothing_breaks(self):
+        with open(os.path.join(ROOT, "documentation", "web_assets", "js", "language-bar.js"), encoding="utf-8") as file:
+            script = file.read()
+
+        self.assertEqual(script.count("try {"), 2)  # both uses of the storage are guarded
+        self.assertEqual(script.count("catch (error)"), 2)
+
+    def test_the_script_is_part_of_what_the_build_bundles(self):
+        with open(os.path.join(ROOT, "DSMediaplay_app.spec"), encoding="utf-8") as file:
+            spec = file.read()
+        self.assertIn('("documentation/web_assets", "documentation/web_assets")', spec)  # the whole folder, js included
+
+
 if __name__ == "__main__":
     unittest.main()
