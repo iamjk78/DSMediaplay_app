@@ -30,12 +30,23 @@ def response(content: bytes = PNG, ok: bool = True, headers=None, chunks=None) -
     """What requests gives back for a streamed download: in pieces, through iter_content."""
     result = MagicMock()
     result.ok = ok
+    result.status_code = 200 if ok else 500
     result.headers = headers or {}
     result.iter_content.side_effect = lambda chunk_size: iter(chunks if chunks is not None else [content])
     return result
 
 
 class DownloadSnapshotTest(unittest.TestCase):
+    def test_a_redirect_of_the_servers_own_address_is_no_image_and_is_not_followed(self):
+        redirect = response()
+        redirect.status_code = 302
+        with patch("api_testing.request_calls.requests.request", return_value=redirect) as own:
+            with self.assertRaises(SnapshotError) as raised:
+                api().download_snapshot("/s.png")
+
+        self.assertEqual(raised.exception.reason, "download")
+        self.assertIs(own.call_args.kwargs["allow_redirects"], False)
+
     def download(self, address, **answer):
         with patch("api_testing.request_calls.requests.request", return_value=response(**answer)) as own, \
                 patch("api_testing.request_calls.requests.get", return_value=response(**answer)) as foreign:

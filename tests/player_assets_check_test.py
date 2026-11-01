@@ -203,6 +203,20 @@ class ServerApiTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.reason, "failed")
 
+    def test_the_files_of_a_group_are_those_it_sends_and_those_its_playlists_need(self):
+        api = self.api({"data": {"_id": "g", "logo": "logo.png", "assets": ["a.mp4", "old.mp4"],
+                                 "playlists": [{"name": "P"}]}})
+        api._playlist_objects = MagicMock(return_value=[{"name": "P", "layout": "1", "assets": [{"filename": "a.mp4"},
+                                                                                              {"filename": "b.mp4"}]}])
+
+        self.assertEqual(api.get_group_files("g"), ["a.mp4", "old.mp4", "b.mp4", "__P.json", "logo.png"])
+
+    def test_a_group_without_the_list_of_files_still_needs_the_files_of_its_playlists(self):
+        api = self.api({"data": {"_id": "g", "assets": [], "playlists": [{"name": "P"}]}})
+        api._playlist_objects = MagicMock(return_value=[{"name": "P", "layout": "1", "assets": [{"filename": "a.mp4"}]}])
+
+        self.assertEqual(api.get_group_files("g"), ["a.mp4", "__P.json"])
+
     def test_only_a_playlist_without_rows_has_a_file_that_no_player_gets(self):
         api = self.api()
         api._playlist_objects = MagicMock(return_value=[{"name": "TV_OFF", "assets": []}, {"name": "P", "assets": [{}]},

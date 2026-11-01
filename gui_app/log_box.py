@@ -155,14 +155,13 @@ class LoggingTextBox(tk.Toplevel):
                 self.update_activity_circle("C")
                 self.setup_buttons()
                 return
-            if self.thread_manager.stop_event.is_set():  # asked for while the input was loaded: not even a first step
-                self.logger.info(self.lang.get_message("operation_stopped"))
-                self.update_activity_circle("C")
-                self.setup_buttons()
+            if self._stopped_before_start():  # asked for while the input was loaded: not even a first step
                 return
             if not self._back_up():
                 self.update_activity_circle("R")
                 self.setup_buttons()
+                return
+            if self._stopped_before_start():  # asked for while the backup was being saved: nothing is changed yet
                 return
             steps = 0
             for _ in self.input_processor.run():
@@ -234,6 +233,15 @@ class LoggingTextBox(tk.Toplevel):
         except Exception as error:
             self.logger.error(self.lang.get_message("backup_failed", error=self.master.csv_error_text(error)))
             return False
+        return True
+
+    def _stopped_before_start(self) -> bool:
+        """Whether STOP was pressed before the first step; if so, it is reported and the window is ready to be closed."""
+        if not self.thread_manager.stop_event.is_set():
+            return False
+        self.logger.info(self.lang.get_message("operation_stopped"))
+        self.update_activity_circle("C")
+        self.setup_buttons()
         return True
 
     def _write_problems(self):

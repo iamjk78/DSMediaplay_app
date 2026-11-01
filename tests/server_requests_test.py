@@ -337,6 +337,20 @@ class NamesInRequestsTest(unittest.TestCase):
         api = self.make_api([{"name": "G", "playlists": None}])
         self.assertEqual(api.get_groups_playlists_details(), {"G": []})
 
+    def test_the_old_dates_and_times_of_a_playlist_whose_limit_is_off_are_not_handed_on(self):
+        old = {"name": "Old", "settings": {"durationEnable": False, "startdate": "2025-01-01", "enddate": "2025-02-01",
+                                           "timeEnable": False, "starttime": "8:00", "endtime": "9:00"}}
+        limited = {"name": "New", "settings": {"durationEnable": "true", "startdate": "2026-01-01",
+                                               "enddate": "2026-02-01", "timeEnable": True, "starttime": "8:00",
+                                               "endtime": "9:00", "weekdays": [1]}}
+        api = self.make_api([{"name": "G", "playlists": [old, limited, {"name": "Bare"}]}])
+
+        details = api.get_groups_playlists_details()["G"]
+
+        self.assertEqual([(d["start_date"], d["end_date"], d["start_time"], d["end_time"]) for d in details],
+                         [(None, None, None, None), ("2026-01-01", "2026-02-01", "8:00", "9:00"), (None, None, None, None)])
+        self.assertEqual(details[1]["days_of_week"], [1])
+
 
 class KeepWhatThePlaylistHasTest(unittest.TestCase):
     """Taking one asset out of a playlist used to write all the others from their names alone, which reset the durations

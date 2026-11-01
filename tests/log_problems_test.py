@@ -348,6 +348,18 @@ class BackupTest(LogCase):
 
         created.assert_not_called()
 
+    def test_stop_pressed_while_the_backup_is_saved_stops_before_the_first_step(self):
+        processor = self.quiet_processor()
+        task = MagicMock()
+        boxes = []
+        task.generate_csv.side_effect = lambda path: boxes[0].thread_manager.stop_event.set()
+        with patch("gui_app.log_box.CSVTaskFactory.create_task", return_value=task):
+            box = self.run_box(processor, data="x", processor_type="group_settings",
+                               backup_path=lambda kind: "/x.csv", on_ready=boxes.append)
+
+        processor.run.assert_not_called()
+        self.assertIn("Operace byla zastavena.", self.text(box))
+
     def test_without_a_place_for_the_backup_the_action_just_runs(self):
         processor = self.quiet_processor()
         with patch("gui_app.log_box.CSVTaskFactory.create_task") as created:

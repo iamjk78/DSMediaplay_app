@@ -320,6 +320,11 @@ class ResponseError(ServerApiError):
         return "The server refused the request" + (": " + ", ".join(parts) if parts else "")
 
 
+def is_redirect_status(response: requests.Response) -> bool:
+    """A redirect is not followed (see `ServerApi._request`), so it is no answer to work with."""
+    return 300 <= response.status_code < 400
+
+
 class PlayerCommandError(ServerApiError):
     """
     A command on a player gave no usable answer.
@@ -446,7 +451,7 @@ class ServerApi:
         response = self._post(self._url + "/session", json=data, timeout=LOGIN_TIMEOUT)
         if response.status_code in (401, 403):
             raise LoginError
-        if not response.ok:  # the server is down or broken: not the password that is wrong
+        if not response.ok or is_redirect_status(response):  # the server is down or broken: not the password that is wrong
             raise ResponseError(params={}, status=response.status_code, request="POST /session")
         body = response.json()  # a failed login answers with the JSON literal null
         token = body.get("token") if isinstance(body, dict) else None
@@ -455,11 +460,11 @@ class ServerApi:
         return token
 
     def _post(self, url: str, **kwargs) -> requests.Response:
-        if self._assert_hostname is None:
-            return requests.post(url, **kwargs)
         return self._request("post", url, **kwargs)
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        # A redirect would carry the token (and the body of a POST, with the password) to wherever it points
+        kwargs.setdefault("allow_redirects", False)
         if self._assert_hostname is None:
             return requests.request(method, url, **kwargs)
         # A session per call, as requests.request does internally, so concurrent Deploy threads share nothing
@@ -484,7 +489,7 @@ class ServerApi:
 
         failure = {"params": kwargs.get("params") or {}, "status": response.status_code,
                    "request": f"{method.upper()} {endpoint}"}
-        if not response.ok:
+        if not response.ok or is_redirect_status(response):
             raise ResponseError(**failure)
         response_json = response.json()
         if not response_json.get("success", False):
@@ -1002,18 +1007,26 @@ class ServerApi:
         group_playlist_details = {}
         for group in response.get("data", []):
             group_name = group.get("name", "")
-            group_playlist_details[group_name] = [
-                {
-                    "playlist_name": playlist.get("name", ""),
-                    "start_date": playlist.get("settings", {}).get("startdate"),
-                    "end_date": playlist.get("settings", {}).get("enddate"),
-                    "days_of_week": playlist.get("settings", {}).get("weekdays"),
-                    "start_time": playlist.get("settings", {}).get("starttime"),
-                    "end_time": playlist.get("settings", {}).get("endtime")
-                }
-                for playlist in group.get("playlists") or []
-            ]
+            group_playlist_details[group_name] = [self._playlist_limits(playlist) for playlist in group.get("playlists") or []]
         return group_playlist_details
+
+    @staticmethod
+    def _playlist_limits(playlist: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        The playlist of a group with the dates and times it is limited to. The interface keeps the old dates and
+        times after the limit is switched off, so they count only where the limit is on: written back, they would
+        switch it on again.
+        """
+        settings = playlist.get("settings") or {}
+        dated, timed = _truthy(settings.get("durationEnable")), _truthy(settings.get("timeEnable"))
+        return {
+            "playlist_name": playlist.get("name", ""),
+            "start_date": settings.get("startdate") if dated else None,
+            "end_date": settings.get("enddate") if dated else None,
+            "days_of_week": settings.get("weekdays"),
+            "start_time": settings.get("starttime") if timed else None,
+            "end_time": settings.get("endtime") if timed else None,
+        }
 
     def set_assets_to_playlist(self, playlist: str, assets: List[str]) -> Dict[str, Any]:
         """
@@ -1130,9 +1143,8 @@ class ServerApi:
             else:
                 new_playlists.append(playlist)
 
-        if removed:
-            group_details["playlists"] = new_playlists
-            self.update_group_details(group_id, group_details)
+        if removed:  # the files of the group are worked out again, without those of the playlists taken out
+            self._set_group_playlists(group_id, group, new_playlists, group_details)
 
         return removed
 
@@ -1678,9 +1690,8 @@ class ServerApi:
             else:
                 new_playlists.append(playlist)
 
-        if removed:
-            group_details["playlists"] = new_playlists
-            self.update_group_details(group_id, group_details)
+        if removed:  # the files of the group are worked out again, without those of the playlists taken out
+            self._set_group_playlists(group_id, group, new_playlists, group_details)
 
         return removed
 
@@ -1857,7 +1868,10 @@ class ServerApi:
         for player in self.get_player_objects():  # additional playlists of a player belong to no group
             used.update(player.get("playlists") or [])
         for playlist in self._make_request("get", "/playlists").get("data", []):  # a playlist in a zone of another
-            used.update(zone_references(playlist))
+            for reference in zone_references(playlist):
+                # The interface keeps a playlist in a zone as the file of it, "__name.json"
+                used.add(reference[2:-len(".json")] if reference.startswith("__") and reference.endswith(".json")
+                         else reference)
         return [name for name in all_playlist if name not in used]
 
     def delete_group(self, name: str):
@@ -2211,8 +2225,14 @@ class ServerApi:
                 if not (playlist.get("assets") or [])}
 
     def get_group_files(self, group_id: str) -> List[str]:
-        """The files the group sends to its players (what the players are to have on their disks)."""
-        return list(self.get_group_details(group_id).get("assets") or [])
+        """
+        The files the players of the group are to have: the files the group sends, and those its playlists need (a
+        group written without them has an incomplete list, and its players never got the files that are missing).
+        """
+        group = self.get_group_details(group_id)
+        stored = list(group.get("assets") or [])
+        needed = prepare_group_playlists(group.get("playlists") or [], self._playlist_objects(), group.get("logo"))[1]
+        return stored + [name for name in needed if name not in stored]
 
     def list_player_files(self, player_id: str) -> List[str]:
         """
@@ -2276,7 +2296,7 @@ class ServerApi:
             else:
                 response = requests.get(address, timeout=SNAPSHOT_TIMEOUT, stream=True)
             with response:
-                if not response.ok:
+                if not response.ok or is_redirect_status(response):
                     raise SnapshotError("download")
                 declared = response.headers.get("Content-Length", "")
                 if declared.isdigit() and int(declared) > SNAPSHOT_MAX_BYTES:

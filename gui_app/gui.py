@@ -1371,7 +1371,7 @@ class DSMediaplayApp(tk.Tk):
         if not documentation_server.bound_port:  # the server has not started, or no port could be had for it
             messagebox.showinfo(self.lang.get_message("info_title"), self.lang.get_message("help_unavailable"))
             return
-        webbrowser.open(f"http://localhost:{documentation_server.bound_port}/{self.lang.language}/")
+        webbrowser.open(f"http://127.0.0.1:{documentation_server.bound_port}/{self.lang.language}/")
 
     def update_font(self, font):
         self.font = font

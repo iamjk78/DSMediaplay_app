@@ -244,7 +244,7 @@ jobs:
       - name: Tests
         env:
           DSM_TESTS_VISIBLE: "1"  # nobody works at this computer; and a fully transparent window is not hit by the pointer
-        run: python -m pytest -q -p no:cacheprovider
+        run: python -m pytest -v -p no:cacheprovider  # verbose: a crash of the interpreter leaves no summary, only the names run so far
 
   audit:
     # Known vulnerabilities in what goes into the application and into its build

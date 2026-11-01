@@ -73,7 +73,7 @@ class OpenHelpTest(WindowCase):
         with patch.object(server, "bound_port", 51234), patch("gui_app.gui.webbrowser.open") as opened:
             self.app.open_help()
 
-        opened.assert_called_once_with(f"http://localhost:51234/{self.app.lang.language}/")
+        opened.assert_called_once_with(f"http://127.0.0.1:51234/{self.app.lang.language}/")
 
     def test_without_a_server_it_says_so_instead_of_opening_a_page_that_is_not_ours(self):
         with patch.object(server, "bound_port", None), patch("gui_app.gui.webbrowser.open") as opened, \

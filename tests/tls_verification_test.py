@@ -19,7 +19,7 @@ class TlsVerificationTest(unittest.TestCase):
         self.assertNotIn("verify", request.call_args.kwargs)
 
     def test_login_uses_default_verification(self):
-        with patch("api_testing.request_calls.requests.post") as post:
+        with patch("api_testing.request_calls.requests.request") as post:
             api_for("https://acme.signage.dsmediaplay.com")._post("https://acme.signage.dsmediaplay.com/session")
 
         self.assertNotIn("verify", post.call_args.kwargs)

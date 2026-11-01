@@ -177,8 +177,8 @@ class ExpiredPlaylistsTest(unittest.TestCase):
         api = ServerApi.__new__(ServerApi)
         api.get_group_id_by_name = MagicMock(return_value="gid")
         api.get_group_details = MagicMock(return_value={"playlists": playlists})
-        api.update_group_details = MagicMock()
-        return api.remove_expired_playlists_from_group("G"), api.update_group_details
+        api._set_group_playlists = MagicMock()
+        return api.remove_expired_playlists_from_group("G"), api._set_group_playlists
 
     @staticmethod
     def playlist(name, end_offset_days, switched="true"):
@@ -196,7 +196,7 @@ class ExpiredPlaylistsTest(unittest.TestCase):
         removed, update = self.removed(playlists)
 
         self.assertEqual(removed, ["past", "past on bool"])
-        sent = update.call_args.args[1]["playlists"]
+        sent = update.call_args.args[2]  # (group id, group name, playlists left, the group as it was)
         self.assertEqual([p["name"] for p in sent], [p["name"] for p in playlists if p["name"] not in removed])
 
     def test_nothing_is_written_when_nothing_has_expired(self):

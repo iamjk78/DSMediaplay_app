@@ -253,6 +253,22 @@ class WritingAGroupTest(unittest.TestCase):
         self.assertEqual([p["name"] for p in body["playlists"]], ["Default"])
         self.assertEqual(sorted(body["assets"]), ["__Default.json", "d.mp4", "logo.png"])
 
+    def test_removing_playlists_by_a_keyword_or_the_expired_ones_leaves_the_files_of_the_rest_too(self):
+        expired = {"name": "Kofola", "plType": "regular", "skipForSchedule": False,
+                   "settings": {"durationEnable": "true", "enddate": "2020-01-01T00:00:00.000Z"}}
+        group = {**GROUP, "playlists": GROUP["playlists"] + [expired],
+                 "assets": ["d.mp4", "__Default.json", "kofola1.mp4", "kofola2.jpg", "__Kofola.json"]}
+        for remove in (lambda api: api.remove_playlists_by_keyword_from_group("Shop1", "Kofo"),
+                       lambda api: api.remove_expired_playlists_from_group("Shop1")):
+            with self.subTest(remove=remove):
+                api, server = api_with([group], PLAYLISTS)
+
+                self.assertEqual(remove(api), ["Kofola"])
+
+                body = server.posts[-1]
+                self.assertEqual([p["name"] for p in body["playlists"]], ["Default"])
+                self.assertEqual(sorted(body["assets"]), ["__Default.json", "d.mp4", "logo.png"])
+
     def test_the_playlists_of_the_account_are_read_once_for_the_whole_session(self):
         second = {**GROUP, "_id": "g2", "name": "Shop2"}
         api, server = api_with([GROUP, second], PLAYLISTS)

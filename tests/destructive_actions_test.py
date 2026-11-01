@@ -224,6 +224,16 @@ class UnusedDetectionTest(unittest.TestCase):
 
         self.assertEqual(api.get_unused_playlists(), ["Free"])
 
+    def test_a_playlist_named_in_a_zone_by_its_file_is_not_unused(self):
+        api = self.make_api({
+            "/playlists": {"data": [{"name": "Host", "assets": [{"filename": "x", "side": "__Nested.json"}]}]},
+        })
+        api.get_playlist_names = MagicMock(return_value=["Nested", "Free"])
+        api.get_groups_playlists = MagicMock(return_value={})
+        api.get_player_objects = MagicMock(return_value=[])
+
+        self.assertEqual(api.get_unused_playlists(), ["Free"])
+
     def test_a_label_of_a_playlist_or_a_location_is_not_unused(self):
         api = self.make_api({
             "/playlists": {"data": [{"labels": ["OfPlaylist"]}, {"labels": None}]},
