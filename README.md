@@ -1,6 +1,6 @@
 # DSMediaplay_app
 
-Desktop control panel (Python + Tkinter) for DSMediaplay accounts. Runs on Windows and macOS.
+Desktop application for managing digital signage content in bulk. Runs on Windows and macOS.
 
 ## Run from source
 
