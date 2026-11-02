@@ -163,6 +163,7 @@ class ProcessorFactory:
             "player_note": PlayerNoteProcessor,
             "player_snapshot": PlayerSnapshotProcessor,
             "player_assets_check": PlayerAssetsCheckProcessor,
+            "player_playback_check": PlayerPlaybackCheckProcessor,
             "remove_playlists": RemovePlaylistsProcessor,
             "remove_playlist_list": RemovePlaylistsByListProcessor,
             "remove_assets": RemoveAssetsProcessor,
@@ -1531,6 +1532,132 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
         if unknown:
             self._logger.error(self.lang.get_message("assets_check_summary_unknown", count=len(unknown),
                                                      players=", ".join(unknown)),
+                               extra={"hide_level": True, "progress": True})
+
+
+class PlayerPlaybackCheckProcessor(PlayerAssetsCheckProcessor):
+    """
+    Checks that the online players play: asks each (one fixed command that only lists the video players running on
+    it) and says which play what, and which have no video player running though their playlist has a video. The input
+    is the names of the players to check, none = all the online ones, as for the check of the files. A player that
+    seems not to play is asked once more after a pause (between two videos there is a moment without a video player).
+    """
+    RECHECK_PAUSE_SECONDS = 10
+    LONG_RUNNING_SECONDS = 30 * 60  # one video player running this long is not a playlist of short videos
+
+    def __init__(self, *args, recheck_pause: float = RECHECK_PAUSE_SECONDS, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._recheck_pause = recheck_pause
+
+    def confirmation(self) -> Optional[Confirmation]:
+        if not self.data:
+            return None
+        return Confirmation(self.lang.get_message("playback_check_title"),
+                            self.lang.get_message("playback_check_text", count=len(self.data)))
+
+    def run(self) -> Generator[None, None, None]:
+        if not self.data:
+            self._write_log("assets_check_nothing")
+            return
+        results: Dict[str, Dict[str, Any]] = {}
+        try:
+            with self._try_server_login() as server:
+                if not server:
+                    self._write_no_server_returned()
+                    return
+                without_video = server.get_playlists_without_video()
+                for index, player in enumerate(self.data):
+                    if index:
+                        sleep(self._pause)
+                    self._check_playback(server, player, without_video, results, recheck=False)
+                    yield
+                suspicious = [player for player in self.data
+                              if results.get(player.get("name", ""), {}).get("state") in ("not_playing", "long")]
+                if suspicious:
+                    self._write_log("playback_check_recheck", count=len(suspicious), seconds=self._recheck_pause)
+                    sleep(self._recheck_pause)
+                    for index, player in enumerate(suspicious):
+                        if index:
+                            sleep(self._pause)
+                        self._check_playback(server, player, without_video, results, recheck=True)
+                        yield
+        except Exception as e:
+            self._write_internal_error(e)
+            raise InternalException()
+        self._write_playback_summary(results)
+
+    @staticmethod
+    def _age_text(seconds: int) -> str:
+        if seconds < 120:
+            return f"{seconds} s"
+        return f"{seconds // 60} min" if seconds < 2 * 3600 else f"{seconds // 3600} h" if seconds < 48 * 3600 else \
+            f"{seconds // 86400} d"
+
+    def _check_playback(self, server: ServerApi, player: Dict[str, Any], without_video: set, results: Dict[str, Any],
+                        recheck: bool):
+        name = player.get("name", "")
+        playlist = player.get("currentPlaylist") or ""
+        self._write_log("playback_check_recheck_player" if recheck else "assets_check_player", player=name)
+        try:
+            if not server.is_player_online(player["_id"]):
+                self._write_log_warning("assets_check_went_offline", player=name)
+                results[name] = {"state": "offline"}
+                return
+            if playlist in without_video:
+                self._write_log("playback_check_no_video", playlist=playlist)
+                results[name] = {"state": "no_video"}
+                return
+            running = server.read_player_playback(player["_id"])
+        except PlayerCommandError as e:
+            self._write_progress_error(f"assets_check_{e.reason}")
+            results[name] = {"state": "unknown"}
+            return
+        except self.COMMUNICATION_ERRORS:
+            self._write_progress_error("assets_check_unknown_state")
+            results[name] = {"state": "unknown"}
+            return
+
+        if not running:
+            self._write_progress_error("playback_check_not_playing", playlist=playlist or "-")
+            results[name] = {"state": "not_playing", "detail": f"playlist {playlist or '-'}"}
+            return
+        oldest = max(running, key=lambda item: item["age"])
+        played = oldest["file"] or oldest["process"]
+        if oldest["loop"]:  # a playlist of one video: it is played again and again by one process
+            self._write_log("playback_check_playing_loop", file=played, age=self._age_text(oldest["age"]))
+            results[name] = {"state": "playing"}
+            return
+        if oldest["age"] > self.LONG_RUNNING_SECONDS:
+            self._write_progress_error("playback_check_long", file=played, age=self._age_text(oldest["age"]))
+            results[name] = {"state": "long", "detail": f"{played} ({self._age_text(oldest['age'])})"}
+            return
+        self._write_log("playback_check_playing", file=played, age=self._age_text(oldest["age"]))
+        results[name] = {"state": "playing"}
+
+    def _write_playback_summary(self, results: Dict[str, Dict[str, Any]]):
+        """The result at the end; written as errors where something is wrong (red), but not as problems once more."""
+        by_state: Dict[str, List[str]] = {}
+        for name, result in results.items():
+            by_state.setdefault(result["state"], []).append(name)
+        count = {state: len(by_state.get(state, [])) for state in
+                 ("playing", "not_playing", "long", "no_video", "unknown", "offline")}
+        self._write_log("playback_check_summary", checked=count["playing"] + count["not_playing"] + count["long"],
+                        playing=count["playing"], not_playing=count["not_playing"], long=count["long"],
+                        no_video=count["no_video"], unknown=count["unknown"], offline=self._offline + count["offline"])
+        if not (count["not_playing"] or count["long"] or count["unknown"]):
+            self._write_log("playback_check_all_ok")
+        for state, heading in (("not_playing", "playback_check_summary_not_playing"), ("long", "playback_check_summary_long")):
+            if not by_state.get(state):
+                continue
+            self._logger.error(self.lang.get_message(heading, count=len(by_state[state])),
+                               extra={"hide_level": True, "progress": True})
+            for name in by_state[state]:
+                self._logger.error(self.lang.get_message("playback_check_summary_player", player=name,
+                                                         detail=results[name].get("detail", "")),
+                                   extra={"hide_level": True, "progress": True})
+        if by_state.get("unknown"):
+            self._logger.error(self.lang.get_message("assets_check_summary_unknown", count=len(by_state["unknown"]),
+                                                     players=", ".join(by_state["unknown"])),
                                extra={"hide_level": True, "progress": True})
 
 

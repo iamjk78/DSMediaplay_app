@@ -22,6 +22,9 @@ TOKEN_HEADER = "x-access-token"
 # The one command of the check of the files on a player: it only reads the names in the folder of the media
 PLAYER_MEDIA_DIR = "/home/pi/media"
 PLAYER_FILES_COMMAND = f"ls -1A {PLAYER_MEDIA_DIR}"
+# The command of the check of the playback: it only lists the video players that run on the player, with their age
+PLAYER_PLAYBACK_COMMAND = "ps -C omxplayer.bin,mpv,vlc -o etime=,comm=,args= | cut -c1-300"
+VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg", ".wmv", ".flv", ".ts", ".mts")
 PLAYER_COMMAND_TIMEOUT = (10, 30)  # (connect, read) seconds; a player that is silent for 30 s is skipped
 SNAPSHOT_MAX_BYTES = 20 * 1024 * 1024
 IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF8", ".gif"))
@@ -322,6 +325,32 @@ class ResponseError(ServerApiError):
     def __str__(self):
         parts = [part for part in (f"HTTP {self.status}" if self.status else "", self.request, self.message) if part]
         return "The server refused the request" + (": " + ", ".join(parts) if parts else "")
+
+
+def parse_etime(text: str) -> Optional[int]:
+    """The age of a process as `ps` writes it ([[dd-]hh:]mm:ss) in seconds, None when it is not that."""
+    found = re.fullmatch(r"(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)", text.strip())
+    if not found:
+        return None
+    days, hours, minutes, seconds = (int(part or 0) for part in found.groups())
+    return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
+
+
+def parse_playback(output: str) -> List[Dict[str, Any]]:
+    """
+    The video players in the output of PLAYER_PLAYBACK_COMMAND: their age in seconds, name, the file they play and
+    whether they play it in a loop (a playlist of one video: the process then runs for days).
+    """
+    players = []
+    for line in output.splitlines():
+        found = re.match(r"\s*(\S+)\s+(\S+)\s*(.*)$", line)
+        age = parse_etime(found.group(1)) if found else None
+        if age is None:
+            continue
+        played = re.search(re.escape(PLAYER_MEDIA_DIR) + r"/(.+?\.\w{2,5})(?=\s+-|\s*$)", found.group(3))
+        players.append({"age": age, "process": found.group(2), "file": played.group(1) if played else None,
+                        "loop": re.search(r"\s--loop(\s|$)", found.group(3)) is not None})
+    return players
 
 
 def is_redirect_status(response: requests.Response) -> bool:
@@ -2220,7 +2249,7 @@ class ServerApi:
 
     def is_player_online(self, player_id: str) -> bool:
         """The current state of one player (a small request, not the whole list of players)."""
-        return bool(self._make_request("get", f"/players/{player_id}")["data"].get("isConnected"))
+        return bool((self._make_request("get", f"/players/{player_id}").get("data") or {}).get("isConnected"))
 
     def get_files_without_content(self) -> set:
         """
@@ -2240,9 +2269,10 @@ class ServerApi:
         needed = prepare_group_playlists(group.get("playlists") or [], self._playlist_objects(), group.get("logo"))[1]
         return stored + [name for name in needed if name not in stored]
 
-    def list_player_files(self, player_id: str) -> List[str]:
+    def _player_command(self, player_id: str, command: str) -> str:
         """
-        The names of the files in the folder of the media on the player, read by a fixed command that only lists them.
+        What a fixed command printed on the player. Only the checks of this class send commands, each one a constant
+        that reads and changes nothing.
 
         Raises
         ------
@@ -2250,8 +2280,8 @@ class ServerApi:
             The player did not answer in time ("no_answer") or answered with an error ("failed").
         """
         try:
-            answer = self._make_request("post", f"/pishell/{player_id}", json={"cmd": PLAYER_FILES_COMMAND},
-                                        timeout=PLAYER_COMMAND_TIMEOUT)["data"]
+            answer = self._make_request("post", f"/pishell/{player_id}", json={"cmd": command},
+                                        timeout=PLAYER_COMMAND_TIMEOUT).get("data") or {}
         except requests.exceptions.Timeout:
             raise PlayerCommandError("no_answer")
         # A player that does not answer is a successful request with `err` set
@@ -2259,7 +2289,27 @@ class ServerApi:
             raise PlayerCommandError("no_answer")
         if answer.get("stderr") and not answer.get("stdout"):
             raise PlayerCommandError("failed")
-        return [line for line in (answer.get("stdout") or "").splitlines() if line]
+        return answer.get("stdout") or ""
+
+    def list_player_files(self, player_id: str) -> List[str]:
+        """The names of the files in the folder of the media on the player, read by a fixed command that only lists them."""
+        return [line for line in self._player_command(player_id, PLAYER_FILES_COMMAND).splitlines() if line]
+
+    def read_player_playback(self, player_id: str) -> List[Dict[str, Any]]:
+        """The video players that run on the player now (age in seconds, name, file); none when no video is played."""
+        return parse_playback(self._player_command(player_id, PLAYER_PLAYBACK_COMMAND))
+
+    def get_playlists_without_video(self) -> set:
+        """The names of the playlists that have no video among their files (no video player runs while they are shown)."""
+        without_video = set()
+        for playlist in self._playlist_objects():
+            has_video = False
+            for row in playlist.get("assets") or []:
+                files = [row.get("filename"), *(row.get(zone) for zone in ZONE_FIELDS)]
+                has_video = has_video or any(isinstance(name, str) and name.lower().endswith(VIDEO_EXTENSIONS) for name in files)
+            if not has_video:
+                without_video.add(playlist.get("name"))
+        return without_video
 
     def take_player_snapshot(self, player_name: str) -> Dict[str, Any]:
         """

@@ -178,6 +178,10 @@ cz = {
             "Kontrola assetů přehrávačů: ověří, zda mají online přehrávače soubory, které mají mít podle své skupiny.",
             ["1. název přehrávače (jeden na řádek)"], ["<název přehrávače>"],
             ["Vstup je volitelný: prázdný vstup zkontroluje všechny online přehrávače."]),
+        "set_player_playback_check": action(
+            "Kontrola přehrávání: ověří, zda online přehrávače přehrávají video.",
+            ["1. název přehrávače (jeden na řádek)"], ["<název přehrávače>"],
+            ["Vstup je volitelný: prázdný vstup zkontroluje všechny online přehrávače."]),
         "set_deploy_selected_groups": action(
             "Deploy vybraných skupin: obsah se nasadí na všechny online přehrávače těchto skupin.",
             ["1. název skupiny (jeden na řádek)"], ["<název skupiny>"]),
@@ -314,6 +318,10 @@ en = {
             ["The player must be online; taking the screenshot can take a few seconds."]),
         "set_player_assets_check": action(
             "Check player assets: verifies that the online players have the files they should have according to their group.",
+            ["1. player name (one per line)"], ["<player name>"],
+            ["The input is optional: an empty input checks all the online players."]),
+        "set_player_playback_check": action(
+            "Check playback: verifies that the online players play a video.",
             ["1. player name (one per line)"], ["<player name>"],
             ["The input is optional: an empty input checks all the online players."]),
         "set_deploy_selected_groups": action(

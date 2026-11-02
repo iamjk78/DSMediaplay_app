@@ -476,6 +476,18 @@
           "<název přehrávače>"
         ]
       },
+      "set_player_playback_check": {
+        "summary": "Kontrola přehrávání: ověří, zda online přehrávače přehrávají video.",
+        "columns": [
+          "1. název přehrávače (jeden na řádek)"
+        ],
+        "notes": [
+          "Vstup je volitelný: prázdný vstup zkontroluje všechny online přehrávače."
+        ],
+        "example": [
+          "<název přehrávače>"
+        ]
+      },
       "set_deploy_selected_groups": {
         "summary": "Deploy vybraných skupin: obsah se nasadí na všechny online přehrávače těchto skupin.",
         "columns": [
@@ -955,6 +967,18 @@
       },
       "set_player_assets_check": {
         "summary": "Check player assets: verifies that the online players have the files they should have according to their group.",
+        "columns": [
+          "1. player name (one per line)"
+        ],
+        "notes": [
+          "The input is optional: an empty input checks all the online players."
+        ],
+        "example": [
+          "<player name>"
+        ]
+      },
+      "set_player_playback_check": {
+        "summary": "Check playback: verifies that the online players play a video.",
         "columns": [
           "1. player name (one per line)"
         ],

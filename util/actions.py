@@ -18,7 +18,7 @@ def action_needs_input(action: str) -> bool:
 
 
 # Actions that take input but also run without it (the input narrows them down)
-OPTIONAL_INPUT_ACTIONS = ("set_player_assets_check",)
+OPTIONAL_INPUT_ACTIONS = ("set_player_assets_check", "set_player_playback_check")
 
 
 def action_input_optional(action: str) -> bool:
@@ -110,7 +110,8 @@ def entity_actions(actions: dict) -> dict:
             actions["Players"]["create_label"]: "create_label",
             actions["Players"]["set_player_snapshot"]: "set_player_snapshot",
             actions["Players"]["show_player_snapshots"]: "show_player_snapshots",
-            actions["Players"]["set_player_assets_check"]: "set_player_assets_check"
+            actions["Players"]["set_player_assets_check"]: "set_player_assets_check",
+            actions["Players"]["set_player_playback_check"]: "set_player_playback_check"
         },
         "Locations": {
             actions["Locations"]["get_locations_plan"]: "get_locations_plan",
