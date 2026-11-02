@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 import requests.exceptions
-from util.player_audit import compare_audit
+from util.player_audit import compare_audit, detail_request, differences_in_detail, short_value
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
                                        PlayerCommandError, InsecureAddressError,
                                        WEEK_DAYS, snapshot_file_stem, snapshot_reason)
@@ -124,6 +124,7 @@ def parse_validity_hour(text: str, is_end: bool) -> Optional[int]:
 
 
 PLAYER_CHECK_PAUSE_SECONDS = 0.2  # between two players of the check of their files
+DIFFERENCES_SHOWN = 6  # places where a value differs between the server and a player, listed for each part that differs
 INTERRUPTED_LIST_LIMIT = 20  # names of what was not done, listed after an interrupted batch
 
 
@@ -1513,11 +1514,13 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
             results["unknown"].append(name)
             return
 
-        lines = self._difference_lines(compare_audit(expected, actual))
-        if lines:
-            results["different"][name] = " | ".join(line.strip() for line in lines)
-            for line in lines:
-                self._logger.error(line, extra={"progress": True})
+        result = compare_audit(expected, actual)
+        found = self._difference_lines(result, expected, self._read_details(server, player, result, actual))
+        if found:
+            results["different"][name] = " | ".join(headline.strip() for headline, _ in found)
+            for headline, details in found:
+                for line in (headline, *details):
+                    self._logger.error(line, extra={"progress": True})
         else:
             results["ok"] += 1
             self._write_log("assets_check_all_present")
@@ -1528,26 +1531,62 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
             what = ", ".join(self.lang.get_message(f"audit_undeployed_{part}") for part in expected["undeployed"])
             self._write_log_warning("assets_check_undeployed", group=expected["group"], what=what)
 
-    def _difference_lines(self, result: Dict[str, Any]) -> List[str]:
-        """What the player lacks or has otherwise than the server says, one line for each kind of difference."""
+    def _read_details(self, server: ServerApi, player: Dict[str, Any], result: Dict[str, Any],
+                      actual: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """The values behind the differences, from the player (one more command); None when they cannot be had."""
+        want = detail_request(result) if "deployed" in actual else None  # a player that told only its files has no values
+        if want is None:
+            return None
+        try:
+            return server.read_player_details(player["_id"], want)
+        except (PlayerCommandError, *self.COMMUNICATION_ERRORS):
+            return None
+
+    def _difference_lines(self, result: Dict[str, Any], expected: Dict[str, Any],
+                          details: Optional[Dict[str, Any]]) -> List[Tuple[str, List[str]]]:
+        """
+        What the player lacks or has otherwise than the server says: a line for each kind of difference, with the lines
+        that say where the value on the server and on the player are not the same (when the player could tell).
+        """
         get = self.lang.get_message
-        different, lines = result["different"], []
+        different, found = result["different"], []
+        where = differences_in_detail(result, expected, details) if details is not None else None
         if result["missing"]:
-            lines.append(get("assets_check_missing", count=len(result["missing"]), files=", ".join(result["missing"])))
+            found.append((get("assets_check_missing", count=len(result["missing"]), files=", ".join(result["missing"])), []))
         if result["wrong_size"]:
-            lines.append(get("assets_check_wrong_size", count=len(result["wrong_size"]), files=", ".join(
+            found.append((get("assets_check_wrong_size", count=len(result["wrong_size"]), files=", ".join(
                 f"{file} ({get('audit_size_server')} {size} B, {get('audit_size_player')} {have} B)"
-                for file, size, have in result["wrong_size"])))
+                for file, size, have in result["wrong_size"])), []))
         if different["deployed"]:
-            lines.append(get("assets_check_diff_deployed"))
+            found.append((get("assets_check_diff_deployed"), self._where_lines(where["deployed"] if where else [], "")))
         if different["validity"]:
-            lines.append(get("assets_check_diff_validity"))
+            found.append((get("assets_check_diff_validity"), self._where_lines(where["validity"] if where else [], "")))
         if different["settings"]:
-            lines.append(get("assets_check_diff_settings", count=len(different["settings"]),
-                             keys=", ".join(different["settings"])))
+            lines = []
+            for key in different["settings"]:
+                lines += self._where_lines(where["settings"].get(key, []) if where else [], key)
+            found.append((get("assets_check_diff_settings", count=len(different["settings"]),
+                              keys=", ".join(different["settings"])), lines))
         for playlist, parts in different["playlists"].items():
-            lines.append(get("assets_check_diff_playlist", playlist=playlist,
-                             parts=", ".join(get(f"audit_part_{part}") for part in parts)))
+            lines = []
+            for part in parts:
+                label = get(f"audit_part_{part}")
+                lines += self._where_lines(where["playlists"].get(playlist, {}).get(part, []) if where else [], label)
+            found.append((get("assets_check_diff_playlist", playlist=playlist,
+                              parts=", ".join(get(f"audit_part_{part}") for part in parts)), lines))
+        return found
+
+    def _where_lines(self, places: List[Tuple[str, Any, Any]], label: str) -> List[str]:
+        """The places where a value differs, one line each (the first few): where, and the value on the server and on the player."""
+        get = self.lang.get_message
+        def named(path: str) -> str:
+            return get(f"audit_where_{path[1:]}") if path.startswith("@") else path
+
+        lines = [get("assets_check_diff_detail", where=f"{label}: {named(path)}" if label and path else label or named(path) or "-",
+                     server=short_value(server), player=short_value(player))
+                 for path, server, player in places[:DIFFERENCES_SHOWN]]
+        if len(places) > DIFFERENCES_SHOWN:
+            lines.append(get("assets_check_diff_more", count=len(places) - DIFFERENCES_SHOWN))
         return lines
 
     def _write_progress_error(self, key_word: str, **kwargs):

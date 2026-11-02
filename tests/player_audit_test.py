@@ -140,6 +140,98 @@ class ScriptAndServerAgreeTest(unittest.TestCase):
         self.assertNotIn(":=", audit.script())  # the player has Python 3.7
 
 
+TRICKY = "Q\"u'o\\te ✓ \U0001F600 PY\t$(x) `y`"
+
+
+class DetailTest(unittest.TestCase):
+    @staticmethod
+    def read(want, folders):
+        done = subprocess.run([sys.executable, "-I", "-c", audit.detail_script(want, folders.media, folders.config)],
+                              capture_output=True, text=True, check=True)
+        return json.loads(done.stdout)
+
+    def test_what_differs_is_read_from_the_player_and_only_that(self):
+        folders = PlayerFolders(self)
+        changed = {**PLAYLIST, "assets": list(reversed(PLAYLIST["assets"])), "settings": {"ads": {"adCount": 9}}}
+        folders.write("__P.json", json.dumps(changed).encode())
+        folders.json("_settings.json", {"combineDefaultPlaylist": False, "kioskUi": {"enable": True}, "assetsValidity": []})
+        want = audit.detail_request(audit.compare_audit(expected(), folders.report()))
+
+        details = self.read(want, folders)
+
+        self.assertEqual(want["playlists"], {"P": ["settings", "order"]})
+        self.assertEqual(details["settings"], {"combineDefaultPlaylist": False})
+        self.assertEqual(details["validity"], [])
+        self.assertEqual(details["playlists"]["P"]["order"], ["á ř.jpg", "b.mp4"])
+        self.assertNotIn("rows", details["playlists"]["P"])
+        self.assertNotIn("deployed", details)
+
+    def test_the_places_of_a_difference_name_the_value_on_the_server_and_on_the_player(self):
+        folders = PlayerFolders(self)
+        folders.json("_settings.json", {"combineDefaultPlaylist": False, "kioskUi": {"enable": True},
+                                        "assetsValidity": [{"name": "á ř.jpg", "startdate": "2030"}]})
+        changed = {**PLAYLIST, "assets": [dict(PLAYLIST["assets"][0], duration=99), PLAYLIST["assets"][1]]}
+        folders.write("__P.json", json.dumps(changed).encode())
+        result = audit.compare_audit(expected(), folders.report())
+
+        places = audit.differences_in_detail(result, expected(), self.read(audit.detail_request(result), folders))
+
+        self.assertEqual(places["settings"], {"combineDefaultPlaylist": [("", True, False)]})
+        self.assertEqual(places["validity"], [("á ř.jpg.startdate", "2022-04-26T00:00:00.000Z", "2030")])
+        self.assertEqual(places["playlists"], {"P": {"rows": [("b.mp4.duration", 5, 99)]}})
+
+    def test_the_names_that_the_server_may_hold_cannot_break_out_of_the_command(self):
+        for name in (TRICKY, "PY", "x'''\n PY\nimport os", "\"; rm -rf / #", "\\", " "):
+            with self.subTest(name=name):
+                folders = PlayerFolders(self)
+                want = {"playlists": {name: ["layout"]}, "settings": [], "deployed": False, "validity": False}
+
+                done = subprocess.run([sys.executable, "-I", "-c", audit.detail_script(want, folders.media, folders.config)],
+                                      capture_output=True, text=True)
+
+                self.assertEqual(done.returncode, 0, done.stderr)
+                self.assertEqual(set(json.loads(done.stdout)["playlists"]), {name})
+                command = audit.detail_command(want)
+                self.assertTrue(command.startswith("python3 - <<'PY'\n") and command.endswith("\nPY\n"))
+                self.assertEqual([line for line in command.splitlines() if line == "PY"], ["PY"])  # only its end
+
+    def test_nothing_that_has_a_value_differing_asks_for_nothing(self):
+        result = audit.compare_audit(expected(), PlayerFolders(self).report())
+
+        self.assertIsNone(audit.detail_request(result))
+
+    def test_one_entry_more_on_one_side_is_named_and_does_not_make_the_others_differ(self):
+        server = [{"name": "TV_OFF", "settings": {}}, {"name": "A", "settings": {"x": 1}}, {"name": "B", "settings": {"x": 2}},
+                  {"name": "A", "settings": {"x": 3}}]
+        player = [{"name": "TV_OFF", "settings": {}}, {"name": "B", "settings": {"x": 2}}, {"name": "A", "settings": {"x": 4}}]
+
+        places = list(audit.walk_keyed(server, player, "name"))
+
+        self.assertEqual(places, [("@only_server", ["A"], audit.MISSING), ("A.settings.x", 1, 4)])
+
+    def test_the_same_entries_in_another_order_are_told_as_the_order_only(self):
+        places = list(audit.walk_keyed([{"name": "A"}, {"name": "B"}], [{"name": "B"}, {"name": "A"}], "name"))
+
+        self.assertEqual(places, [("@order", ["A", "B"], ["B", "A"])])
+
+    def test_a_key_that_holds_null_is_a_key_that_is_not_there(self):
+        self.assertEqual(list(audit.walk({"reboot": {"enable": True}}, {"reboot": {"enable": True, "time": None}})), [])
+        self.assertEqual(audit.digest({"a": 1, "c": {}}), audit.digest({"a": 1, "b": None, "c": {"d": None}}))
+        self.assertNotEqual(audit.digest({"a": 1}), audit.digest({"a": 1, "b": 0}))  # zero is a value
+
+    def test_where_two_values_differ(self):
+        places = list(audit.walk({"a": 1, "b": [1, 2, 3], "c": {"d": "x"}, "e": 1},
+                                 {"a": 1, "b": [1, 5], "c": {"d": "y"}, "f": 2}))
+
+        self.assertEqual(places, [("b[1]", 2, 5), ("b[2]", 3, audit.MISSING), ("c.d", "x", "y"),
+                                  ("e", 1, audit.MISSING), ("f", audit.MISSING, 2)])
+
+    def test_a_long_value_is_cut_and_what_one_side_lacks_is_said(self):
+        self.assertEqual(audit.short_value(audit.MISSING), "<není>")
+        self.assertEqual(audit.short_value("x" * 200)[-1], "…")
+        self.assertEqual(audit.short_value({"a": "č"}), '{"a": "č"}')
+
+
 class ExpectedTest(unittest.TestCase):
     def test_what_was_deployed_is_what_a_group_is_expected_to_have_and_what_changed_since_is_named(self):
         group = {**GROUP, "playlists": [{"name": "Other"}], "assets": ["x"]}
@@ -154,8 +246,16 @@ class ExpectedTest(unittest.TestCase):
 
         result = audit.expected_audit(group, {}, [], {})
 
-        self.assertEqual(result["deployed"], audit.digest([{"name": "P"}]))
+        self.assertEqual(result["deployed"], audit.digest([{"name": "P", "settings": {}}]))
         self.assertEqual(result["undeployed"], [])
+
+    def test_an_entry_without_settings_is_the_same_as_one_with_empty_settings_like_the_player_has_it(self):
+        group = {"name": "G", "deployedPlaylists": [{"name": "TV_OFF", "plType": "special"}]}
+        folders_report = {"deployed": audit.digest([{"name": "TV_OFF", "plType": "special", "settings": {}}])}
+
+        result = audit.compare_audit(audit.expected_audit(group, {}, [], {}), {"files": {}, **folders_report})
+
+        self.assertFalse(result["different"]["deployed"])
 
     def test_no_validity_is_the_same_as_an_empty_one(self):
         self.assertEqual(audit.expected_audit({"name": "G"}, {}, [], {})["validity"], audit.digest([]))

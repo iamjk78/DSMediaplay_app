@@ -9,7 +9,7 @@ import urllib3.exceptions
 from requests.adapters import HTTPAdapter
 import json
 from dataclasses import dataclass
-from util.player_audit import PLAYER_AUDIT_COMMAND, expected_audit, parse_size
+from util.player_audit import PLAYER_AUDIT_COMMAND, detail_command, expected_audit, parse_size
 
 LOGIN_TIMEOUT = 30  # seconds; without it a network black hole would freeze the window forever
 SNAPSHOT_TIMEOUT = 60  # seconds; the server asks the player for the screenshot and waits for it
@@ -2326,6 +2326,24 @@ class ServerApi:
         except (ValueError, IndexError):
             raise PlayerCommandError("failed")
         if not isinstance(answer, dict) or not isinstance(answer.get("files"), dict):
+            raise PlayerCommandError("failed")
+        return answer
+
+    def read_player_details(self, player_id: str, want: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        The values of the parts of the settings of the player that differ from the server (see
+        util.player_audit.detail_request), read by one fixed command that only reads.
+
+        Raises
+        ------
+        PlayerCommandError
+            The player did not answer in time ("no_answer") or could not run the command ("failed").
+        """
+        try:
+            answer = json.loads(self._player_command(player_id, detail_command(want)).strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            raise PlayerCommandError("failed")
+        if not isinstance(answer, dict):
             raise PlayerCommandError("failed")
         return answer
 

@@ -16,6 +16,10 @@ from util.actions import action_input_optional, action_kind, action_needs_input
 def expectation(files=("a.mp4", "__P.json"), **changes):
     """What the group sends, as ServerApi.get_group_expectation gives it, with the digests of what a good player has."""
     return {"group": "G", "files": list(files), "sizes": {"a.mp4": (100, 1)}, "deployed": "d1", "validity": "v1",
+            "values": {"deployed": [{"name": "P", "settings": {"domination": {"timeInterval": 5}}}],
+                       "validity": [{"name": "a.mp4", "enddate": "2027"}], "settings": {"kioskUi": {"enable": True}},
+                       "playlists": {"P": {"layout": "1", "settings": {"ads": {"adCount": 1}},
+                                           "assets": [{"filename": "a.mp4", "duration": 5}, {"filename": "b.mp4"}]}}},
             "settings": {"kioskUi": "s1"}, "playlists": {"P": {part: "p" for part in
                                                               ("layout", "settings", "templateName", "schedule", "videoWindow",
                                                                "zoneVideoWindow", "order", "rows")}},
@@ -41,6 +45,7 @@ class ProcessorCase(unittest.TestCase):
         self.server.is_player_online.return_value = True
         self.server.get_group_expectation.return_value = expectation()
         self.server.audit_player.return_value = on_player()
+        self.server.read_player_details.side_effect = PlayerCommandError("failed")  # the values are not read unless asked for
         self.processor, self.logger, patcher = make_processor(PlayerAssetsCheckProcessor, self.server, real_text=True)
         self.addCleanup(patcher.stop)
         sleeper = patch("processor.input_processing.sleep")
@@ -136,6 +141,75 @@ class RunTest(ProcessorCase):
         self.assertIn("  Omezení platnosti assetů se liší od serveru.", errors)
         self.assertIn("  Nastavení skupiny se liší (1): kioskUi", errors)
         self.assertIn("  Playlist P se liší od serveru: nastavení playlistu, pořadí nebo seznam assetů", errors)
+
+    def test_where_a_value_differs_the_value_on_the_server_and_on_the_player_are_listed(self):
+        self.server.audit_player.return_value = on_player(deployed="x", validity="x", settings={"kioskUi": "x"},
+                                                          playlists={"P": {**on_player()["playlists"]["P"], "order": "x",
+                                                                           "settings": "x"}})
+        self.server.read_player_details.side_effect = None
+        self.server.read_player_details.return_value = {
+            "deployed": [{"name": "P", "settings": {"domination": {"timeInterval": 10}}}],
+            "validity": [{"name": "a.mp4", "enddate": "2026"}], "settings": {"kioskUi": {"enable": False}},
+            "playlists": {"P": {"order": ["b.mp4", "a.mp4"], "settings": {"ads": {"adCount": 2}}}}}
+
+        self.run_all()
+
+        errors = self.lines("error")
+        for line in ("      P.settings.domination.timeInterval: server 5, přehrávač 10",
+                     "      a.mp4.enddate: server \"2027\", přehrávač \"2026\"",
+                     "      kioskUi: enable: server true, přehrávač false",
+                     "      nastavení playlistu: ads.adCount: server 1, přehrávač 2",
+                     "      pořadí nebo seznam assetů: pořadí: server [\"a.mp4\", \"b.mp4\"], přehrávač [\"b.mp4\", \"a.mp4\"]"):
+            self.assertIn(line, errors)
+        self.assertEqual(self.server.read_player_details.call_args.args[1]["playlists"],
+                         {"P": ["settings", "order"]})
+        self.assertTrue(all(c.kwargs["extra"]["progress"] for c in self.logger.error.call_args_list))
+
+    def test_the_summary_names_what_differs_without_the_values(self):
+        self.server.audit_player.return_value = on_player(deployed="x")
+        self.server.read_player_details.side_effect = None
+        self.server.read_player_details.return_value = {"deployed": []}
+
+        self.run_all()
+
+        summary = [line for line in self.lines("error") if line.startswith("A: ")]
+        self.assertEqual(len(summary), 1)
+        self.assertNotIn("server", summary[0].split("od serveru")[-1])
+
+    def test_a_playlist_that_only_the_server_has_in_the_group_is_named_as_such(self):
+        self.server.audit_player.return_value = on_player(deployed="x")
+        self.server.get_group_expectation.return_value = expectation(values={
+            **expectation()["values"], "deployed": [{"name": "TV_OFF"}, {"name": "A"}, {"name": "B"}]})
+        self.server.read_player_details.side_effect = None
+        self.server.read_player_details.return_value = {"deployed": [{"name": "TV_OFF"}, {"name": "B"}]}
+
+        self.run_all()
+
+        self.assertIn("      jen na serveru: server [\"A\"], přehrávač <není>", self.lines("error"))
+        self.assertEqual(len([line for line in self.lines("error") if line.startswith("      ")]), 2)  # no cascade
+
+    def test_a_player_that_cannot_tell_the_values_still_gets_the_line_of_what_differs(self):
+        self.server.audit_player.return_value = on_player(deployed="x")  # the values cannot be read (set in setUp)
+
+        self.run_all()
+
+        self.assertIn("  Seznam playlistů a jejich nastavení (platnost, domination, přeskočení podle rozvrhu…) se liší od "
+                      "serveru.", self.lines("error"))
+        self.server.read_player_details.assert_called()
+
+    def test_only_the_first_places_are_listed_and_the_rest_is_counted(self):
+        self.server.audit_player.return_value = on_player(deployed="x")
+        self.server.get_group_expectation.return_value = expectation(values={
+            **expectation()["values"], "deployed": [{"name": "P", "settings": {f"k{i}": i for i in range(10)}}]})
+        self.server.read_player_details.side_effect = None
+        self.server.read_player_details.return_value = {"deployed": [{"name": "P", "settings": {f"k{i}": -i for i in range(10)}}]}
+
+        self.run_all()
+
+        errors = self.lines("error")
+        self.assertEqual(len([line for line in errors if line.startswith("      P.")]), 12)  # 6 places, for two players
+        self.assertIn("      … a dalších 3", errors)  # k0 is 0 on both sides
+        self.assertIn("      P.settings.k1: server 1, přehrávač -1", errors)
 
     def test_a_player_that_cannot_run_the_script_is_checked_for_its_files_only_and_says_so(self):
         self.server.audit_player.side_effect = PlayerCommandError("failed")
