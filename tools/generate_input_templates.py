@@ -175,7 +175,7 @@ cz = {
             ["1. název přehrávače (jeden na řádek)"], ["<název přehrávače>"],
             ["Přehrávač musí být online, pořízení snímku může trvat několik sekund."]),
         "set_player_assets_check": action(
-            "Kontrola assetů přehrávačů: ověří, zda mají online přehrávače soubory, které mají mít podle své skupiny.",
+            "Kontrola assetů přehrávačů: ověří, zda mají online přehrávače soubory a nastavení, které mají mít podle své skupiny.",
             ["1. název přehrávače (jeden na řádek)"], ["<název přehrávače>"],
             ["Vstup je volitelný: prázdný vstup zkontroluje všechny online přehrávače."]),
         "set_player_playback_check": action(
@@ -317,7 +317,7 @@ en = {
             ["1. player name (one per line)"], ["<player name>"],
             ["The player must be online; taking the screenshot can take a few seconds."]),
         "set_player_assets_check": action(
-            "Check player assets: verifies that the online players have the files they should have according to their group.",
+            "Check player assets: verifies that the online players have the files and settings they should have according to their group.",
             ["1. player name (one per line)"], ["<player name>"],
             ["The input is optional: an empty input checks all the online players."]),
         "set_player_playback_check": action(

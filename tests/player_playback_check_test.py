@@ -40,51 +40,90 @@ class ProcessorCase(unittest.TestCase):
         return [c.args[0] for c in getattr(self.logger, level).call_args_list]
 
 
+LONG = [{"age": 3 * 3600, "process": "omxplayer.bin", "file": "a.mp4", "loop": False}]
+
+
+def looks(**answers):
+    """The answers of the players, one after another: {"id-A": [[], PLAYING]}; a player that is not named always plays, the last answer of one that is named is its answer from then on."""
+    def read(player_id):
+        if player_id not in answers:
+            return PLAYING
+        return answers[player_id].pop(0) if len(answers[player_id]) > 1 else answers[player_id][0]  # the last one stays
+    return read
+
+
 class RunTest(ProcessorCase):
-    def test_players_that_play_are_listed_with_their_file_and_the_summary_is_all_fine(self):
+    def sleeps(self):
+        return [c.args[0] for c in self.sleep.call_args_list]
+
+    def test_a_player_that_plays_at_the_first_query_is_asked_once_and_its_result_is_playing(self):
         self.run_all()
 
         info = self.lines("info")
         self.assertIn("Přehrávač A:", info)
         self.assertEqual(info.count("  Přehrává: a.mp4 (běží 7 s)"), 2)
+        self.assertEqual(info.count("  Výsledek: přehrává."), 2)
         self.assertIn("Souhrn: zkontrolováno 2, přehrává 2, nepřehrává 0, nezvykle dlouhé video 0, bez videa v playlistu 0, "
                       "nezjištěno 0, offline 1.", info)
         self.assertIn("Všechny zkontrolované online přehrávače s videem přehrávají.", info)
         self.assertEqual(self.lines("error"), [])
+        self.assertEqual(self.server.read_player_playback.call_count, 2)  # one query for each player, no more
+        self.assertEqual(self.sleeps(), [0.2])
 
-    def test_a_player_without_a_video_player_is_asked_once_more_and_then_named_in_red_in_the_summary(self):
-        self.server.read_player_playback.side_effect = lambda player_id: [] if player_id == "id-A" else PLAYING
+    def test_a_player_that_does_not_play_at_the_first_query_and_plays_at_the_second_works(self):
+        self.server.read_player_playback.side_effect = looks(**{"id-A": [[], PLAYING]})
+
+        self.run_all()
+
+        info = self.lines("info")
+        self.assertIn("  Dotaz 1: neběží přehrávač videa.", info)
+        self.assertIn("  Výsledek: přehrává (první dotaz přehrávač videa nezachytil, další ano).", info)
+        self.assertEqual(self.lines("error"), [])  # what the first query did not see is no error
+        self.assertIn("Všechny zkontrolované online přehrávače s videem přehrávají.", info)
+        self.assertEqual(self.sleeps(), [1.5, 0.2])  # A is asked first, its second query is 1.5 s later
+        self.assertEqual(self.server.read_player_playback.call_count, 3)
+
+    def test_the_third_query_is_the_last_and_one_that_sees_the_playback_ends_it(self):
+        self.server.read_player_playback.side_effect = looks(**{"id-A": [[], [], PLAYING]})
+
+        self.run_all()
+
+        self.assertEqual(self.sleeps(), [1.5, 1.5, 0.2])
+        self.assertIn("  Dotaz 2: neběží přehrávač videa.", self.lines("info"))
+        self.assertEqual(self.lines("error"), [])
+
+    def test_a_player_that_none_of_the_three_queries_sees_playing_is_red_in_the_log_and_the_summary(self):
+        self.server.read_player_playback.side_effect = looks(**{"id-A": [[]]})
 
         self.run_all()
 
         errors = self.lines("error")
-        self.assertEqual(errors.count("  NEPŘEHRÁVÁ: neběží žádný přehrávač videa (playlist P)"), 2)  # asked twice
-        self.assertIn("Opakuji kontrolu u podezřelých přehrávačů (1) za 10 s.", self.lines("info"))
-        self.assertIn("Opakovaná kontrola A:", self.lines("info"))
+        self.assertEqual([c.args[0] for c in self.server.read_player_playback.call_args_list].count("id-A"), 3)
+        self.assertIn("  Dotaz 1: neběží přehrávač videa.", self.lines("info"))
+        self.assertEqual(errors.count("  NEPŘEHRÁVÁ: neběží žádný přehrávač videa (playlist P)"), 1)  # the last query decides
+        self.assertIn("  Výsledek: NEPŘEHRÁVÁ (přehrávač videa nebyl vidět v žádném ze 3 dotazů).", errors)
         self.assertIn("Nepřehrávají (1):", errors)
         self.assertIn("A: playlist P", errors)
         self.assertNotIn("Všechny zkontrolované online přehrávače s videem přehrávají.", self.lines("info"))
-        self.assertEqual([c.args[0] for c in self.server.read_player_playback.call_args_list].count("id-A"), 2)
 
-    def test_a_player_that_plays_at_the_second_look_is_fine(self):
-        answers = {"id-A": [[], PLAYING]}
-        self.server.read_player_playback.side_effect = lambda player_id: (answers[player_id].pop(0)
-                                                                          if player_id in answers else PLAYING)
-
-        self.run_all()
-
-        self.assertIn("Všechny zkontrolované online přehrávače s videem přehrávají.", self.lines("info"))
-        self.assertIn("Souhrn: zkontrolováno 2, přehrává 2, nepřehrává 0, nezvykle dlouhé video 0, bez videa v playlistu 0, "
-                      "nezjištěno 0, offline 1.", self.lines("info"))
-
-    def test_a_video_that_runs_for_half_an_hour_is_reported_as_unusual(self):
-        self.server.read_player_playback.return_value = [{"age": 3 * 3600, "process": "omxplayer.bin", "file": "a.mp4", "loop": False}]
+    def test_a_video_that_runs_for_hours_in_all_three_queries_is_reported_as_unusual(self):
+        self.server.read_player_playback.return_value = LONG
 
         self.run_all()
 
         errors = self.lines("error")
         self.assertIn("  Video běží nezvykle dlouho: a.mp4 (3 h)", errors)
+        self.assertIn("  Výsledek: VIDEO BĚŽÍ NEZVYKLE DLOUHO (ve všech 3 dotazech).", errors)
         self.assertIn("Video běží nezvykle dlouho (2):", errors)
+        self.assertEqual(self.server.read_player_playback.call_count, 6)
+
+    def test_an_unusually_long_video_that_is_gone_at_the_second_query_is_no_error(self):
+        self.server.read_player_playback.side_effect = looks(**{"id-A": [LONG, PLAYING]})
+
+        self.run_all()
+
+        self.assertIn("  Dotaz 1: video běží nezvykle dlouho: a.mp4 (3 h).", self.lines("info"))
+        self.assertEqual(self.lines("error"), [])
 
     def test_a_video_played_in_a_loop_runs_for_days_and_that_is_fine(self):
         self.server.read_player_playback.return_value = [{"age": 12 * 86400, "process": "omxplayer.bin", "file": "a.mp4",
@@ -94,6 +133,20 @@ class RunTest(ProcessorCase):
 
         self.assertIn("  Přehrává ve smyčce: a.mp4 (běží 12 d)", self.lines("info"))
         self.assertEqual(self.lines("error"), [])
+        self.assertEqual(self.server.read_player_playback.call_count, 2)
+
+    def test_every_player_ends_with_a_result_whatever_became_of_it(self):
+        self.server.get_player_objects.return_value = [player("A"), player("B"), player("C"), player("D", playlist="Q")]
+        self.server.get_playlists_without_video.return_value = {"Q"}
+        self.server.is_player_online.side_effect = lambda player_id: player_id != "id-C"
+        self.server.read_player_playback.side_effect = lambda player_id: (_ for _ in ()).throw(PlayerCommandError("no_answer")) \
+            if player_id == "id-B" else PLAYING
+
+        self.run_all()
+
+        self.assertEqual([line for line in self.lines("info") if line.startswith("  Výsledek")],
+                         ["  Výsledek: přehrává.", "  Výsledek: nezjištěno.", "  Výsledek: offline, přeskočeno.",
+                          "  Výsledek: nelze posoudit (playlist bez videa)."])
 
     def test_a_playlist_without_a_video_is_not_asked(self):
         self.server.get_playlists_without_video.return_value = {"P"}
@@ -128,12 +181,12 @@ class RunTest(ProcessorCase):
 
         self.assertTrue(all("secret-token" not in line for line in self.lines("error")))
 
-    def test_there_is_a_pause_between_the_players_and_before_the_second_look(self):
+    def test_there_is_a_pause_between_the_players_and_between_the_queries_of_one(self):
         self.server.read_player_playback.return_value = []
 
         self.run_all()
 
-        self.assertEqual([c.args[0] for c in self.sleep.call_args_list], [0.2, 10, 0.2])
+        self.assertEqual(self.sleeps(), [1.5, 1.5, 0.2, 1.5, 1.5])
 
     def test_the_red_lines_are_not_collected_as_problems_once_more(self):
         self.server.read_player_playback.return_value = []
@@ -149,6 +202,7 @@ class RunTest(ProcessorCase):
 
         self.assertIn("(2)", question.text)
         self.assertIn("Nic se nemění", question.text)
+        self.assertIn("1,5 s", question.text)
 
     def test_the_processor_is_registered(self):
         processor = ProcessorFactory.create_processor("player_playback_check", MagicMock(), "https://x", "u", "p", MagicMock())

@@ -6,10 +6,28 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from api_testing.request_calls import PLAYER_COMMAND_TIMEOUT, PLAYER_FILES_COMMAND, PlayerCommandError, ServerApi
+from util.player_audit import PLAYER_AUDIT_COMMAND
 from destructive_actions_test import make_processor
 from main_buttons_test import MainWindowCase
 from processor.input_processing import FormatException, PlayerAssetsCheckProcessor, ProcessorFactory
 from util.actions import action_input_optional, action_kind, action_needs_input
+
+
+def expectation(files=("a.mp4", "__P.json"), **changes):
+    """What the group sends, as ServerApi.get_group_expectation gives it, with the digests of what a good player has."""
+    return {"group": "G", "files": list(files), "sizes": {"a.mp4": (100, 1)}, "deployed": "d1", "validity": "v1",
+            "settings": {"kioskUi": "s1"}, "playlists": {"P": {part: "p" for part in
+                                                              ("layout", "settings", "templateName", "schedule", "videoWindow",
+                                                               "zoneVideoWindow", "order", "rows")}},
+            "undeployed": [], **changes}
+
+
+def on_player(**changes):
+    """What a player that has all of it reports (ServerApi.audit_player)."""
+    return {"files": {"a.mp4": 100, "__P.json": 500, "other.mp4": 5}, "deployed": "d1", "validity": "v1",
+            "settings": {"kioskUi": "s1"}, "playlists": {"P": {part: "p" for part in
+                                                              ("layout", "settings", "templateName", "schedule", "videoWindow",
+                                                               "zoneVideoWindow", "order", "rows")}}, **changes}
 
 
 def player(name, online=True, group="g1"):
@@ -21,9 +39,8 @@ class ProcessorCase(unittest.TestCase):
         self.server = MagicMock()
         self.server.get_player_objects.return_value = [player("B"), player("A"), player("C", online=False)]
         self.server.is_player_online.return_value = True
-        self.server.get_group_files.return_value = ["a.mp4", "__P.json"]
-        self.server.get_files_without_content.return_value = set()
-        self.server.list_player_files.return_value = ["a.mp4", "__P.json", "other.mp4"]
+        self.server.get_group_expectation.return_value = expectation()
+        self.server.audit_player.return_value = on_player()
         self.processor, self.logger, patcher = make_processor(PlayerAssetsCheckProcessor, self.server, real_text=True)
         self.addCleanup(patcher.stop)
         sleeper = patch("processor.input_processing.sleep")
@@ -55,7 +72,7 @@ class LoadTest(ProcessorCase):
         with self.assertRaises(FormatException):
             self.processor.load("A\nNobody")
 
-        self.server.list_player_files.assert_not_called()
+        self.server.audit_player.assert_not_called()
 
     def test_it_asks_before_it_starts_and_says_it_changes_nothing(self):
         self.processor.load("")
@@ -82,24 +99,66 @@ class RunTest(ProcessorCase):
         info = self.lines("info")
         self.assertIn("Přehrávač A:", info)
         self.assertIn("  Má mít (2): a.mp4, __P.json", info)
-        self.assertEqual(info.count("  Má všechny soubory."), 2)
-        self.assertIn("Souhrn: zkontrolováno 2, vše v pořádku 2, chybí soubory 0, nezjištěno 0, offline 1.", info)
+        self.assertEqual(info.count("  Má všechny soubory a nastavení odpovídá serveru."), 2)
+        self.assertIn("Souhrn: zkontrolováno 2, vše v pořádku 2, odlišnosti od serveru 0, nezjištěno 0, offline 1.", info)
         self.assertIn("Všechny zkontrolované online přehrávače mají soubory, které mají mít.", info)
         self.assertEqual(self.lines("error"), [])
 
     def test_the_missing_files_are_red_and_the_summary_lists_them_for_each_player(self):
-        self.server.list_player_files.side_effect = [["a.mp4", "__P.json"], ["x.mp4"]]
+        self.server.audit_player.side_effect = [on_player(files={"x.mp4": 1}), on_player()]
 
         self.run_all()
 
         errors = self.lines("error")
         self.assertIn("  CHYBÍ (2): a.mp4, __P.json", errors)
-        self.assertIn("Přehrávače, kterým chybí soubory (1):", errors)
-        self.assertIn("B: a.mp4, __P.json", errors)
+        self.assertIn("Přehrávače s odlišnostmi od serveru (1):", errors)
+        self.assertIn("A: CHYBÍ (2): a.mp4, __P.json", errors)  # the players are checked by name
         self.assertNotIn("Všechny zkontrolované online přehrávače mají soubory, které mají mít.", self.lines("info"))
 
+    def test_a_file_of_another_size_is_named_with_both_sizes(self):
+        self.server.audit_player.return_value = on_player(files={"a.mp4": 40, "__P.json": 500})
+
+        self.run_all()
+
+        self.assertIn("  JINÁ VELIKOST (1): a.mp4 (server 100 B, přehrávač 40 B)", self.lines("error"))
+
+    def test_the_settings_that_differ_are_named(self):
+        self.server.audit_player.return_value = on_player(deployed="other", validity="other",
+                                                          settings={"kioskUi": "x"},
+                                                          playlists={"P": {**on_player()["playlists"]["P"], "order": "x",
+                                                                           "rows": "x", "settings": "x"}})
+
+        self.run_all()
+
+        errors = self.lines("error")
+        self.assertIn("  Seznam playlistů a jejich nastavení (platnost, domination, přeskočení podle rozvrhu…) se liší od "
+                      "serveru.", errors)
+        self.assertIn("  Omezení platnosti assetů se liší od serveru.", errors)
+        self.assertIn("  Nastavení skupiny se liší (1): kioskUi", errors)
+        self.assertIn("  Playlist P se liší od serveru: nastavení playlistu, pořadí nebo seznam assetů", errors)
+
+    def test_a_player_that_cannot_run_the_script_is_checked_for_its_files_only_and_says_so(self):
+        self.server.audit_player.side_effect = PlayerCommandError("failed")
+        self.server.list_player_files.return_value = ["a.mp4", "__P.json"]
+
+        self.run_all()
+
+        self.assertIn("  A: nastavení nelze ověřit (přehrávač neumí spustit kontrolní skript), zkontrolovány jsou jen soubory.",
+                      self.lines("warning"))
+        self.assertEqual(self.lines("error"), [])
+        self.server.list_player_files.assert_called()
+
+    def test_changes_of_a_group_that_were_not_deployed_are_said_once_for_the_group(self):
+        self.server.get_group_expectation.return_value = expectation(undeployed=["playlists", "assets"])
+
+        self.run_all()
+
+        warnings = self.lines("warning")
+        self.assertEqual(warnings.count("  Skupina G má změny, které ještě nebyly nasazeny (seznam playlistů, seznam souborů). "
+                                        "Rozdíly níže mohou být jen tím, je potřeba Deploy."), 1)
+
     def test_the_red_lines_are_not_collected_as_problems_once_more_because_the_summary_names_the_players(self):
-        self.server.list_player_files.return_value = []
+        self.server.audit_player.return_value = on_player(files={})
 
         self.run_all()
 
@@ -107,51 +166,42 @@ class RunTest(ProcessorCase):
         self.assertEqual(len(errors), 2 + 3)  # a line for each of the two players, then the heading and a line for each
         self.assertTrue(all(c.kwargs["extra"]["progress"] for c in errors))
 
-    def test_the_file_of_a_playlist_without_content_is_not_expected_on_the_players(self):
-        self.server.get_group_files.return_value = ["a.mp4", "__P.json", "__TV_OFF.json"]
-        self.server.get_files_without_content.return_value = {"__TV_OFF.json"}
-
-        self.run_all()
-
-        self.assertIn("  Má mít (2): a.mp4, __P.json", self.lines("info"))
-        self.assertEqual(self.lines("error"), [])
-
     def test_a_player_that_went_offline_is_not_asked_and_is_not_waited_for(self):
         self.server.is_player_online.side_effect = [True, False]
 
         self.run_all()
 
-        self.assertEqual(self.server.list_player_files.call_count, 1)
+        self.assertEqual(self.server.audit_player.call_count, 1)
         self.assertIn("  B: přehrávač je mezitím offline, přeskočeno.", self.lines("warning"))
         self.assertIn("offline 2.", self.lines("info")[-2])
 
     def test_a_player_that_does_not_answer_is_skipped_and_the_next_one_is_checked(self):
-        self.server.list_player_files.side_effect = [PlayerCommandError("no_answer"), ["a.mp4", "__P.json"]]
+        self.server.audit_player.side_effect = [PlayerCommandError("no_answer"), on_player()]
 
         self.run_all()
 
         self.assertIn("  Přehrávač neodpověděl do 30 sekund, přeskočeno.", self.lines("error"))
         self.assertIn("Nezjištěno (1): A", self.lines("error"))
-        self.assertEqual(self.server.list_player_files.call_count, 2)
+        self.assertEqual(self.server.audit_player.call_count, 2)
         self.assertNotIn("Všechny zkontrolované online přehrávače mají soubory, které mají mít.", self.lines("info"))
 
     def test_a_failure_of_the_connection_skips_the_player_without_the_text_of_the_error(self):
-        self.server.list_player_files.side_effect = requests.exceptions.ConnectionError("secret-token")
+        self.server.audit_player.side_effect = requests.exceptions.ConnectionError("secret-token")
 
         self.run_all()
 
         self.assertTrue(all("secret-token" not in line for line in self.lines("error")))
-        self.assertEqual(self.server.list_player_files.call_count, 2)
+        self.assertEqual(self.server.audit_player.call_count, 2)
 
     def test_there_is_a_pause_between_the_players_but_not_before_the_first(self):
         self.run_all()
 
         self.sleep.assert_called_once_with(0.2)
 
-    def test_the_files_of_a_group_are_read_once(self):
+    def test_what_a_group_should_have_is_read_once(self):
         self.run_all()
 
-        self.server.get_group_files.assert_called_once_with("g1")
+        self.server.get_group_expectation.assert_called_once_with("g1")
 
     def test_a_player_without_a_group_is_skipped(self):
         self.server.get_player_objects.return_value = [player("A", group=None)]
@@ -159,7 +209,15 @@ class RunTest(ProcessorCase):
         self.run_all()
 
         self.assertIn("  A: přehrávač nemá skupinu, přeskočeno.", self.lines("warning"))
-        self.server.list_player_files.assert_not_called()
+        self.server.audit_player.assert_not_called()
+
+    def test_a_group_without_files_is_said_so_and_not_judged(self):
+        self.server.get_group_expectation.return_value = expectation(files=())
+
+        self.run_all()
+
+        self.assertIn("  A: skupina přehrávače nemá žádné soubory ke stažení.", self.lines("warning"))
+        self.server.audit_player.assert_not_called()
 
     def test_every_step_is_given_back_to_the_window_so_that_stop_can_work(self):
         self.assertEqual(len(self.run_all()), 2)
@@ -203,19 +261,76 @@ class ServerApiTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.reason, "failed")
 
-    def test_the_files_of_a_group_are_those_it_sends_and_those_its_playlists_need(self):
-        api = self.api({"data": {"_id": "g", "logo": "logo.png", "assets": ["a.mp4", "old.mp4"],
-                                 "playlists": [{"name": "P"}]}})
-        api._playlist_objects = MagicMock(return_value=[{"name": "P", "layout": "1", "assets": [{"filename": "a.mp4"},
-                                                                                              {"filename": "b.mp4"}]}])
+    def expectation(self, group, playlists, sizes=None):
+        api = self.api({"data": group})
+        api._playlist_objects = MagicMock(return_value=playlists)
+        api._asset_sizes = MagicMock(return_value=sizes or {})
+        return api.get_group_expectation("g")
 
-        self.assertEqual(api.get_group_files("g"), ["a.mp4", "old.mp4", "b.mp4", "__P.json", "logo.png"])
+    def test_the_files_of_a_group_are_those_it_sends_and_those_its_playlists_need(self):
+        group = {"_id": "g", "name": "G", "logo": "logo.png", "assets": ["a.mp4", "old.mp4"], "playlists": [{"name": "P"}]}
+        playlists = [{"name": "P", "layout": "1", "assets": [{"filename": "a.mp4"}, {"filename": "b.mp4"}]}]
+
+        result = self.expectation(group, playlists, {"a.mp4": (100, 1), "zzz": (1, 1)})
+
+        self.assertEqual(result["files"], ["a.mp4", "old.mp4", "b.mp4", "__P.json", "logo.png"])
+        self.assertEqual(result["sizes"], {"a.mp4": (100, 1)})  # of the sizes only those of its own files
+        self.assertEqual(result["group"], "G")
 
     def test_a_group_without_the_list_of_files_still_needs_the_files_of_its_playlists(self):
-        api = self.api({"data": {"_id": "g", "assets": [], "playlists": [{"name": "P"}]}})
-        api._playlist_objects = MagicMock(return_value=[{"name": "P", "layout": "1", "assets": [{"filename": "a.mp4"}]}])
+        playlists = [{"name": "P", "layout": "1", "assets": [{"filename": "a.mp4"}]}]
 
-        self.assertEqual(api.get_group_files("g"), ["a.mp4", "__P.json"])
+        result = self.expectation({"_id": "g", "assets": [], "playlists": [{"name": "P"}]}, playlists)
+
+        self.assertEqual(result["files"], ["a.mp4", "__P.json"])
+
+    def test_what_was_deployed_is_expected_not_what_is_set_since_and_the_change_is_named(self):
+        playlists = [{"name": "Old", "layout": "1", "assets": [{"filename": "o.mp4"}]},
+                     {"name": "New", "layout": "1", "assets": [{"filename": "n.mp4"}]}]
+        group = {"_id": "g", "playlists": [{"name": "New"}], "deployedPlaylists": [{"name": "Old"}],
+                 "assets": ["n.mp4", "__New.json"], "deployedAssets": ["o.mp4", "__Old.json"]}
+
+        result = self.expectation(group, playlists)
+
+        self.assertEqual(result["files"], ["o.mp4", "__Old.json"])
+        self.assertEqual(result["undeployed"], ["playlists", "assets"])
+
+    def test_a_group_that_was_deployed_has_nothing_undeployed(self):
+        group = {"_id": "g", "playlists": [{"name": "P"}], "deployedPlaylists": [{"name": "P"}], "assets": ["a"],
+                 "deployedAssets": ["a"]}
+
+        self.assertEqual(self.expectation(group, [])["undeployed"], [])
+
+    def test_the_files_of_playlists_without_rows_are_not_expected(self):
+        group = {"_id": "g", "playlists": [{"name": "TV_OFF"}], "assets": ["__TV_OFF.json"]}
+
+        result = self.expectation(group, [{"name": "TV_OFF", "assets": []}])
+
+        self.assertEqual(result["files"], [])
+
+    def test_the_sizes_of_the_account_are_read_once_and_parsed(self):
+        api = self.api({"data": {"dbdata": [{"name": "a.mp4", "size": "7401KB"}, {"name": "b.jpg", "size": "351839B"},
+                                            {"name": "c", "size": "?"}, {"size": "1B"}]}})
+
+        self.assertEqual(api._asset_sizes(), {"a.mp4": (7401000, 1000), "b.jpg": (351839, 0)})
+        api._asset_sizes()
+        api._make_request.assert_called_once()
+
+    def test_what_the_player_has_is_read_by_one_fixed_command_that_only_reads(self):
+        api = self.api({"data": {"err": None, "stdout": '{"files": {"a.mp4": 5}, "deployed": "d"}\n', "stderr": ""}})
+
+        self.assertEqual(api.audit_player("pid"), {"files": {"a.mp4": 5}, "deployed": "d"})
+        sent = api._make_request.call_args.kwargs["json"]["cmd"]
+        self.assertEqual(sent, PLAYER_AUDIT_COMMAND)
+        for forbidden in ("rm ", "kill", "chmod", "mv ", ">", "open(path, \"w", "subprocess", "os.system", "write"):
+            self.assertNotIn(forbidden, sent)
+
+    def test_an_answer_that_is_not_what_the_script_prints_is_a_failure(self):
+        for stdout in ("", "garbage", "[1]", '{"no": "files"}'):
+            with self.subTest(stdout=stdout):
+                with self.assertRaises(PlayerCommandError) as raised:
+                    self.api({"data": {"err": None, "stdout": stdout, "stderr": ""}}).audit_player("pid")
+                self.assertEqual(raised.exception.reason, "failed")
 
     def test_only_a_playlist_without_rows_has_a_file_that_no_player_gets(self):
         api = self.api()

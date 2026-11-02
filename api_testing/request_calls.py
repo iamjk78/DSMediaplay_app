@@ -9,6 +9,7 @@ import urllib3.exceptions
 from requests.adapters import HTTPAdapter
 import json
 from dataclasses import dataclass
+from util.player_audit import PLAYER_AUDIT_COMMAND, expected_audit, parse_size
 
 LOGIN_TIMEOUT = 30  # seconds; without it a network black hole would freeze the window forever
 SNAPSHOT_TIMEOUT = 60  # seconds; the server asks the player for the screenshot and waits for it
@@ -2259,15 +2260,30 @@ class ServerApi:
         return {f"__{playlist.get('name')}.json" for playlist in self._playlist_objects()
                 if not (playlist.get("assets") or [])}
 
-    def get_group_files(self, group_id: str) -> List[str]:
+    def _asset_sizes(self) -> Dict[str, Tuple[int, int]]:
+        """The sizes of the files of the account as the server writes them (rounded), read once for the whole session."""
+        if getattr(self, "_asset_size_cache", None) is None:
+            files = self._make_request("get", "/files").get("data", {}).get("dbdata") or []
+            self._asset_size_cache = {item["name"]: parsed for item in files
+                                      if item.get("name") and (parsed := parse_size(item.get("size")))}
+        return self._asset_size_cache
+
+    def get_group_expectation(self, group_id: str) -> Dict[str, Any]:
         """
-        The files the players of the group are to have: the files the group sends, and those its playlists need (a
-        group written without them has an incomplete list, and its players never got the files that are missing).
+        What the players of the group are to have after the last deploy (see util.player_audit.expected_audit): the files
+        the group sent and those its playlists need (a group written without them has an incomplete list, and its
+        players never got the files that are missing), the playlists and the settings, and what was changed since.
         """
         group = self.get_group_details(group_id)
-        stored = list(group.get("assets") or [])
-        needed = prepare_group_playlists(group.get("playlists") or [], self._playlist_objects(), group.get("logo"))[1]
-        return stored + [name for name in needed if name not in stored]
+        deployed = group.get("deployedPlaylists")
+        entries = group.get("playlists") or [] if deployed is None else deployed
+        stored_assets = group.get("assets") if group.get("deployedAssets") is None else group["deployedAssets"]
+        stored = list(stored_assets or [])
+        playlists = self._playlist_objects()
+        needed = prepare_group_playlists(entries, playlists, group.get("logo"))[1]
+        without_content = self.get_files_without_content()
+        files = [name for name in stored + [name for name in needed if name not in stored] if name not in without_content]
+        return expected_audit(group, {playlist.get("name"): playlist for playlist in playlists}, files, self._asset_sizes())
 
     def _player_command(self, player_id: str, command: str) -> str:
         """
@@ -2294,6 +2310,24 @@ class ServerApi:
     def list_player_files(self, player_id: str) -> List[str]:
         """The names of the files in the folder of the media on the player, read by a fixed command that only lists them."""
         return [line for line in self._player_command(player_id, PLAYER_FILES_COMMAND).splitlines() if line]
+
+    def audit_player(self, player_id: str) -> Dict[str, Any]:
+        """
+        What the player has (see util.player_audit): its files with their sizes and the digests of its playlists and
+        settings, read by one fixed command that only reads.
+
+        Raises
+        ------
+        PlayerCommandError
+            The player did not answer in time ("no_answer") or could not run the command, e.g. has no Python ("failed").
+        """
+        try:
+            answer = json.loads(self._player_command(player_id, PLAYER_AUDIT_COMMAND).strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            raise PlayerCommandError("failed")
+        if not isinstance(answer, dict) or not isinstance(answer.get("files"), dict):
+            raise PlayerCommandError("failed")
+        return answer
 
     def read_player_playback(self, player_id: str) -> List[Dict[str, Any]]:
         """The video players that run on the player now (age in seconds, name, file); none when no video is played."""

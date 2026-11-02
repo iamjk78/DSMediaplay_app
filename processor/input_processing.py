@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 import requests.exceptions
+from util.player_audit import compare_audit
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
                                        PlayerCommandError, InsecureAddressError,
                                        WEEK_DAYS, snapshot_file_stem, snapshot_reason)
@@ -1398,11 +1399,12 @@ class PlayerSnapshotProcessor(EntityValidationProcessor):
 
 class PlayerAssetsCheckProcessor(EntityValidationProcessor):
     """
-    Checks that the online players have the files their groups send them: reads the files of the group of each player
-    from the server and asks the player (one fixed command that only lists the names in the folder of the media).
-    The input is the names of the players to check, none = all the online ones. A player is asked one after another,
-    and whether it is still online is read again right before it: one that went offline in the meantime is skipped
-    without waiting for it.
+    Checks that the online players have what their groups sent them in the last deploy: the files (with their sizes),
+    the playlists (their order and settings, the order and settings of their assets) and the validity of the assets, and
+    the settings of the group. What the player has is read by one fixed command that only reads (see util.player_audit),
+    what it should have is worked out from the server. The input is the names of the players to check, none = all the
+    online ones. A player is asked one after another, and whether it is still online is read again right before it: one
+    that went offline in the meantime is skipped without waiting for it.
     """
     COMMUNICATION_ERRORS = (requests.exceptions.RequestException, ResponseError, NameResolutionError)
 
@@ -1455,24 +1457,24 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
         if not self.data:
             self._write_log("assets_check_nothing")
             return
-        results = {"ok": 0, "missing": {}, "unknown": []}
+        results = {"ok": 0, "different": {}, "unknown": []}
         try:
             with self._try_server_login() as server:
                 if not server:
                     self._write_no_server_returned()
                     return
-                group_files = {}  # the files of a group are read once for all its players
+                expectations = {}  # what the players of a group are to have is read once for all of them
                 for index, player in enumerate(self.data):
                     if index:
                         sleep(self._pause)
-                    self._check_player(server, player, group_files, results)
+                    self._check_player(server, player, expectations, results)
                     yield
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
         self._write_assets_check_summary(results)
 
-    def _check_player(self, server: ServerApi, player: Dict[str, Any], group_files: Dict[str, List[str]],
+    def _check_player(self, server: ServerApi, player: Dict[str, Any], expectations: Dict[str, Dict[str, Any]],
                       results: Dict[str, Any]):
         name = player.get("name", "")
         self._write_log("assets_check_player", player=name)
@@ -1485,16 +1487,23 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
             if not group_id:
                 self._write_log_warning("assets_check_no_group", player=name)
                 return
-            if group_id not in group_files:
-                without_content = server.get_files_without_content()
-                group_files[group_id] = [file for file in server.get_group_files(group_id) if file not in without_content]
-            expected = group_files[group_id]
-            if not expected:
+            if group_id not in expectations:
+                expectations[group_id] = server.get_group_expectation(group_id)
+                self._write_undeployed(expectations[group_id])
+            expected = expectations[group_id]
+            if not expected["files"]:
                 self._write_log_warning("assets_check_group_empty", player=name)
                 results["ok"] += 1
                 return
-            self._write_log("assets_check_should_have", count=len(expected), files=", ".join(expected))
-            present = set(server.list_player_files(player["_id"]))
+            self._write_log("assets_check_should_have", count=len(expected["files"]), files=", ".join(expected["files"]))
+            try:
+                actual = server.audit_player(player["_id"])
+            except PlayerCommandError as e:
+                if e.reason != "failed":
+                    raise
+                # The player cannot run the script (it has no Python): its files can still be listed
+                self._write_log_warning("assets_check_files_only", player=name)
+                actual = {"files": {file: None for file in server.list_player_files(player["_id"])}}
         except PlayerCommandError as e:
             self._write_progress_error(f"assets_check_{e.reason}")
             results["unknown"].append(name)
@@ -1504,13 +1513,42 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
             results["unknown"].append(name)
             return
 
-        missing = [file for file in expected if file not in present]
-        if missing:
-            results["missing"][name] = missing
-            self._write_progress_error("assets_check_missing", count=len(missing), files=", ".join(missing))
+        lines = self._difference_lines(compare_audit(expected, actual))
+        if lines:
+            results["different"][name] = " | ".join(line.strip() for line in lines)
+            for line in lines:
+                self._logger.error(line, extra={"progress": True})
         else:
             results["ok"] += 1
             self._write_log("assets_check_all_present")
+
+    def _write_undeployed(self, expected: Dict[str, Any]):
+        """Said once for a group: what its players lack may be only that the change was not deployed."""
+        if expected["undeployed"]:
+            what = ", ".join(self.lang.get_message(f"audit_undeployed_{part}") for part in expected["undeployed"])
+            self._write_log_warning("assets_check_undeployed", group=expected["group"], what=what)
+
+    def _difference_lines(self, result: Dict[str, Any]) -> List[str]:
+        """What the player lacks or has otherwise than the server says, one line for each kind of difference."""
+        get = self.lang.get_message
+        different, lines = result["different"], []
+        if result["missing"]:
+            lines.append(get("assets_check_missing", count=len(result["missing"]), files=", ".join(result["missing"])))
+        if result["wrong_size"]:
+            lines.append(get("assets_check_wrong_size", count=len(result["wrong_size"]), files=", ".join(
+                f"{file} ({get('audit_size_server')} {size} B, {get('audit_size_player')} {have} B)"
+                for file, size, have in result["wrong_size"])))
+        if different["deployed"]:
+            lines.append(get("assets_check_diff_deployed"))
+        if different["validity"]:
+            lines.append(get("assets_check_diff_validity"))
+        if different["settings"]:
+            lines.append(get("assets_check_diff_settings", count=len(different["settings"]),
+                             keys=", ".join(different["settings"])))
+        for playlist, parts in different["playlists"].items():
+            lines.append(get("assets_check_diff_playlist", playlist=playlist,
+                             parts=", ".join(get(f"audit_part_{part}") for part in parts)))
+        return lines
 
     def _write_progress_error(self, key_word: str, **kwargs):
         """A red line of the check of one player; the summary at the end lists these players once more with their names."""
@@ -1518,16 +1556,16 @@ class PlayerAssetsCheckProcessor(EntityValidationProcessor):
 
     def _write_assets_check_summary(self, results: Dict[str, Any]):
         """The result at the end; written as errors where something is wrong (red), but not as problems once more."""
-        missing, unknown = results["missing"], results["unknown"]
-        self._write_log("assets_check_summary", checked=results["ok"] + len(missing),
-                        ok=results["ok"], missing=len(missing), unknown=len(unknown), offline=self._offline)
-        if not missing and not unknown:
+        different, unknown = results["different"], results["unknown"]
+        self._write_log("assets_check_summary", checked=results["ok"] + len(different),
+                        ok=results["ok"], different=len(different), unknown=len(unknown), offline=self._offline)
+        if not different and not unknown:
             self._write_log("assets_check_all_ok")
-        if missing:
-            self._logger.error(self.lang.get_message("assets_check_summary_missing", count=len(missing)),
+        if different:
+            self._logger.error(self.lang.get_message("assets_check_summary_missing", count=len(different)),
                                extra={"hide_level": True, "progress": True})
-        for player, files in missing.items():
-            self._logger.error(self.lang.get_message("assets_check_summary_player", player=player, files=", ".join(files)),
+        for player, detail in different.items():
+            self._logger.error(self.lang.get_message("assets_check_summary_player", player=player, files=detail),
                                extra={"hide_level": True, "progress": True})
         if unknown:
             self._logger.error(self.lang.get_message("assets_check_summary_unknown", count=len(unknown),
@@ -1539,15 +1577,18 @@ class PlayerPlaybackCheckProcessor(PlayerAssetsCheckProcessor):
     """
     Checks that the online players play: asks each (one fixed command that only lists the video players running on
     it) and says which play what, and which have no video player running though their playlist has a video. The input
-    is the names of the players to check, none = all the online ones, as for the check of the files. A player that
-    seems not to play is asked once more after a pause (between two videos there is a moment without a video player).
+    is the names of the players to check, none = all the online ones, as for the check of the files. A player is asked
+    up to three times, 1.5 s apart: the first answer that shows a video player is enough, and one that does not is no
+    error yet (between two videos there is a moment without a video player, and a short video is played again and
+    again). Every player ends with its result.
     """
-    RECHECK_PAUSE_SECONDS = 10
+    LOOKS = 3
+    LOOK_PAUSE_SECONDS = 1.5
     LONG_RUNNING_SECONDS = 30 * 60  # one video player running this long is not a playlist of short videos
 
-    def __init__(self, *args, recheck_pause: float = RECHECK_PAUSE_SECONDS, **kwargs):
+    def __init__(self, *args, look_pause: float = LOOK_PAUSE_SECONDS, **kwargs):
         super().__init__(*args, **kwargs)
-        self._recheck_pause = recheck_pause
+        self._look_pause = look_pause
 
     def confirmation(self) -> Optional[Confirmation]:
         if not self.data:
@@ -1569,18 +1610,8 @@ class PlayerPlaybackCheckProcessor(PlayerAssetsCheckProcessor):
                 for index, player in enumerate(self.data):
                     if index:
                         sleep(self._pause)
-                    self._check_playback(server, player, without_video, results, recheck=False)
+                    self._check_playback(server, player, without_video, results)
                     yield
-                suspicious = [player for player in self.data
-                              if results.get(player.get("name", ""), {}).get("state") in ("not_playing", "long")]
-                if suspicious:
-                    self._write_log("playback_check_recheck", count=len(suspicious), seconds=self._recheck_pause)
-                    sleep(self._recheck_pause)
-                    for index, player in enumerate(suspicious):
-                        if index:
-                            sleep(self._pause)
-                        self._check_playback(server, player, without_video, results, recheck=True)
-                        yield
         except Exception as e:
             self._write_internal_error(e)
             raise InternalException()
@@ -1593,46 +1624,71 @@ class PlayerPlaybackCheckProcessor(PlayerAssetsCheckProcessor):
         return f"{seconds // 60} min" if seconds < 2 * 3600 else f"{seconds // 3600} h" if seconds < 48 * 3600 else \
             f"{seconds // 86400} d"
 
-    def _check_playback(self, server: ServerApi, player: Dict[str, Any], without_video: set, results: Dict[str, Any],
-                        recheck: bool):
+    @staticmethod
+    def _oldest(running: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """The video player that has been running longest (what it plays, how long, whether in a loop); None for none."""
+        if not running:
+            return None
+        oldest = max(running, key=lambda item: item["age"])
+        return {"file": oldest["file"] or oldest["process"], "age": oldest["age"], "loop": oldest["loop"]}
+
+    def _plays(self, seen: Optional[Dict[str, Any]]) -> bool:
+        """A video player that runs, and not for so long that it cannot be a playlist of videos (one video in a loop can)."""
+        return seen is not None and (seen["loop"] or seen["age"] <= self.LONG_RUNNING_SECONDS)
+
+    def _check_playback(self, server: ServerApi, player: Dict[str, Any], without_video: set, results: Dict[str, Any]):
         name = player.get("name", "")
         playlist = player.get("currentPlaylist") or ""
-        self._write_log("playback_check_recheck_player" if recheck else "assets_check_player", player=name)
+        self._write_log("assets_check_player", player=name)
         try:
             if not server.is_player_online(player["_id"]):
                 self._write_log_warning("assets_check_went_offline", player=name)
                 results[name] = {"state": "offline"}
+                self._write_log("playback_check_result_offline")
                 return
             if playlist in without_video:
                 self._write_log("playback_check_no_video", playlist=playlist)
                 results[name] = {"state": "no_video"}
+                self._write_log("playback_check_result_no_video")
                 return
-            running = server.read_player_playback(player["_id"])
+            looks = []  # what each answer showed
+            for look in range(self.LOOKS):
+                if look:
+                    sleep(self._look_pause)
+                looks.append(self._oldest(server.read_player_playback(player["_id"])))
+                if self._plays(looks[-1]):  # one that plays is enough, the others would only ask for nothing
+                    break
         except PlayerCommandError as e:
             self._write_progress_error(f"assets_check_{e.reason}")
             results[name] = {"state": "unknown"}
+            self._write_log("playback_check_result_unknown")
             return
         except self.COMMUNICATION_ERRORS:
             self._write_progress_error("assets_check_unknown_state")
             results[name] = {"state": "unknown"}
+            self._write_log("playback_check_result_unknown")
             return
 
-        if not running:
-            self._write_progress_error("playback_check_not_playing", playlist=playlist or "-")
-            results[name] = {"state": "not_playing", "detail": f"playlist {playlist or '-'}"}
-            return
-        oldest = max(running, key=lambda item: item["age"])
-        played = oldest["file"] or oldest["process"]
-        if oldest["loop"]:  # a playlist of one video: it is played again and again by one process
-            self._write_log("playback_check_playing_loop", file=played, age=self._age_text(oldest["age"]))
+        for number, seen in enumerate(looks[:-1], 1):  # the answers before the last one are only told, the last decides
+            if seen is None:
+                self._write_log("playback_check_look_none", number=number)
+            else:
+                self._write_log("playback_check_look_long", number=number, file=seen["file"], age=self._age_text(seen["age"]))
+        seen = looks[-1]
+        if self._plays(seen):
+            self._write_log("playback_check_playing_loop" if seen["loop"] else "playback_check_playing", file=seen["file"],
+                            age=self._age_text(seen["age"]))
             results[name] = {"state": "playing"}
-            return
-        if oldest["age"] > self.LONG_RUNNING_SECONDS:
-            self._write_progress_error("playback_check_long", file=played, age=self._age_text(oldest["age"]))
-            results[name] = {"state": "long", "detail": f"{played} ({self._age_text(oldest['age'])})"}
-            return
-        self._write_log("playback_check_playing", file=played, age=self._age_text(oldest["age"]))
-        results[name] = {"state": "playing"}
+            self._write_log("playback_check_result_playing" if len(looks) == 1 else "playback_check_result_playing_recheck")
+        elif seen is None:
+            self._write_progress_error("playback_check_not_playing", playlist=playlist or "-")
+            self._write_progress_error("playback_check_result_not_playing")
+            results[name] = {"state": "not_playing", "detail": f"playlist {playlist or '-'}"}
+        else:
+            age = self._age_text(seen["age"])
+            self._write_progress_error("playback_check_long", file=seen["file"], age=age)
+            self._write_progress_error("playback_check_result_long")
+            results[name] = {"state": "long", "detail": f"{seen['file']} ({age})"}
 
     def _write_playback_summary(self, results: Dict[str, Dict[str, Any]]):
         """The result at the end; written as errors where something is wrong (red), but not as problems once more."""

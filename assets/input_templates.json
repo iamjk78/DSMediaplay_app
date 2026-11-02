@@ -465,7 +465,7 @@
         ]
       },
       "set_player_assets_check": {
-        "summary": "Kontrola assetů přehrávačů: ověří, zda mají online přehrávače soubory, které mají mít podle své skupiny.",
+        "summary": "Kontrola assetů přehrávačů: ověří, zda mají online přehrávače soubory a nastavení, které mají mít podle své skupiny.",
         "columns": [
           "1. název přehrávače (jeden na řádek)"
         ],
@@ -966,7 +966,7 @@
         ]
       },
       "set_player_assets_check": {
-        "summary": "Check player assets: verifies that the online players have the files they should have according to their group.",
+        "summary": "Check player assets: verifies that the online players have the files and settings they should have according to their group.",
         "columns": [
           "1. player name (one per line)"
         ],
