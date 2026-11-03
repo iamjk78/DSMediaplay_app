@@ -16,7 +16,7 @@ class GroupSettingsInputTest(ProcessorCase):
         self.server.set_group_settings.return_value = {"data": {"name": "G1"}}
 
     def load(self, text, real_text=False):
-        return super().load(GroupSettingsProcessor, text, real_text)
+        return super().load(GroupSettingsProcessor, text, real_text, action="set_group_settings")
 
     def test_a_complete_line_is_read_and_sent_with_the_times_in_the_form_the_server_takes(self):
         processor, _ = self.load(line(*FULL))
@@ -46,7 +46,7 @@ class GroupSettingsInputTest(ProcessorCase):
             with self.subTest(columns=len(cells)):
                 processor, logger = self.load(line(*cells))
 
-                self.assertIn("incorrect_format", self.messages(logger))
+                self.assertIn("columns_error", self.messages(logger))
                 self.assertTrue(processor.refused)
                 self.assertEqual(processor.data, {})
 
@@ -57,7 +57,7 @@ class GroupSettingsInputTest(ProcessorCase):
                 cells[index] = ""
                 processor, logger = self.load(line(*cells))
 
-                self.assertIn("missing_group_setting", self.messages(logger))
+                self.assertTrue(any(key.startswith("cell_error") for key in self.messages(logger)))
                 self.assertTrue(processor.refused)
 
     def test_a_time_that_cannot_be_read_is_reported_with_its_line_and_does_not_end_the_load(self):
@@ -82,6 +82,64 @@ class GroupSettingsInputTest(ProcessorCase):
 
         self.assertFalse(processor.refused)
         self.assertEqual(processor.data["G1"][6:8], ["", ""])
+
+    def test_the_line_of_the_report_with_two_columns_missing_says_which_and_gives_a_model(self):
+        cells = ["c10_IND_2BW_L_all", "1080p", "landscape", "", "3:10", "true", "true"]  # no LCD columns
+        processor, logger = self.load(line(*cells), real_text=True)
+
+        message = self.messages(logger)[0]
+        self.assertIn("Řádek 1: špatný počet sloupců: zadáno 7, očekává se 9 nebo 10", message)
+        self.assertIn("Chybí sloupce: 8 (LCD zapnout), 9 (LCD vypnout)", message)
+        self.assertIn("Sloupce: 1. název skupiny; 2. rozlišení", message)
+        self.assertIn("Zadáno: c10_IND_2BW_L_all⇥1080p⇥landscape⇥⇥3:10⇥true⇥true", message)
+        self.assertIn("Vzor: <název skupiny>⇥1080p⇥landscape⇥03:00⇥04:00⇥true⇥true⇥06:00⇥22:00⇥default", message)
+        self.assertTrue(processor.refused)
+
+    def test_a_line_with_spaces_instead_of_tabs_says_so(self):
+        processor, logger = self.load("c10 1080p landscape 03:00", real_text=True)
+
+        self.assertIn("Sloupce se oddělují tabulátorem", self.messages(logger)[0])
+
+    def test_too_many_columns_are_counted(self):
+        processor, logger = self.load(line(*(FULL + ["x", "y"])), real_text=True)
+
+        self.assertIn("Přebývá sloupců: 2", self.messages(logger)[0])
+
+    def test_a_value_that_is_wrong_says_the_column_what_was_entered_and_what_is_expected(self):
+        cells = ["G1", "1080p", "landscape", "abc", "25:00", "tru", "maybe", "06:00", "22:00", "vlc"]
+        processor, logger = self.load(line(*cells), real_text=True)
+
+        errors = self.messages(logger)
+        self.assertIn("Řádek 1, sloupec 4 (automatický restart): zadáno „abc“, očekává se: čas HH:MM, prázdné = vypnuto.",
+                      errors)
+        self.assertIn("Řádek 1, sloupec 5 (automatický deploy): zadáno „25:00“, očekává se: čas HH:MM, prázdné = vypnuto.",
+                      errors)
+        self.assertIn("Řádek 1, sloupec 6 (kombinovat výchozí playlist): zadáno „tru“, očekává se: true / false.", errors)
+        self.assertIn("Řádek 1, sloupec 7 (přehrávat všechny vyhovující playlisty): zadáno „maybe“, očekává se: true / "
+                      "false.", errors)
+        self.assertIn("Řádek 1, sloupec 10 (video přehrávač): zadáno „vlc“, očekává se: default / mpv / cvlc.", errors)
+        self.assertTrue(processor.refused)
+
+    def test_an_empty_required_value_is_told_as_empty(self):
+        cells = list(FULL)
+        cells[1] = ""
+        processor, logger = self.load(line(*cells), real_text=True)
+
+        self.assertTrue(any(message.startswith("Řádek 1, sloupec 2 (rozlišení): zadáno „(prázdné)“, očekává se:")
+                            for message in self.messages(logger)))
+
+    def test_half_of_the_display_schedule_names_the_columns_and_what_is_filled_in(self):
+        processor, logger = self.load(line(*(FULL[:7] + ["06:00", "", "mpv"])), real_text=True)
+
+        self.assertIn("Řádek 1, sloupce 8 a 9 (LCD zapnout a vypnout), skupina \"G1\": vyplněno jen jedno (zapnout: "
+                      "06:00, vypnout: (prázdné)); vyplňte obě, nebo ani jedno.", self.messages(logger))
+
+    def test_the_other_ways_to_write_a_true_or_a_false_are_taken(self):
+        for text, value in (("TRUE", True), ("1", True), ("yes", True), ("False", False), ("0", False), ("no", False)):
+            with self.subTest(text=text):
+                processor, _ = self.load(line(*(FULL[:5] + [text, text] + FULL[7:])))
+
+                self.assertEqual(processor.data["G1"][4:6], [value, value])
 
     def test_the_line_of_an_unknown_group_is_numbered_as_the_user_sees_it(self):
         text = "\n".join([line(*FULL), "", line(*(["Nowhere"] + FULL[1:]))])

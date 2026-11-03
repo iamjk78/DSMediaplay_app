@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 import requests.exceptions
+from util.input_templates import LANGUAGES, column_info, columns_overview, example_line
 from util.player_audit import compare_audit, detail_request, differences_in_detail, short_value
 from api_testing.request_calls import (ServerApi, LoginError, NameResolutionError, ResponseError, SnapshotError,
                                        PlayerCommandError, InsecureAddressError,
@@ -154,6 +155,27 @@ class Response:
     response_msg: json
 
 
+# The action (see util/actions.py) each processor works for; its template (assets/input_templates.json) says what its
+# columns are, which the messages about a wrong line use
+ACTION_OF_PROCESSOR = {
+    "add_detailed_playlist": "set_add_detailed_playlist_to_group", "asset_to_playlist": "set_assets_to_playlists",
+    "asset_validity": "set_asset_validity", "create_group": "create_group", "create_label": "create_label",
+    "create_location": "create_location", "create_playlist": "create_playlist",
+    "deploy_selected_groups": "set_deploy_selected_groups", "detailed_playlist": "set_detailed_playlists_to_groups",
+    "group_rename": "set_group_rename", "group_settings": "set_group_settings", "location_plan": "set_location_plan",
+    "location_rename": "set_location_rename", "player_assets_check": "set_player_assets_check",
+    "player_config_location": "set_player_config_location", "player_group": "set_groups_to_players",
+    "player_labels": "set_player_labels", "player_note": "set_notes_to_players",
+    "player_playback_check": "set_player_playback_check", "player_rename": "set_player_rename",
+    "player_snapshot": "set_player_snapshot", "playlist_settings": "set_playlist_settings",
+    "remove_additional_playlists": "remove_additional_playlists", "remove_assets": "remove_assets_from_playlists",
+    "remove_expired_playlists": "remove_expired_playlists", "remove_playlist_list": "remove_playlist_list",
+    "remove_playlists": "remove_playlists_from_group", "remove_unused_assets": "remove_unused_assets",
+    "remove_unused_groups": "remove_unused_groups", "remove_unused_labels": "remove_unused_labels",
+    "remove_unused_locations": "remove_unused_locations", "remove_unused_playlists": "remove_unused_playlists",
+}
+
+
 class ProcessorFactory:
     @staticmethod
     def create_processor(processor_type, logger, url, login, password, lang, **kwargs):
@@ -207,7 +229,9 @@ class ProcessorFactory:
         processor_class = processor_map.get(processor_type)
         if not processor_class:
             raise ValueError(f"Unknown processor type: {processor_type}")
-        return processor_class(logger, url=url, login=login, password=password, lang=lang, **kwargs)
+        processor = processor_class(logger, url=url, login=login, password=password, lang=lang, **kwargs)
+        processor.action_key = ACTION_OF_PROCESSOR.get(processor_type)
+        return processor
 
 
 @dataclass(frozen=True)
@@ -222,6 +246,8 @@ CONFIRM_LIST_LIMIT = 15
 
 
 class InputProcessor(ABC):
+    action_key: Optional[str] = None  # the action the processor works for (see ACTION_OF_PROCESSOR), set by the factory
+
     def __init__(self, log_handler, *, url: str, login: str, password: str, lang):
         self._logger = log_handler
         self._login_info = {
@@ -286,8 +312,58 @@ class InputProcessor(ABC):
     def _write_incorrect_login_error(self):
         self._logger.error(self.lang.get_message("incorrect_login"))
 
-    def _write_incorrect_format(self, line_number: int):
-        self._logger.error(self.lang.get_message("incorrect_format", line_number=line_number))
+    def _column(self, column: int):
+        """What column number `column` of the input is, as the template of the action describes it; None when unknown."""
+        language = getattr(self.lang, "language", None)
+        if self.action_key and language in LANGUAGES:
+            return column_info(self.action_key, language, column)
+        return None
+
+    def _write_incorrect_format(self, line_number: int, cells: Optional[List[str]] = None, minimum: int = 0,
+                                maximum: Optional[int] = None):
+        """
+        A line with the wrong number of columns. With the cells that were entered and how many are expected it says how
+        many were entered, which columns are missing, what was entered and a model line (from the template of the action).
+        """
+        get = self.lang.get_message
+        if cells is None or not minimum:
+            self._logger.error(get("incorrect_format", line_number=line_number))
+            return
+        maximum = maximum or minimum
+        found = len(cells)
+        detail = ""
+        if found < minimum:
+            columns = ", ".join(f"{column} ({info.name})" if (info := self._column(column)) else str(column)
+                                for column in range(found + 1, minimum + 1))
+            detail = get("columns_missing", columns=columns)
+        elif found > maximum:
+            detail = get("columns_excess", count=found - maximum)
+        if found == 1 and " " in cells[0].strip():
+            detail += get("columns_tab_hint")
+        language = getattr(self.lang, "language", None)
+        known = bool(self.action_key) and language in LANGUAGES and self._column(1) is not None
+        self._logger.error(get(
+            "columns_error", line_number=line_number, found=found,
+            expected=str(minimum) if minimum == maximum else get("columns_range", minimum=minimum, maximum=maximum),
+            detail=detail,
+            overview=get("columns_overview", overview=columns_overview(self.action_key, language)) if known else "",
+            entered="⇥".join(cells), pattern=example_line(self.action_key, language) if known else ""))
+
+    def _write_cell_error(self, line_number: int, column: int, entered: str, context: str = ""):
+        """
+        A value that cannot be taken: in which column it is (number and name), what was entered and what the column
+        expects, as the template of the action describes it; `context` adds what else the line tells (the group, the playlist).
+        """
+        get = self.lang.get_message
+        info = self._column(column)
+        shown = entered if entered else get("empty_cell")
+        if info is None:
+            self._logger.error(get("cell_error_plain", line_number=line_number, column=column, entered=shown,
+                                   context=context))
+            return
+        name = info.name + (get("cell_block", block=info.block) if info.block else "")
+        self._logger.error(get("cell_error", line_number=line_number, column=column, name=name, entered=shown,
+                               expected=info.expected, context=context))
 
     def _write_empty_keyword(self, line_number: int):
         self._logger.error(self.lang.get_message("empty_keyword", line_number=line_number))
@@ -725,7 +801,7 @@ class RemoveByKeywordProcessor(RemoveProcessor, ABC):
             split_line = line.split("\t")
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 2)
                 continue
 
             entity_name, keyword = split_line[0], split_line[1]
@@ -812,7 +888,7 @@ class RenameProcessor(EntityValidationProcessor, ABC):
                 split_line = line.split("\t")
                 if len(split_line) != 2:
                     self._wrong_init_counter += 1
-                    self._write_incorrect_format(line_num)
+                    self._write_incorrect_format(line_num, split_line, 2)
                     continue
 
                 old_name, new_name = split_line[0], split_line[1]
@@ -911,7 +987,7 @@ class PlayerGroupProcessor(AssignProcessor):
             split_line = line.split("\t")
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 2)
                 continue
 
             key, item = split_line[0], split_line[1]
@@ -1332,7 +1408,7 @@ class PlayerNoteProcessor(AssignProcessor):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 2)
             else:
                 player, note = split_line[0], split_line[1]
                 if not self._validate_entity(player, names['player_names'], i + 1):
@@ -1775,7 +1851,7 @@ class PlayerConfigLocationProcessor(AssignProcessor):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 2)
             else:
                 player, config_location = split_line[0], split_line[1]
                 if not self._validate_entity(player, names['player_names'], i + 1):
@@ -1824,7 +1900,7 @@ class LocationTimesProcessor(AssignProcessor):
             split_line = line
             if len(split_line) != 15:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 15)
                 continue
 
             location = split_line[0]
@@ -2009,7 +2085,7 @@ class GroupSettingsProcessor(AssignProcessor):
             # The last column (the video player) may be left out; everything before it is written to the server as it
             # stands, so a line cut short would switch off what its missing columns say.
             if not 8 <= len(settings) <= 9:
-                self._write_incorrect_format(line_num)
+                self._write_incorrect_format(line_num, cells, 9, 10)
                 self._wrong_init_counter += 1
                 continue
             settings += [""] * (9 - len(settings))
@@ -2024,12 +2100,7 @@ class GroupSettingsProcessor(AssignProcessor):
                 self._same_key.setdefault(group, []).append(settings)
                 continue
 
-            if not settings[0] or not settings[1]:
-                self._write_missing_group_setting(line_num, group)
-                self._wrong_init_counter += 1
-                continue
-
-            if not self._normalize_times(line_num, group, settings):
+            if not self._check_group_settings_values(line_num, group, settings):
                 continue
 
             settings[4] = self._str_to_bool(settings[4])
@@ -2063,34 +2134,43 @@ class GroupSettingsProcessor(AssignProcessor):
     def _str_to_bool(value: str) -> bool:
         return value.lower() in ["true", "1", "yes"]
 
-    def _normalize_times(self, line_num: int, group: str, settings: List) -> bool:
+    BOOLEANS = ("true", "false", "1", "0", "yes", "no")
+    VIDEO_PLAYERS = ("", "default", "mpv", "cvlc")
+
+    def _check_group_settings_values(self, line_num: int, group: str, settings: List) -> bool:
         """
-        Puts the times of the line (restart, deploy, display on and off) in the form the server takes, in place. A time
-        that cannot be read is reported and so is a display switched on without the time it is switched off (or the
-        other way round), which would leave the display without any schedule.
+        Checks every value of the line, each against what its column takes, and says for each that is wrong in which
+        column it is, what was entered and what is expected. The times are put in the form the server takes, in place.
+        Everything is written to the server as it stands, so a value that is not taken is refused and not guessed.
         """
         valid = True
-        for index, is_off_time in ((2, False), (3, False), (6, False), (7, True)):
+
+        def refuse(index: int):
+            nonlocal valid
+            self._write_cell_error(line_num, index + 2, settings[index])  # the group is column 1
+            self._wrong_init_counter += 1
+            valid = False
+
+        for index in (0, 1):  # an empty one would overwrite the setting of the group on the server
+            if not settings[index]:
+                refuse(index)
+        for index in (2, 3, 6, 7):
             try:
-                settings[index] = normalize_time_format(settings[index], is_off_time=is_off_time)
+                settings[index] = normalize_time_format(settings[index], is_off_time=index == 7)
             except ValueError:
-                self._write_invalid_time_format(line_num, settings[index])
-                self._wrong_init_counter += 1
-                valid = False
-        if valid and bool(settings[6]) != bool(settings[7]):
-            self._write_sleep_times_incomplete(line_num, group)
+                refuse(index)
+        for index in (4, 5):
+            if settings[index].lower() not in self.BOOLEANS:
+                refuse(index)
+        if settings[8].lower() not in self.VIDEO_PLAYERS:
+            refuse(8)
+        if valid and bool(settings[6]) != bool(settings[7]):  # a display with half a schedule has none
+            get = self.lang.get_message
+            self._logger.error(get("sleep_times_incomplete", line_num=line_num, group=group,
+                                   on=settings[6] or get("empty_cell"), off=settings[7] or get("empty_cell")))
             self._wrong_init_counter += 1
             valid = False
         return valid
-
-    def _write_missing_group_setting(self, line_num: int, group: str):
-        self._logger.error(self.lang.get_message("missing_group_setting", line_num=line_num, group=group))
-
-    def _write_sleep_times_incomplete(self, line_num: int, group: str):
-        self._logger.error(self.lang.get_message("sleep_times_incomplete", line_num=line_num, group=group))
-
-    def _write_invalid_time_format(self, line_num: int, time_str: str):
-        self._logger.error(self.lang.get_message("invalid_time_format", line_num=line_num, time_str=time_str))
 
     @staticmethod
     def time_to_iso(time_str: str) -> Optional[str]:
@@ -2126,7 +2206,7 @@ class PlaylistSettingsProcessor(AssignProcessor):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 2)
                 continue
 
             playlist_name, domination_time = split_line[0], split_line[1].strip()
@@ -2193,7 +2273,7 @@ class RemovePlaylistsProcessor(RemoveProcessor):
             split_line = line
             if len(split_line) != 2:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 2)
                 continue
 
             group, keyword = split_line[0], split_line[1]
@@ -2589,7 +2669,7 @@ class PlayerDetailsCloneProcessor(AssignProcessor):
             split_line = line
             if len(split_line) != 2 or not all(split_line):  # a player to copy to is needed too
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(i + 1)
+                self._write_incorrect_format(i + 1, split_line, 2)
                 continue
 
             old_player, new_player = split_line[0], split_line[1]
@@ -2892,7 +2972,7 @@ class AssetValidityProcessor(AssignProcessor):
             split_line = self._pad_list(line.split("\t"), 5)
             if len(split_line) != 5:
                 self._wrong_init_counter += 1
-                self._write_incorrect_format(line_num)
+                self._write_incorrect_format(line_num, split_line, 5)
                 continue
 
             asset_name, start_date, end_date, start_hour, end_hour = split_line

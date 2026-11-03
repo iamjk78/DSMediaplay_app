@@ -24,10 +24,14 @@ class ProcessorCase(unittest.TestCase):
         self.server.get_group_names.return_value = ["G1", "G2"]
         self.server.get_playlist_names.return_value = ["Default", "Promo", "Night"]
 
-    def load(self, processor_class, text, real_text=False):
-        """The processor and its logger; `refused` says whether the load found something wrong (FormatException)."""
+    def load(self, processor_class, text, real_text=False, action=None):
+        """
+        The processor and its logger; `refused` says whether the load found something wrong (FormatException). `action`
+        is the one the processor works for (the factory sets it), which the texts about a wrong line describe the columns by.
+        """
         processor, logger, patcher = make_processor(processor_class, self.server, real_text=real_text)
         self.addCleanup(patcher.stop)
+        processor.action_key = action
         try:
             processor.load(text)
             processor.refused = False
