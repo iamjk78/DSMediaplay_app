@@ -344,7 +344,8 @@ class InputProcessor(ABC):
         known = bool(self.action_key) and language in LANGUAGES and self._column(1) is not None
         self._logger.error(get(
             "columns_error", line_number=line_number, found=found,
-            expected=str(minimum) if minimum == maximum else get("columns_range", minimum=minimum, maximum=maximum),
+            expected=str(minimum) if minimum == maximum else get("columns_range" if maximum - minimum == 1 else
+                                                                 "columns_between", minimum=minimum, maximum=maximum),
             detail=detail,
             overview=get("columns_overview", overview=columns_overview(self.action_key, language)) if known else "",
             entered="⇥".join(cells), pattern=example_line(self.action_key, language) if known else ""))
@@ -2083,12 +2084,17 @@ class GroupSettingsProcessor(AssignProcessor):
         for line_num, line in self._numbered_lines(input_text):
             cells = line.split("\t")
             group, settings = cells[0], cells[1:]
-            # The last column (the video player) may be left out; everything before it is written to the server as it
-            # stands, so a line cut short would switch off what its missing columns say.
-            if not 8 <= len(settings) <= 9:
-                self._write_incorrect_format(line_num, cells, 9, 10)
+            # The columns after the combine and play-all flags (the display times, the video player) may be left out: a
+            # spreadsheet does not copy the empty cells at the end of a row, and a left out one is the same as an empty one
+            # (no display schedule, the default video player). Before them nothing may be missing: everything is written
+            # to the server as it stands, so a value that is not there would be guessed.
+            if not 6 <= len(settings) <= 9:
+                self._write_incorrect_format(line_num, cells, 7, 10)
                 self._wrong_init_counter += 1
                 continue
+            if len(settings) < 8:
+                self._logger.info(self.lang.get_message("columns_left_out", line_number=line_num, columns=", ".join(
+                    f"{column} ({info.name})" for column in (8, 9) if (info := self._column(column)))))
             settings += [""] * (9 - len(settings))
 
             if not self._validate_entity(group, names['group_names'], line_num):

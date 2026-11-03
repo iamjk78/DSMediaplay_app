@@ -42,7 +42,7 @@ class GroupSettingsInputTest(ProcessorCase):
         self.assertEqual(processor.data["G1"][8], "")
 
     def test_a_line_with_too_few_or_too_many_columns_is_refused_whole(self):
-        for cells in (FULL[:2], FULL[:7], FULL + ["x", "y"]):
+        for cells in (FULL[:2], FULL[:6], FULL + ["x", "y"]):
             with self.subTest(columns=len(cells)):
                 processor, logger = self.load(line(*cells))
 
@@ -83,16 +83,39 @@ class GroupSettingsInputTest(ProcessorCase):
         self.assertFalse(processor.refused)
         self.assertEqual(processor.data["G1"][6:8], ["", ""])
 
-    def test_the_line_of_the_report_with_two_columns_missing_says_which_and_gives_a_model(self):
-        cells = ["c10_IND_2BW_L_all", "1080p", "landscape", "", "3:10", "true", "true"]  # no LCD columns
+    def test_the_display_columns_and_the_player_may_be_left_out_at_the_end_of_the_line(self):
+        processor, _ = self.load(line(*FULL[:7]))  # the name and 6 values
+        self.assertFalse(processor.refused)
+        self.assertEqual(processor.data["G1"][6:], ["", "", ""])  # no display schedule, the default video player
+
+        processor, _ = self.load(line(*FULL[:9]))  # both display times, no video player
+        self.assertFalse(processor.refused)
+        self.assertEqual(processor.data["G1"][6:], ["06:00", "22:00", ""])
+
+    def test_a_display_time_that_is_there_without_the_other_is_still_refused_when_the_line_ends_there(self):
+        processor, logger = self.load(line(*FULL[:8]))  # only the time the display is switched on
+
+        self.assertIn("sleep_times_incomplete", self.messages(logger))
+        self.assertTrue(processor.refused)
+
+    def test_the_line_of_the_report_without_the_lcd_columns_is_accepted_and_says_what_it_took_as_empty(self):
+        cells = ["c10_IND_2BW_L_all", "1080p", "landscape", "", "3:10", "true", "true"]  # what a spreadsheet copies
+        self.server.get_group_names.return_value = ["c10_IND_2BW_L_all"]
+        processor, logger = self.load(line(*cells), real_text=True)
+
+        self.assertFalse(processor.refused)
+        self.assertEqual(processor.data["c10_IND_2BW_L_all"], ["1080p", "landscape", "", "03:10", True, True, "", "", ""])
+        self.assertIn("Řádek 1: sloupce 8 (LCD zapnout), 9 (LCD vypnout) na řádku chybí, berou se jako prázdné "
+                      "(žádný časovač LCD).", self.messages(logger, "info"))
+
+    def test_a_line_that_lacks_a_value_before_the_display_columns_is_refused_and_says_which_columns(self):
+        cells = ["c10_IND_2BW_L_all", "1080p", "landscape", "", "3:10", "true"]  # the play-all flag is missing
         processor, logger = self.load(line(*cells), real_text=True)
 
         message = self.messages(logger)[0]
-        self.assertIn("Řádek 1: špatný počet sloupců: zadáno 7, očekává se 9 nebo 10", message)
-        self.assertIn("Chybí sloupce: 8 (LCD zapnout), 9 (LCD vypnout)", message)
-        self.assertIn("Sloupce: 1. název skupiny; 2. rozlišení", message)
-        self.assertIn("Zadáno: c10_IND_2BW_L_all⇥1080p⇥landscape⇥⇥3:10⇥true⇥true", message)
-        self.assertIn("Vzor: <název skupiny>⇥1080p⇥landscape⇥03:00⇥04:00⇥true⇥true⇥06:00⇥22:00⇥default", message)
+        self.assertIn("Řádek 1: špatný počet sloupců: zadáno 6, očekává se 7 až 10", message)
+        self.assertIn("Chybí sloupce: 7 (přehrávat všechny vyhovující playlisty)", message)
+        self.assertIn("Zadáno: c10_IND_2BW_L_all⇥1080p⇥landscape⇥⇥3:10⇥true", message)
         self.assertTrue(processor.refused)
 
     def test_a_line_with_spaces_instead_of_tabs_says_so(self):
