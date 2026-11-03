@@ -349,6 +349,11 @@ class InputProcessor(ABC):
             overview=get("columns_overview", overview=columns_overview(self.action_key, language)) if known else "",
             entered="⇥".join(cells), pattern=example_line(self.action_key, language) if known else ""))
 
+    def _row_context(self, name: str) -> str:
+        """What the row is about, for the end of a message: the name in its first column ("playlist name "Promo")."""
+        info = self._column(1)
+        return f" {info.name[:1].upper()}{info.name[1:]} „{name}“." if info else ""
+
     def _column_name_of(self, column: int) -> str:
         """The name of a column with the block it is in, or the number when the action has no template."""
         info = self._column(column)
@@ -386,7 +391,10 @@ class InputProcessor(ABC):
                   expected=info.expected, context=context))
 
     def _write_empty_keyword(self, line_number: int):
-        self._logger.error(self.lang.get_message("empty_keyword", line_number=line_number))
+        if self._column(2) is None:
+            self._logger.error(self.lang.get_message("empty_keyword", line_number=line_number))
+            return
+        self._write_cell_error(line_number, 2, "", context=" " + self.lang.get_message("empty_keyword_context"))
 
     def _write_name_fail(self, line_number: int, name: str, column: int = 1, context: str = ""):
         """A name that the account does not have, with the column it was in and a reminder how exact a name has to be."""
@@ -396,8 +404,13 @@ class InputProcessor(ABC):
         self._write_cell_error(line_number, column, name, context=" " + self.lang.get_message("name_not_found") + context,
                                warning=True)
 
-    def _write_collision(self, line_number: int, key: str):
-        self._logger.warning(self.lang.get_message("collision", line_number=line_number, key_col=key))
+    def _write_collision(self, line_number: int, key: str, column: int = 1):
+        """The same value again on another line: the column it is in and what is expected there."""
+        if self._column(column) is None:
+            self._logger.warning(self.lang.get_message("collision", line_number=line_number, key_col=key))
+            return
+        self._write_cell_error(line_number, column, key, context=" " + self.lang.get_message("duplicate_in_input"),
+                               warning=True)
 
     def _write_success_assign(self, line_num: int, entity_name: str, assigned_name: str):
         self._logger.info(self.lang.get_message("success_assign",
@@ -434,7 +447,10 @@ class InputProcessor(ABC):
         self._logger.warning(self.lang.get_message("invalid_time_format", line_num=line_num, time_str=invalid_time))
 
     def _write_not_new_name(self, line_num: int, name: str):
-        self._logger.error(self.lang.get_message("not_new", line_num=line_num, name=name))
+        if self._column(1) is None:
+            self._logger.error(self.lang.get_message("not_new", line_num=line_num, name=name))
+            return
+        self._write_cell_error(line_num, 1, name, context=" " + self.lang.get_message("name_exists"))
 
     def _write_same_assign(self, assignment_dict):
         for key, assignments in assignment_dict.items():
@@ -682,7 +698,18 @@ class CreateProcessor(EntityValidationProcessor):
         self._logger.error(self.lang.get_message("error_create", entity_name=entity_name, code=code))
 
     def _write_not_new_name(self, line_num: int, name: str):
-        self._logger.error(self.lang.get_message("not_new", line_num=line_num, name=name))
+        if self._column(1) is None:
+            self._logger.error(self.lang.get_message("not_new", line_num=line_num, name=name))
+            return
+        self._write_cell_error(line_num, 1, name, context=" " + self.lang.get_message("name_exists"))
+
+    def _write_forbidden_chars(self, line_num: int, name: str, chars: List[str]):
+        """A new name with characters that are not allowed in it: which ones, and what the column takes."""
+        shown = ", ".join({"\t": "⇥", "\n": "↵"}.get(char, char) for char in chars)  # a tab and a line end are shown
+        if self._column(1) is None:
+            self._write_name_fail(line_num, name)
+            return
+        self._write_cell_error(line_num, 1, name, context=" " + self.lang.get_message("forbidden_chars", chars=shown))
 
     @staticmethod
     def check_name(line: str, pattern: re.Pattern) -> bool:
@@ -715,7 +742,7 @@ class CreateProcessor(EntityValidationProcessor):
                 continue
 
             if self.check_name(line_strip, pattern):
-                self._write_name_fail(i + 1, line_strip)
+                self._write_forbidden_chars(i + 1, line_strip, sorted(set(pattern.findall(line_strip))))
                 self._wrong_init_counter += 1
 
             self.data.append(line_strip)
@@ -926,14 +953,14 @@ class RenameProcessor(EntityValidationProcessor, ABC):
                     self._wrong_init_counter += 1
                     continue
 
-                error_key = self._new_name_error(old_name, new_name)
-                if error_key:
-                    self._write_invalid_name(error_key, line_num, old_name, new_name)
+                reason = self._new_name_error(old_name, new_name)
+                if reason:
+                    self._write_invalid_name(reason, line_num, old_name, new_name)
                     self._wrong_init_counter += 1
                     continue
 
                 if (new_name in names[self.entity_type] and new_name != old_name) or new_name in loaded_new_name:
-                    self._write_invalid_name(self._invalid_name_message_key(), line_num, old_name, new_name)
+                    self._write_invalid_name("exists", line_num, old_name, new_name)
                     self._wrong_init_counter += 1
                     continue
 
@@ -979,12 +1006,17 @@ class RenameProcessor(EntityValidationProcessor, ABC):
             response["data"]["old_name"] = old_name
             yield Response(200, response)
 
-    def _write_invalid_name(self, message_key: str, line_num: int, old_name: str, new_name: str):
-        self._logger.error(
-            self.lang.get_message(message_key,
-                                  line_num=line_num,
-                                  old_name=old_name,
-                                  new_name=new_name))
+    def _write_invalid_name(self, reason: str, line_num: int, old_name: str, new_name: str):
+        """
+        A new name that cannot be taken: column 2 with what was entered and what the column expects, and why ("exists",
+        "identifier" for a player whose identifier would change, "chars" for characters that are not allowed).
+        """
+        if self._column(2) is None:
+            key = "player_identifier_changed" if reason == "identifier" else self._invalid_name_message_key()
+            self._logger.error(self.lang.get_message(key, line_num=line_num, old_name=old_name, new_name=new_name))
+            return
+        self._write_cell_error(line_num, 2, new_name,
+                               context=" " + self.lang.get_message(f"rename_reason_{reason}", old=old_name))
 
     def _write_success_rename(self, line_num: int, old_name: str, new_name: str):
         self._logger.info(
@@ -1913,36 +1945,28 @@ class LocationTimesProcessor(AssignProcessor):
             on_time = times_list[i * 2]
             off_time = times_list[i * 2 + 1]
 
-            try:
-                on_time = normalize_time_format(on_time)
-                off_time = normalize_time_format(off_time, is_off_time=True)
-            except ValueError as e:
-                self._wrong_init_counter += 1
-                self._write_invalid_time(line_num, day, on_time if "on" in str(e) else off_time)
+            valid = True
+            for column, value, is_off_time in ((2 + i * 2, on_time, False), (3 + i * 2, off_time, True)):  # the location is column 1
+                try:
+                    normalize_time_format(value, is_off_time=is_off_time)
+                except ValueError:
+                    self._wrong_init_counter += 1
+                    self._write_cell_error(line_num, column, value)
+                    valid = False
+            if not valid:
                 continue
+            on_time = normalize_time_format(on_time)
+            off_time = normalize_time_format(off_time, is_off_time=True)
 
             if on_time and off_time and not compare_time(on_time, off_time):
                 self._wrong_init_counter += 1
-                self._write_time_order_error(line_num, day, on_time, off_time)
+                self._write_order_error(line_num, 2 + i * 2, 3 + i * 2, on_time, off_time, "order_error_time")
                 continue
 
             times[day]["on"] = on_time
             times[day]["off"] = off_time
 
         return times
-
-    def _write_invalid_time(self, line_number: int, day: str, invalid_time: str):
-        self._logger.error(self.lang.get_message("invalid_day_time",
-                                                 line_number=line_number,
-                                                 day=day,
-                                                 invalid_time=invalid_time))
-
-    def _write_time_order_error(self, line_number: int, day: str, start_time: str, end_time: str):
-        self._logger.error(self.lang.get_message("time_order_error",
-                                                 line_num=line_number,
-                                                 day=day,
-                                                 start_time=start_time,
-                                                 end_time=end_time))
 
 
 class PlayerLabelsProcessor(AssignProcessor):
@@ -2194,7 +2218,7 @@ class PlaylistSettingsProcessor(AssignProcessor):
             if domination_time and not (domination_time.isascii() and domination_time.isdigit()
                                         and int(domination_time) > 0):
                 self._wrong_init_counter += 1
-                self._write_invalid_number(i + 1, playlist_name, domination_time)
+                self._write_cell_error(i + 1, 2, domination_time, context=self._row_context(playlist_name))
                 continue
 
             self.data[playlist_name] = domination_time
@@ -2209,10 +2233,6 @@ class PlaylistSettingsProcessor(AssignProcessor):
         for playlist_name, domination_time in self.data.items():
             response = server.set_playlist_settings(playlist_name, domination_time)
             yield Response(200, response)
-
-    def _write_invalid_number(self, line_num: int, playlist: str, value: str):
-        self._logger.error(self.lang.get_message("invalid_domination_interval", line_num=line_num,
-                                                 playlist=playlist, value=value))
 
     def _write_error_assign(self, line_num: int, code: int):
         self._logger.error(self.lang.get_message("error_assign_playlist", line_num=line_num, code=code))
@@ -2673,7 +2693,7 @@ class GroupRenameProcessor(RenameProcessor):
         return server.rename_group(old_name, new_name)
 
     def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
-        return self._invalid_name_message_key() if re.search(r'[",;\s]', new_name) else None
+        return "chars" if re.search(r'[",;\s]', new_name) else None
 
     def _invalid_name_message_key(self) -> str:
         return "invalid_group_name"
@@ -2694,10 +2714,10 @@ class PlayerRenameProcessor(RenameProcessor):
 
     def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
         if re.search(r'[",;\s]', new_name) or not re.search(self._IDENTIFIER + "_", new_name):
-            return self._invalid_name_message_key()
+            return "chars"
         old_identifiers = re.findall(self._IDENTIFIER, old_name)
         if old_identifiers and old_identifiers != re.findall(self._IDENTIFIER, new_name):
-            return "player_identifier_changed"
+            return "identifier"
         return None
 
     def _invalid_name_message_key(self) -> str:
@@ -2714,7 +2734,7 @@ class PlaylistRenameProcessor(RenameProcessor):
         return server.rename_playlist(old_name, new_name)
 
     def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
-        return self._invalid_name_message_key() if re.search(r'[",;\s]', new_name) else None
+        return "chars" if re.search(r'[",;\s]', new_name) else None
 
     def _invalid_name_message_key(self) -> str:
         return "invalid_name"
@@ -2730,7 +2750,7 @@ class LocationRenameProcessor(RenameProcessor):
         return server.rename_location(old_name, new_name)
 
     def _new_name_error(self, old_name: str, new_name: str) -> Optional[str]:
-        return self._invalid_name_message_key() if re.search(r'\s', new_name) else None
+        return "chars" if re.search(r'\s', new_name) else None
 
     def _invalid_name_message_key(self) -> str:
         return "invalid_location_name"
@@ -2973,27 +2993,25 @@ class AssetValidityProcessor(AssignProcessor):
                             end_hour: str) -> Optional[Tuple]:
         """The validity of the line in the form it is sent, or None after reporting what is wrong with it."""
         valid = True
-        for date in (start_date, end_date):
+        context = self._row_context(asset_name)
+        for column, date in ((2, start_date), (3, end_date)):
             if date and not self._validate_date_format(date):
-                self._write_invalid_asset_value(line_num, asset_name, "invalid_asset_date", date)
+                self._write_cell_error(line_num, column, date, context=context)
                 valid = False
         if valid and start_date and end_date and not compare_date(start_date, end_date):
-            self._write_invalid_asset_value(line_num, asset_name, "asset_date_order", f"{start_date} - {end_date}")
+            self._write_order_error(line_num, 2, 3, start_date, end_date, "order_error_date", context)
             valid = False
         hours = []
-        for text, is_end in ((start_hour, False), (end_hour, True)):
+        for column, text, is_end in ((4, start_hour, False), (5, end_hour, True)):
             try:
                 hours.append(parse_validity_hour(text, is_end))
             except ValueError:
-                self._write_invalid_asset_value(line_num, asset_name, "invalid_asset_hour", text)
+                self._write_cell_error(line_num, column, text, context=context)
                 valid = False
         if not valid:
             self._wrong_init_counter += 1
             return None
         return (start_date, end_date, *hours)
-
-    def _write_invalid_asset_value(self, line_num: int, asset_name: str, key: str, value: str):
-        self._logger.error(self.lang.get_message(key, line_num=line_num, asset=asset_name, value=value))
 
     def _assign_stepwise(self, server) -> Generator[Response, None, None]:
         for asset_name, (start_date, end_date, start_hour, end_hour) in self.data.items():

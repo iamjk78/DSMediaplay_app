@@ -46,7 +46,7 @@
 <p>Set the on and off times of a location for each day of the week.</p>
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
-<ul><li>1. location name</li><li>2. Sunday - on</li><li>3. Sunday - off</li><li>4. Monday - on</li><li>5. Monday - off</li><li>6. Tuesday - on</li><li>7. Tuesday - off</li><li>8. Wednesday - on</li><li>9. Wednesday - off</li><li>10. Thursday - on</li><li>11. Thursday - off</li><li>12. Friday - on</li><li>13. Friday - off</li><li>14. Saturday - on</li><li>15. Saturday - off</li></ul>
+<ul><li>1. location name</li><li>2. Sunday - on: a time HH:MM, e.g. 08:00, or empty</li><li>3. Sunday - off: a time HH:MM, e.g. 18:00, or empty</li><li>4. Monday - on: a time HH:MM, e.g. 08:00, or empty</li><li>5. Monday - off: a time HH:MM, e.g. 18:00, or empty</li><li>6. Tuesday - on: a time HH:MM, e.g. 08:00, or empty</li><li>7. Tuesday - off: a time HH:MM, e.g. 18:00, or empty</li><li>8. Wednesday - on: a time HH:MM, e.g. 08:00, or empty</li><li>9. Wednesday - off: a time HH:MM, e.g. 18:00, or empty</li><li>10. Thursday - on: a time HH:MM, e.g. 08:00, or empty</li><li>11. Thursday - off: a time HH:MM, e.g. 18:00, or empty</li><li>12. Friday - on: a time HH:MM, e.g. 08:00, or empty</li><li>13. Friday - off: a time HH:MM, e.g. 18:00, or empty</li><li>14. Saturday - on: a time HH:MM, e.g. 08:00, or empty</li><li>15. Saturday - off: a time HH:MM, e.g. 18:00, or empty</li></ul>
 <ul class="notes"><li>The days start with Sunday, as in the CSV export and in DSMediaplay.</li><li>Always all 15 columns; an empty cell = nothing is set for that day.</li><li>Time: HH:MM (e.g. 08:00); an off time of 00:00 is taken as 23:59, the on time must be earlier than the off time.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;location name&gt;</td><td></td><td></td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td></td><td></td></tr></table>
 <p class="how">Select the category <b>Locations</b> and the action “Change - LCD ON/OFF Times”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
@@ -56,7 +56,7 @@
 <p>Create new locations.</p>
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
-<ul><li>1. new location name (one per line)</li></ul>
+<ul><li>1. new location name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line</li></ul>
 <ul class="notes"><li>The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;new location name&gt;</td></tr></table>
 <p class="how">Select the category <b>Locations</b> and the action “Create - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>
@@ -66,7 +66,7 @@
 <p>Rename locations.</p>
 <p class="kind">Takes input (“Input Prompt”).</p>
 <h4>Input</h4>
-<ul><li>1. current location name</li><li>2. new name</li></ul>
+<ul><li>1. current location name</li><li>2. new name: no space (or other white space); must not exist yet</li></ul>
 <ul class="notes"><li>The new name must not contain a space (or other white space) and must not exist yet.</li></ul>
 <p>An example line:</p><table class="example"><tr><td>&lt;current name&gt;</td><td>&lt;new name&gt;</td></tr></table>
 <p class="how">Select the category <b>Locations</b> and the action “Rename - Locations”, click “Input Prompt”, paste the data and save it. Then click “Start”.</p>

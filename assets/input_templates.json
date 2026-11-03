@@ -62,7 +62,7 @@
       "create_playlist": {
         "summary": "Vytvoření nových playlistů.",
         "columns": [
-          "1. nový název playlistu (jeden na řádek)"
+          "1. nový název playlistu: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"
         ],
         "notes": [
           "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
@@ -198,7 +198,7 @@
         "summary": "Přejmenování skupin.",
         "columns": [
           "1. stávající název skupiny",
-          "2. nový název"
+          "2. nový název: bez mezery, čárky, středníku a uvozovek; ještě nesmí existovat ani se opakovat"
         ],
         "notes": [
           "Nový název nesmí obsahovat mezeru, čárku, středník ani uvozovky, nesmí už existovat ani se opakovat."
@@ -223,7 +223,7 @@
       "create_group": {
         "summary": "Vytvoření nových skupin.",
         "columns": [
-          "1. nový název skupiny (jeden na řádek)"
+          "1. nový název skupiny: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"
         ],
         "notes": [
           "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
@@ -304,7 +304,7 @@
         "summary": "Přejmenování přehrávačů.",
         "columns": [
           "1. stávající název přehrávače",
-          "2. nový název"
+          "2. nový název: s identifikátorem a podtržítkem (PB, PC, PD nebo PE + 4 číslice, např. PB1234_, nebo RPI + 3 číslice), identifikátor se nesmí změnit; bez mezery, čárky, středníku a uvozovek; ještě nesmí existovat"
         ],
         "notes": [
           "Nový název musí obsahovat identifikátor, za kterým následuje podtržítko: PB, PC, PD nebo PE + 4 číslice (např. PB1234_), nebo RPI + 3 číslice (např. RPI123_). Identifikátor stávajícího názvu se nesmí změnit. Nový název nesmí obsahovat uvozovky, čárku, středník ani mezery a nesmí už existovat."
@@ -329,7 +329,7 @@
       "create_label": {
         "summary": "Vytvoření nových kategorií.",
         "columns": [
-          "1. nový název kategorie (jeden na řádek)"
+          "1. nový název kategorie: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"
         ],
         "notes": [
           "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
@@ -342,20 +342,20 @@
         "summary": "Nastavení časů zapnutí a vypnutí lokace pro každý den týdne.",
         "columns": [
           "1. název lokace",
-          "2. neděle - zapnutí",
-          "3. neděle - vypnutí",
-          "4. pondělí - zapnutí",
-          "5. pondělí - vypnutí",
-          "6. úterý - zapnutí",
-          "7. úterý - vypnutí",
-          "8. středa - zapnutí",
-          "9. středa - vypnutí",
-          "10. čtvrtek - zapnutí",
-          "11. čtvrtek - vypnutí",
-          "12. pátek - zapnutí",
-          "13. pátek - vypnutí",
-          "14. sobota - zapnutí",
-          "15. sobota - vypnutí"
+          "2. neděle - zapnutí: čas HH:MM, např. 08:00, nebo prázdné",
+          "3. neděle - vypnutí: čas HH:MM, např. 18:00, nebo prázdné",
+          "4. pondělí - zapnutí: čas HH:MM, např. 08:00, nebo prázdné",
+          "5. pondělí - vypnutí: čas HH:MM, např. 18:00, nebo prázdné",
+          "6. úterý - zapnutí: čas HH:MM, např. 08:00, nebo prázdné",
+          "7. úterý - vypnutí: čas HH:MM, např. 18:00, nebo prázdné",
+          "8. středa - zapnutí: čas HH:MM, např. 08:00, nebo prázdné",
+          "9. středa - vypnutí: čas HH:MM, např. 18:00, nebo prázdné",
+          "10. čtvrtek - zapnutí: čas HH:MM, např. 08:00, nebo prázdné",
+          "11. čtvrtek - vypnutí: čas HH:MM, např. 18:00, nebo prázdné",
+          "12. pátek - zapnutí: čas HH:MM, např. 08:00, nebo prázdné",
+          "13. pátek - vypnutí: čas HH:MM, např. 18:00, nebo prázdné",
+          "14. sobota - zapnutí: čas HH:MM, např. 08:00, nebo prázdné",
+          "15. sobota - vypnutí: čas HH:MM, např. 18:00, nebo prázdné"
         ],
         "notes": [
           "Dny jdou od neděle, stejně jako v CSV exportu a v DSMediaplay.",
@@ -384,7 +384,7 @@
         "summary": "Přejmenování lokací.",
         "columns": [
           "1. stávající název lokace",
-          "2. nový název"
+          "2. nový název: bez mezery (ani jiných bílých znaků); ještě nesmí existovat"
         ],
         "notes": [
           "Nový název nesmí obsahovat mezeru (ani jiné bílé znaky) a nesmí už existovat."
@@ -409,7 +409,7 @@
       "create_location": {
         "summary": "Vytvoření nových lokací.",
         "columns": [
-          "1. nový název lokace (jeden na řádek)"
+          "1. nový název lokace: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"
         ],
         "notes": [
           "Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky."
@@ -563,7 +563,7 @@
       "create_playlist": {
         "summary": "Create new playlists.",
         "columns": [
-          "1. new playlist name (one per line)"
+          "1. new playlist name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"
         ],
         "notes": [
           "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."
@@ -699,7 +699,7 @@
         "summary": "Rename groups.",
         "columns": [
           "1. current group name",
-          "2. new name"
+          "2. new name: no space, comma, semicolon or quotation mark; must not exist yet and must not be repeated"
         ],
         "notes": [
           "The new name must not contain a space, a comma, a semicolon or quotation marks, must not exist yet and must not be repeated."
@@ -724,7 +724,7 @@
       "create_group": {
         "summary": "Create new groups.",
         "columns": [
-          "1. new group name (one per line)"
+          "1. new group name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"
         ],
         "notes": [
           "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."
@@ -805,7 +805,7 @@
         "summary": "Rename players.",
         "columns": [
           "1. current player name",
-          "2. new name"
+          "2. new name: with an identifier and an underscore (PB, PC, PD or PE + 4 digits, e.g. PB1234_, or RPI + 3 digits), the identifier must not change; no space, comma, semicolon or quotation mark; must not exist yet"
         ],
         "notes": [
           "The new name must contain an identifier followed by an underscore: PB, PC, PD or PE + 4 digits (e.g. PB1234_), or RPI + 3 digits (e.g. RPI123_). The identifier of the current name must not change. The new name must not contain quotes, commas, semicolons or whitespace and must not exist yet."
@@ -830,7 +830,7 @@
       "create_label": {
         "summary": "Create new categories.",
         "columns": [
-          "1. new category name (one per line)"
+          "1. new category name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"
         ],
         "notes": [
           "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."
@@ -843,20 +843,20 @@
         "summary": "Set the on and off times of a location for each day of the week.",
         "columns": [
           "1. location name",
-          "2. Sunday - on",
-          "3. Sunday - off",
-          "4. Monday - on",
-          "5. Monday - off",
-          "6. Tuesday - on",
-          "7. Tuesday - off",
-          "8. Wednesday - on",
-          "9. Wednesday - off",
-          "10. Thursday - on",
-          "11. Thursday - off",
-          "12. Friday - on",
-          "13. Friday - off",
-          "14. Saturday - on",
-          "15. Saturday - off"
+          "2. Sunday - on: a time HH:MM, e.g. 08:00, or empty",
+          "3. Sunday - off: a time HH:MM, e.g. 18:00, or empty",
+          "4. Monday - on: a time HH:MM, e.g. 08:00, or empty",
+          "5. Monday - off: a time HH:MM, e.g. 18:00, or empty",
+          "6. Tuesday - on: a time HH:MM, e.g. 08:00, or empty",
+          "7. Tuesday - off: a time HH:MM, e.g. 18:00, or empty",
+          "8. Wednesday - on: a time HH:MM, e.g. 08:00, or empty",
+          "9. Wednesday - off: a time HH:MM, e.g. 18:00, or empty",
+          "10. Thursday - on: a time HH:MM, e.g. 08:00, or empty",
+          "11. Thursday - off: a time HH:MM, e.g. 18:00, or empty",
+          "12. Friday - on: a time HH:MM, e.g. 08:00, or empty",
+          "13. Friday - off: a time HH:MM, e.g. 18:00, or empty",
+          "14. Saturday - on: a time HH:MM, e.g. 08:00, or empty",
+          "15. Saturday - off: a time HH:MM, e.g. 18:00, or empty"
         ],
         "notes": [
           "The days start with Sunday, as in the CSV export and in DSMediaplay.",
@@ -885,7 +885,7 @@
         "summary": "Rename locations.",
         "columns": [
           "1. current location name",
-          "2. new name"
+          "2. new name: no space (or other white space); must not exist yet"
         ],
         "notes": [
           "The new name must not contain a space (or other white space) and must not exist yet."
@@ -910,7 +910,7 @@
       "create_location": {
         "summary": "Create new locations.",
         "columns": [
-          "1. new location name (one per line)"
+          "1. new location name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"
         ],
         "notes": [
           "The name must not exist yet. It must not contain a semicolon, a tab or the characters ě š č ř ž ý á í é ß; writing it without diacritics is recommended."

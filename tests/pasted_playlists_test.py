@@ -160,7 +160,7 @@ class AddPastedPlaylistsTest(ProcessorCase):
         processor, logger = self.load(AddDetailedPlaylistProcessor, line("G1", "Promo", "x.y.z", "", "", "", ""),
                                       real_text=True, action="set_add_detailed_playlist_to_group")
 
-        self.assertTrue(any(message.startswith("Řádek 1, sloupec 3 (platí od): zadáno „x.y.z“")
+        self.assertTrue(any(message.startswith("Řádek 1, sloupec 3 (platí od, blok playlistu 1): zadáno „x.y.z“")
                             for message in self.messages(logger)))
 
 

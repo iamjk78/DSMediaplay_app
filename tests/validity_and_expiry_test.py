@@ -54,11 +54,11 @@ class AssetValidityTest(ProcessorCase):
 
     def test_a_date_or_hour_that_would_fail_in_the_middle_of_the_batch_is_refused_at_the_load(self):
         for what, cells, key in (
-                ("a date in the wrong form", ("a.jpg", "2026-01-01", "", "", ""), "invalid_asset_date"),
-                ("a date that does not exist", ("a.jpg", "31.02.2026", "", "", ""), "invalid_asset_date"),
-                ("dates in the wrong order", ("a.jpg", "02.01.2026", "01.01.2026", "", ""), "asset_date_order"),
-                ("minutes", ("a.jpg", "01.01.2026", "", "8:30", ""), "invalid_asset_hour"),
-                ("an hour of the day that is not one", ("a.jpg", "01.01.2026", "", "", "25"), "invalid_asset_hour")):
+                ("a date in the wrong form", ("a.jpg", "2026-01-01", "", "", ""), "cell_error_plain"),
+                ("a date that does not exist", ("a.jpg", "31.02.2026", "", "", ""), "cell_error_plain"),
+                ("dates in the wrong order", ("a.jpg", "02.01.2026", "01.01.2026", "", ""), "order_error_date"),
+                ("minutes", ("a.jpg", "01.01.2026", "", "8:30", ""), "cell_error_plain"),
+                ("an hour of the day that is not one", ("a.jpg", "01.01.2026", "", "", "25"), "cell_error_plain")):
             with self.subTest(what):
                 processor, logger = self.load(line(*cells))
 
@@ -127,7 +127,7 @@ class DominationIntervalTest(ProcessorCase):
             with self.subTest(value=value):
                 processor, logger = self.load(PlaylistSettingsProcessor, line("P", value))
 
-                self.assertIn("invalid_domination_interval", self.messages(logger))
+                self.assertIn("cell_error_plain", self.messages(logger))
                 self.assertTrue(processor.refused)
 
 

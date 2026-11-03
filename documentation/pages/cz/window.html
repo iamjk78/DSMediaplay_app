@@ -41,6 +41,7 @@
 <h2>Vstup</h2>
 <p>Tlačítko „Zadání vstupu“ je vidět jen u činností, které vstup berou. V okně je vzor: šedé řádky začínající <code>#</code> popisují sloupce, poslední řádek je příklad. Vzor můžete smazat, nebo nechat, nezměněné řádky vzoru se při zpracování přeskočí. Sloupce se oddělují tabulátorem (při kopírování z Excelu se vloží samy), jeden záznam je jeden řádek. Řádky se zpracovávají v pořadí, v jakém jsou napsané, a chyby uvádějí číslo řádku tak, jak ho vidíte.</p>
 <p>Vstup se zkontroluje celý, než se cokoli změní: když je v něm chyba (neznámý název, špatné datum nebo čas), nic se neprovede a log vypíše všechny chyby.</p>
+<p>Každá chyba v řádku říká, ve kterém je sloupci (číslo a název), co bylo zadáno a co sloupec očekává, např. „Řádek 3, sloupec 4 (automatický restart): zadáno „abc“, očekává se: čas HH:MM, prázdné = vypnuto“. U špatného počtu sloupců log navíc napíše, které sloupce chybí nebo přebývají, co bylo zadáno a vzorový řádek (⇥ je tabulátor). Popis sloupců je stejný jako ve vzoru vstupu (tlačítko Vzor).</p>
 <p>Log nejdřív napíše, kolik řádků načetl a kolik prázdných řádků mezi nimi přeskočí. Stejný řádek, který je ve vstupu víckrát, se zpracuje jen jednou; log napíše, kolik opakujících se řádků přeskočil. Na konci logu se všechny chyby vypíšou ještě jednou červeně pod nadpisem „Zjištěné chyby:“. Kliknutím na podtržený řádek takové chyby se otevře vstup s textem posledního spuštění a kurzorem na chybném řádku.</p>
 </section>
 <section>

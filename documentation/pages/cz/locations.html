@@ -46,7 +46,7 @@
 <p>Nastavení časů zapnutí a vypnutí lokace pro každý den týdne.</p>
 <p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
 <h4>Vstup</h4>
-<ul><li>1. název lokace</li><li>2. neděle - zapnutí</li><li>3. neděle - vypnutí</li><li>4. pondělí - zapnutí</li><li>5. pondělí - vypnutí</li><li>6. úterý - zapnutí</li><li>7. úterý - vypnutí</li><li>8. středa - zapnutí</li><li>9. středa - vypnutí</li><li>10. čtvrtek - zapnutí</li><li>11. čtvrtek - vypnutí</li><li>12. pátek - zapnutí</li><li>13. pátek - vypnutí</li><li>14. sobota - zapnutí</li><li>15. sobota - vypnutí</li></ul>
+<ul><li>1. název lokace</li><li>2. neděle - zapnutí: čas HH:MM, např. 08:00, nebo prázdné</li><li>3. neděle - vypnutí: čas HH:MM, např. 18:00, nebo prázdné</li><li>4. pondělí - zapnutí: čas HH:MM, např. 08:00, nebo prázdné</li><li>5. pondělí - vypnutí: čas HH:MM, např. 18:00, nebo prázdné</li><li>6. úterý - zapnutí: čas HH:MM, např. 08:00, nebo prázdné</li><li>7. úterý - vypnutí: čas HH:MM, např. 18:00, nebo prázdné</li><li>8. středa - zapnutí: čas HH:MM, např. 08:00, nebo prázdné</li><li>9. středa - vypnutí: čas HH:MM, např. 18:00, nebo prázdné</li><li>10. čtvrtek - zapnutí: čas HH:MM, např. 08:00, nebo prázdné</li><li>11. čtvrtek - vypnutí: čas HH:MM, např. 18:00, nebo prázdné</li><li>12. pátek - zapnutí: čas HH:MM, např. 08:00, nebo prázdné</li><li>13. pátek - vypnutí: čas HH:MM, např. 18:00, nebo prázdné</li><li>14. sobota - zapnutí: čas HH:MM, např. 08:00, nebo prázdné</li><li>15. sobota - vypnutí: čas HH:MM, např. 18:00, nebo prázdné</li></ul>
 <ul class="notes"><li>Dny jdou od neděle, stejně jako v CSV exportu a v DSMediaplay.</li><li>Vždy všech 15 sloupců; prázdná buňka = v ten den se nic nenastaví.</li><li>Čas: HH:MM (např. 08:00); vypnutí 00:00 se bere jako 23:59, zapnutí musí být dřív než vypnutí.</li></ul>
 <p>Příklad řádku:</p><table class="example"><tr><td>&lt;název lokace&gt;</td><td></td><td></td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td>08:00</td><td>18:00</td><td></td><td></td></tr></table>
 <p class="how">Vyberte kategorii <b>Locations</b> a činnost „Nastavení - časy lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
@@ -56,7 +56,7 @@
 <p>Přejmenování lokací.</p>
 <p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
 <h4>Vstup</h4>
-<ul><li>1. stávající název lokace</li><li>2. nový název</li></ul>
+<ul><li>1. stávající název lokace</li><li>2. nový název: bez mezery (ani jiných bílých znaků); ještě nesmí existovat</li></ul>
 <ul class="notes"><li>Nový název nesmí obsahovat mezeru (ani jiné bílé znaky) a nesmí už existovat.</li></ul>
 <p>Příklad řádku:</p><table class="example"><tr><td>&lt;stávající název&gt;</td><td>&lt;nový název&gt;</td></tr></table>
 <p class="how">Vyberte kategorii <b>Locations</b> a činnost „Přejmenování - lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>
@@ -66,7 +66,7 @@
 <p>Vytvoření nových lokací.</p>
 <p class="kind">Vyžaduje vstup („Zadání vstupu“).</p>
 <h4>Vstup</h4>
-<ul><li>1. nový název lokace (jeden na řádek)</li></ul>
+<ul><li>1. nový název lokace: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek</li></ul>
 <ul class="notes"><li>Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; doporučeno psát bez diakritiky.</li></ul>
 <p>Příklad řádku:</p><table class="example"><tr><td>&lt;nový název lokace&gt;</td></tr></table>
 <p class="how">Vyberte kategorii <b>Locations</b> a činnost „Vytvoření - lokace“, klikněte na „Zadání vstupu“, vložte data a uložte je. Pak klikněte na „Spustit“.</p>

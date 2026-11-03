@@ -64,7 +64,7 @@ cz = {
             "Smazání nepoužívaných playlistů.", ["1. název playlistu (jeden na řádek)"], ["<název playlistu>"],
             ["Playlisty se štítkem \"test\" se přeskočí."]),
         "create_playlist": action(
-            "Vytvoření nových playlistů.", ["1. nový název playlistu (jeden na řádek)"], ["<nový název playlistu>"],
+            "Vytvoření nových playlistů.", ["1. nový název playlistu: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"], ["<nový název playlistu>"],
             [CZ_CREATE]),
         "set_group_settings": action(
             "Nastavení parametrů skupiny.",
@@ -103,14 +103,14 @@ cz = {
             "Odebrání vybraných playlistů ze všech skupin.", ["1. název playlistu (jeden na řádek)"],
             ["<název playlistu>"], ["Neexistující názvy se přeskočí s varováním."]),
         "set_group_rename": action(
-            "Přejmenování skupin.", ["1. stávající název skupiny", "2. nový název"],
+            "Přejmenování skupin.", ["1. stávající název skupiny", "2. nový název: bez mezery, čárky, středníku a uvozovek; ještě nesmí existovat ani se opakovat"],
             ["<stávající název>", "<nový název>"],
             ["Nový název nesmí obsahovat mezeru, čárku, středník ani uvozovky, nesmí už existovat ani se opakovat."]),
         "remove_unused_groups": action(
             "Smazání nepoužívaných skupin.", ["1. název skupiny (jeden na řádek)"], ["<název skupiny>"],
             ["Skupiny se štítkem \"test\" se přeskočí."]),
         "create_group": action(
-            "Vytvoření nových skupin.", ["1. nový název skupiny (jeden na řádek)"], ["<nový název skupiny>"],
+            "Vytvoření nových skupin.", ["1. nový název skupiny: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"], ["<nový název skupiny>"],
             [CZ_CREATE]),
         "set_groups_to_players": action(
             "Přiřazení skupiny přehrávači.", ["1. název přehrávače", "2. název skupiny"],
@@ -132,7 +132,7 @@ cz = {
             ["1. název přehrávače (jeden na řádek; další sloupce se ignorují)"], ["<název přehrávače>"],
             ["Zpracují se jen přehrávače, které additional playlist mají."]),
         "set_player_rename": action(
-            "Přejmenování přehrávačů.", ["1. stávající název přehrávače", "2. nový název"],
+            "Přejmenování přehrávačů.", ["1. stávající název přehrávače", "2. nový název: s identifikátorem a podtržítkem (PB, PC, PD nebo PE + 4 číslice, např. PB1234_, nebo RPI + 3 číslice), identifikátor se nesmí změnit; bez mezery, čárky, středníku a uvozovek; ještě nesmí existovat"],
             ["<stávající název>", "<nový název>_PB1234_"],
             ["Nový název musí obsahovat identifikátor, za kterým následuje podtržítko: PB, PC, PD nebo PE + 4 číslice "
              "(např. PB1234_), nebo RPI + 3 číslice (např. RPI123_). Identifikátor stávajícího názvu se nesmí změnit. "
@@ -141,26 +141,26 @@ cz = {
             "Smazání nepoužívaných kategorií.", ["1. název kategorie (jeden na řádek)"], ["<název kategorie>"],
             ["Kategorie, jejichž název začíná \"test\", se přeskočí."]),
         "create_label": action(
-            "Vytvoření nových kategorií.", ["1. nový název kategorie (jeden na řádek)"], ["<nový název kategorie>"],
+            "Vytvoření nových kategorií.", ["1. nový název kategorie: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"], ["<nový název kategorie>"],
             [CZ_CREATE]),
         "set_location_plan": action(
             "Nastavení časů zapnutí a vypnutí lokace pro každý den týdne.",
-            ["1. název lokace", "2. neděle - zapnutí", "3. neděle - vypnutí", "4. pondělí - zapnutí",
-             "5. pondělí - vypnutí", "6. úterý - zapnutí", "7. úterý - vypnutí", "8. středa - zapnutí",
-             "9. středa - vypnutí", "10. čtvrtek - zapnutí", "11. čtvrtek - vypnutí", "12. pátek - zapnutí",
-             "13. pátek - vypnutí", "14. sobota - zapnutí", "15. sobota - vypnutí"],
+            ["1. název lokace"] + [f"{2 + 2 * day + part}. {name} - {text}: čas HH:MM, např. {example}, nebo prázdné"
+                                   for day, name in enumerate(("neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek",
+                                                               "sobota"))
+                                   for part, (text, example) in enumerate((("zapnutí", "08:00"), ("vypnutí", "18:00")))],
             ["<název lokace>", "", ""] + ["08:00", "18:00"] * 5 + ["", ""],
             ["Dny jdou od neděle, stejně jako v CSV exportu a v DSMediaplay.",
              "Vždy všech 15 sloupců; prázdná buňka = v ten den se nic nenastaví.", CZ_TIME]),
         "set_location_rename": action(
-            "Přejmenování lokací.", ["1. stávající název lokace", "2. nový název"],
+            "Přejmenování lokací.", ["1. stávající název lokace", "2. nový název: bez mezery (ani jiných bílých znaků); ještě nesmí existovat"],
             ["<stávající název>", "<nový název>"],
             ["Nový název nesmí obsahovat mezeru (ani jiné bílé znaky) a nesmí už existovat."]),
         "remove_unused_locations": action(
             "Smazání nepoužívaných lokací.", ["1. název lokace (jeden na řádek)"], ["<název lokace>"],
             ["Lokace se štítkem \"test\" se přeskočí."]),
         "create_location": action(
-            "Vytvoření nových lokací.", ["1. nový název lokace (jeden na řádek)"], ["<nový název lokace>"],
+            "Vytvoření nových lokací.", ["1. nový název lokace: ještě nesmí existovat, bez středníku, tabulátoru a znaků ě š č ř ž ý á í é ß; jeden na řádek"], ["<nový název lokace>"],
             [CZ_CREATE]),
         "set_asset_validity": action(
             "Nastavení platnosti assetu.",
@@ -216,7 +216,7 @@ en = {
             "Delete unused playlists.", ["1. playlist name (one per line)"], ["<playlist name>"],
             ["Playlists labelled \"test\" are skipped."]),
         "create_playlist": action(
-            "Create new playlists.", ["1. new playlist name (one per line)"], ["<new playlist name>"], [EN_CREATE]),
+            "Create new playlists.", ["1. new playlist name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"], ["<new playlist name>"], [EN_CREATE]),
         "set_group_settings": action(
             "Set the parameters of a group.",
             ["1. group name", "2. resolution (text as in the CSV export, e.g. 1080p)",
@@ -251,14 +251,14 @@ en = {
             "Remove the selected playlists from all groups.", ["1. playlist name (one per line)"],
             ["<playlist name>"], ["Names that do not exist are skipped with a warning."]),
         "set_group_rename": action(
-            "Rename groups.", ["1. current group name", "2. new name"], ["<current name>", "<new name>"],
+            "Rename groups.", ["1. current group name", "2. new name: no space, comma, semicolon or quotation mark; must not exist yet and must not be repeated"], ["<current name>", "<new name>"],
             ["The new name must not contain a space, a comma, a semicolon or quotation marks, must not exist yet "
              "and must not be repeated."]),
         "remove_unused_groups": action(
             "Delete unused groups.", ["1. group name (one per line)"], ["<group name>"],
             ["Groups labelled \"test\" are skipped."]),
         "create_group": action(
-            "Create new groups.", ["1. new group name (one per line)"], ["<new group name>"], [EN_CREATE]),
+            "Create new groups.", ["1. new group name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"], ["<new group name>"], [EN_CREATE]),
         "set_groups_to_players": action(
             "Assign a group to a player.", ["1. player name", "2. group name"], ["<player name>", "<group name>"],
             ["Each player at most once."]),
@@ -279,7 +279,7 @@ en = {
             ["1. player name (one per line; further columns are ignored)"], ["<player name>"],
             ["Only players that have an additional playlist are processed."]),
         "set_player_rename": action(
-            "Rename players.", ["1. current player name", "2. new name"], ["<current name>", "<new name>_PB1234_"],
+            "Rename players.", ["1. current player name", "2. new name: with an identifier and an underscore (PB, PC, PD or PE + 4 digits, e.g. PB1234_, or RPI + 3 digits), the identifier must not change; no space, comma, semicolon or quotation mark; must not exist yet"], ["<current name>", "<new name>_PB1234_"],
             ["The new name must contain an identifier followed by an underscore: PB, PC, PD or PE + 4 digits "
              "(e.g. PB1234_), or RPI + 3 digits (e.g. RPI123_). The identifier of the current name must not change. "
              "The new name must not contain quotes, commas, semicolons or whitespace and must not exist yet."]),
@@ -287,23 +287,24 @@ en = {
             "Delete unused categories.", ["1. category name (one per line)"], ["<category name>"],
             ["Categories whose name starts with \"test\" are skipped."]),
         "create_label": action(
-            "Create new categories.", ["1. new category name (one per line)"], ["<new category name>"], [EN_CREATE]),
+            "Create new categories.", ["1. new category name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"], ["<new category name>"], [EN_CREATE]),
         "set_location_plan": action(
             "Set the on and off times of a location for each day of the week.",
-            ["1. location name", "2. Sunday - on", "3. Sunday - off", "4. Monday - on", "5. Monday - off",
-             "6. Tuesday - on", "7. Tuesday - off", "8. Wednesday - on", "9. Wednesday - off", "10. Thursday - on",
-             "11. Thursday - off", "12. Friday - on", "13. Friday - off", "14. Saturday - on", "15. Saturday - off"],
+            ["1. location name"] + [f"{2 + 2 * day + part}. {name} - {text}: a time HH:MM, e.g. {example}, or empty"
+                                    for day, name in enumerate(("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+                                                                "Friday", "Saturday"))
+                                    for part, (text, example) in enumerate((("on", "08:00"), ("off", "18:00")))],
             ["<location name>", "", ""] + ["08:00", "18:00"] * 5 + ["", ""],
             ["The days start with Sunday, as in the CSV export and in DSMediaplay.",
              "Always all 15 columns; an empty cell = nothing is set for that day.", EN_TIME]),
         "set_location_rename": action(
-            "Rename locations.", ["1. current location name", "2. new name"], ["<current name>", "<new name>"],
+            "Rename locations.", ["1. current location name", "2. new name: no space (or other white space); must not exist yet"], ["<current name>", "<new name>"],
             ["The new name must not contain a space (or other white space) and must not exist yet."]),
         "remove_unused_locations": action(
             "Delete unused locations.", ["1. location name (one per line)"], ["<location name>"],
             ["Locations labelled \"test\" are skipped."]),
         "create_location": action(
-            "Create new locations.", ["1. new location name (one per line)"], ["<new location name>"], [EN_CREATE]),
+            "Create new locations.", ["1. new location name: must not exist yet, no semicolon, tab or the characters ě š č ř ž ý á í é ß; one per line"], ["<new location name>"], [EN_CREATE]),
         "set_asset_validity": action(
             "Set the validity of an asset.",
             ["1. asset name", "2. valid from: a date or empty", "3. valid to: a date or empty",
