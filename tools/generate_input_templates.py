@@ -11,9 +11,11 @@ CZ_TIME_WHOLE_DAY = (CZ_TIME + " Když čas od i čas do zůstanou prázdné, na
                      "(vyplníte-li jen jeden, druhý se doplní stejně).")
 CZ_DAYS = ("Dny: kódy oddělené čárkou: mo = pondělí, tu = úterý, we = středa, th = čtvrtek, fr = pátek, "
            "sa = sobota, su = neděle; nebo čísla 1-7 podle API (1 = neděle ... 7 = sobota). Prázdné = všechny dny.")
-CZ_BLOCK = ["   a) název playlistu", "   b) platí od: datum nebo prázdné", "   c) platí do: datum nebo prázdné",
-            "   d) dny v týdnu nebo prázdné", "   e) od kolika hodin: čas nebo prázdné",
-            "   f) do kolika hodin: čas nebo prázdné"]
+CZ_BLOCK = ["   a) název playlistu", "   b) platí od: datum DD.MM.RRRR, např. 01.01.2026, nebo prázdné",
+            "   c) platí do: datum DD.MM.RRRR, např. 31.12.2026, nebo prázdné",
+            "   d) dny v týdnu: kódy mo,tu,we,th,fr,sa,su (nebo čísla 1-7) oddělené čárkou, nebo prázdné",
+            "   e) od kolika hodin: čas HH:MM, např. 08:00, nebo prázdné (prázdné = od 00:00)",
+            "   f) do kolika hodin: čas HH:MM, např. 18:00, nebo prázdné (prázdné = do 23:59)"]
 CZ_CREATE = ("Název ještě nesmí existovat. Nesmí obsahovat středník, tabulátor ani znaky ě š č ř ž ý á í é ß; "
              "doporučeno psát bez diakritiky.")
 
@@ -24,9 +26,11 @@ EN_TIME_WHOLE_DAY = (EN_TIME + " When both the from and the to time are left emp
 EN_DAYS = ("Days: codes separated by commas: mo = Monday, tu = Tuesday, we = Wednesday, th = Thursday, "
            "fr = Friday, sa = Saturday, su = Sunday; or the API numbers 1-7 (1 = Sunday ... 7 = Saturday). "
            "Empty = every day.")
-EN_BLOCK = ["   a) playlist name", "   b) valid from: a date or empty", "   c) valid to: a date or empty",
-            "   d) days of the week or empty", "   e) from what time: a time or empty",
-            "   f) until what time: a time or empty"]
+EN_BLOCK = ["   a) playlist name", "   b) valid from: a date DD.MM.YYYY, e.g. 01.01.2026, or empty",
+            "   c) valid to: a date DD.MM.YYYY, e.g. 31.12.2026, or empty",
+            "   d) days of the week: codes mo,tu,we,th,fr,sa,su (or numbers 1-7) separated by commas, or empty",
+            "   e) from what time: a time HH:MM, e.g. 08:00, or empty (empty = from 00:00)",
+            "   f) until what time: a time HH:MM, e.g. 18:00, or empty (empty = until 23:59)"]
 EN_CREATE = ("The name must not exist yet. It must not contain a semicolon, a tab or the characters "
              "ě š č ř ž ý á í é ß; writing it without diacritics is recommended.")
 

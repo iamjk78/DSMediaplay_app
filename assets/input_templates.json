@@ -109,11 +109,11 @@
           "2. výchozí playlist (bez omezení; může být prázdný)",
           "3. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, tabulátory ponechte):",
           "   a) název playlistu",
-          "   b) platí od: datum nebo prázdné",
-          "   c) platí do: datum nebo prázdné",
-          "   d) dny v týdnu nebo prázdné",
-          "   e) od kolika hodin: čas nebo prázdné",
-          "   f) do kolika hodin: čas nebo prázdné"
+          "   b) platí od: datum DD.MM.RRRR, např. 01.01.2026, nebo prázdné",
+          "   c) platí do: datum DD.MM.RRRR, např. 31.12.2026, nebo prázdné",
+          "   d) dny v týdnu: kódy mo,tu,we,th,fr,sa,su (nebo čísla 1-7) oddělené čárkou, nebo prázdné",
+          "   e) od kolika hodin: čas HH:MM, např. 08:00, nebo prázdné (prázdné = od 00:00)",
+          "   f) do kolika hodin: čas HH:MM, např. 18:00, nebo prázdné (prázdné = do 23:59)"
         ],
         "notes": [
           "Jeden řádek na skupinu.",
@@ -138,11 +138,11 @@
           "1. název skupiny",
           "2. a dál: libovolný počet bloků po 6 sloupcích (vždy všech 6; prázdné buňky nechte prázdné, tabulátory ponechte):",
           "   a) název playlistu",
-          "   b) platí od: datum nebo prázdné",
-          "   c) platí do: datum nebo prázdné",
-          "   d) dny v týdnu nebo prázdné",
-          "   e) od kolika hodin: čas nebo prázdné",
-          "   f) do kolika hodin: čas nebo prázdné"
+          "   b) platí od: datum DD.MM.RRRR, např. 01.01.2026, nebo prázdné",
+          "   c) platí do: datum DD.MM.RRRR, např. 31.12.2026, nebo prázdné",
+          "   d) dny v týdnu: kódy mo,tu,we,th,fr,sa,su (nebo čísla 1-7) oddělené čárkou, nebo prázdné",
+          "   e) od kolika hodin: čas HH:MM, např. 08:00, nebo prázdné (prázdné = od 00:00)",
+          "   f) do kolika hodin: čas HH:MM, např. 18:00, nebo prázdné (prázdné = do 23:59)"
         ],
         "notes": [
           "Jeden řádek na skupinu (bez sloupce výchozího playlistu).",
@@ -610,11 +610,11 @@
           "2. default playlist (no restrictions; may be empty)",
           "3. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):",
           "   a) playlist name",
-          "   b) valid from: a date or empty",
-          "   c) valid to: a date or empty",
-          "   d) days of the week or empty",
-          "   e) from what time: a time or empty",
-          "   f) until what time: a time or empty"
+          "   b) valid from: a date DD.MM.YYYY, e.g. 01.01.2026, or empty",
+          "   c) valid to: a date DD.MM.YYYY, e.g. 31.12.2026, or empty",
+          "   d) days of the week: codes mo,tu,we,th,fr,sa,su (or numbers 1-7) separated by commas, or empty",
+          "   e) from what time: a time HH:MM, e.g. 08:00, or empty (empty = from 00:00)",
+          "   f) until what time: a time HH:MM, e.g. 18:00, or empty (empty = until 23:59)"
         ],
         "notes": [
           "One line per group.",
@@ -639,11 +639,11 @@
           "1. group name",
           "2. and more: any number of blocks of 6 columns (always all 6; leave empty cells empty, keep the tabs):",
           "   a) playlist name",
-          "   b) valid from: a date or empty",
-          "   c) valid to: a date or empty",
-          "   d) days of the week or empty",
-          "   e) from what time: a time or empty",
-          "   f) until what time: a time or empty"
+          "   b) valid from: a date DD.MM.YYYY, e.g. 01.01.2026, or empty",
+          "   c) valid to: a date DD.MM.YYYY, e.g. 31.12.2026, or empty",
+          "   d) days of the week: codes mo,tu,we,th,fr,sa,su (or numbers 1-7) separated by commas, or empty",
+          "   e) from what time: a time HH:MM, e.g. 08:00, or empty (empty = from 00:00)",
+          "   f) until what time: a time HH:MM, e.g. 18:00, or empty (empty = until 23:59)"
         ],
         "notes": [
           "One line per group (there is no default playlist column).",

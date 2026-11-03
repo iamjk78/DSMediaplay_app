@@ -349,7 +349,27 @@ class InputProcessor(ABC):
             overview=get("columns_overview", overview=columns_overview(self.action_key, language)) if known else "",
             entered="⇥".join(cells), pattern=example_line(self.action_key, language) if known else ""))
 
-    def _write_cell_error(self, line_number: int, column: int, entered: str, context: str = ""):
+    def _column_name_of(self, column: int) -> str:
+        """The name of a column with the block it is in, or the number when the action has no template."""
+        info = self._column(column)
+        if info is None:
+            return str(column)
+        return info.name + (self.lang.get_message("cell_block", block=info.block) if info.block else "")
+
+    def _write_order_error(self, line_number: int, column_a: int, column_b: int, value_a: str, value_b: str, key: str,
+                           context: str = ""):
+        """Two values that must be in order (a start before an end) and are not: both columns, both values."""
+        info_a, info_b = self._column(column_a), self._column(column_b)
+        if info_a and info_b and info_a.block == info_b.block:  # both in the same block: the block is told once
+            block = self.lang.get_message("cell_block", block=info_a.block) if info_a.block else ""
+            names = f"{info_a.name} / {info_b.name}{block}"
+        else:
+            names = f"{self._column_name_of(column_a)} / {self._column_name_of(column_b)}"
+        self._logger.error(self.lang.get_message(
+            key, line_number=line_number, column_a=column_a, column_b=column_b, names=names, value_a=value_a,
+            value_b=value_b, context=context))
+
+    def _write_cell_error(self, line_number: int, column: int, entered: str, context: str = "", warning: bool = False):
         """
         A value that cannot be taken: in which column it is (number and name), what was entered and what the column
         expects, as the template of the action describes it; `context` adds what else the line tells (the group, the playlist).
@@ -357,19 +377,24 @@ class InputProcessor(ABC):
         get = self.lang.get_message
         info = self._column(column)
         shown = entered if entered else get("empty_cell")
+        write = self._logger.warning if warning else self._logger.error
         if info is None:
-            self._logger.error(get("cell_error_plain", line_number=line_number, column=column, entered=shown,
-                                   context=context))
+            write(get("cell_error_plain", line_number=line_number, column=column, entered=shown, context=context))
             return
         name = info.name + (get("cell_block", block=info.block) if info.block else "")
-        self._logger.error(get("cell_error", line_number=line_number, column=column, name=name, entered=shown,
-                               expected=info.expected, context=context))
+        write(get("cell_error", line_number=line_number, column=column, name=name, entered=shown,
+                  expected=info.expected, context=context))
 
     def _write_empty_keyword(self, line_number: int):
         self._logger.error(self.lang.get_message("empty_keyword", line_number=line_number))
 
-    def _write_name_fail(self, line_number: int, name: str):
-        self._logger.warning(self.lang.get_message("name_fail", line_number=line_number, name=name))
+    def _write_name_fail(self, line_number: int, name: str, column: int = 1, context: str = ""):
+        """A name that the account does not have, with the column it was in and a reminder how exact a name has to be."""
+        if self._column(column) is None:
+            self._logger.warning(self.lang.get_message("name_fail", line_number=line_number, name=name))
+            return
+        self._write_cell_error(line_number, column, name, context=" " + self.lang.get_message("name_not_found") + context,
+                               warning=True)
 
     def _write_collision(self, line_number: int, key: str):
         self._logger.warning(self.lang.get_message("collision", line_number=line_number, key_col=key))
@@ -533,9 +558,9 @@ class InputProcessor(ABC):
 class EntityValidationProcessor(InputProcessor, ABC):
     entity_type: str = None  # Must be set in subclasses
 
-    def _validate_entity(self, entity: str, entity_list: List[str], line_num: int) -> bool:
+    def _validate_entity(self, entity: str, entity_list: List[str], line_num: int, column: int = 1) -> bool:
         if entity not in entity_list:
-            self._write_log_warning("name_fail", line_number=line_num, name=entity)
+            self._write_name_fail(line_num, entity, column)
             self._wrong_init_counter += 1
             return False
         return True
@@ -992,7 +1017,8 @@ class PlayerGroupProcessor(AssignProcessor):
 
             key, item = split_line[0], split_line[1]
             if key not in names['player_names'] or item not in names['group_names']:
-                self._write_name_fail(i + 1, key if key not in names['player_names'] else item)
+                self._write_name_fail(i + 1, key if key not in names['player_names'] else item,
+                                      column=1 if key not in names['player_names'] else 2)
                 unrecognized_name_counter += 1
                 continue
 
@@ -1048,7 +1074,7 @@ class DetailedPlaylistProcessor(AssignProcessor):
                 playlists = [(default_playlist, None, None, None, None, None)]
             elif default_playlist:  # dropping it quietly would write the group without the playlist it plays by default
                 self._wrong_init_counter += 1
-                self._write_name_fail(line_num, default_playlist)
+                self._write_name_fail(line_num, default_playlist, column=2)
                 continue
 
             playlists.extend(self._validated_blocks(line_num, group, cells[2:], names['playlist_names']))
@@ -1070,74 +1096,75 @@ class DetailedPlaylistProcessor(AssignProcessor):
             response = server.set_playlist_to_group_detailed(group, playlists)
             yield Response(200, response)
 
-    def _validated_blocks(self, line_num: int, group: str, cells: List[str], playlist_names: List[str]) -> List[Tuple]:
+    def _validated_blocks(self, line_num: int, group: str, cells: List[str], playlist_names: List[str],
+                          first_column: int = 3) -> List[Tuple]:
+        """The blocks of 6 columns of a line, each with the playlist and its dates, days and times; the first one starts in column `first_column`."""
         playlists = []
         for block_number, block in enumerate(self._blocks(cells, 6), 1):
+            column = first_column + (block_number - 1) * 6  # where this block begins: the column of the name of the playlist
             if not block[0]:  # times without a playlist would otherwise be read as the ones of another
                 self._wrong_init_counter += 1
-                self._write_missing_playlist_name(line_num, group, block_number)
+                self._write_cell_error(line_num, column, "", context=" " + self.lang.get_message(
+                    "missing_playlist_name_context", group=group))
                 continue
-            playlist_data = self._validate_playlist_data(line_num, group, block, playlist_names)
+            playlist_data = self._validate_playlist_data(line_num, group, block, playlist_names, column)
             if playlist_data:
                 playlists.append(playlist_data)
         return playlists
 
-    def _write_missing_playlist_name(self, line_num: int, group: str, block_number: int):
-        self._logger.error(self.lang.get_message("missing_playlist_name", line_num=line_num, group=group,
-                                                 block_number=block_number))
-
-    def _validate_playlist_data(self, line_num, group, data, playlist_names):
+    def _validate_playlist_data(self, line_num, group, data, playlist_names, column=3):
+        """
+        Checks all the six values of a block, each against what its column takes, and says for every one that is wrong in
+        which column it is, what was entered and what is expected (`column` is the one of the name of the playlist).
+        """
         playlist_name, start_date, end_date, weekdays, start_time, end_time = data
-        try:
-            end_time = normalize_time_format(end_time, is_off_time=True)
-            start_time = normalize_time_format(start_time)
-        except ValueError as e:
+        context = " " + self.lang.get_message("cell_context_playlist", group=group, playlist=playlist_name)
+        valid = True
+
+        def refuse(offset: int, entered: str):
+            nonlocal valid
+            self._write_cell_error(line_num, column + offset, entered, context=context)
             self._wrong_init_counter += 1
-            self._write_invalid_time(line_num, group, playlist_name, str(e))
-            return None
-        start_time, end_time = start_time or WHOLE_DAY_FROM, end_time or WHOLE_DAY_TO  # a time left empty is not "no time"
+            valid = False
 
         if playlist_name not in playlist_names:
             self._wrong_init_counter += 1
-            self._write_name_fail(line_num, playlist_name)
+            self._write_name_fail(line_num, playlist_name, column, context=" " + self.lang.get_message(
+                "cell_context_group", group=group))
+            valid = False
+        for offset, date in ((1, start_date), (2, end_date)):
+            if date and not self._validate_date_format(date):
+                refuse(offset, date)
+        if valid and start_date and end_date and not compare_date(start_date, end_date):
+            self._write_order_error(line_num, column + 1, column + 2, start_date, end_date, "order_error_date", context)
+            self._wrong_init_counter += 1
+            valid = False
+        weekdays_list = split_list(weekdays) if weekdays else []
+        weekdays_list = convert_days_of_week_to_int(weekdays_list)
+        if not self._validate_weekdays_format(weekdays_list):
+            refuse(3, weekdays)
+        times = {}
+        for offset, value, is_off_time in ((4, start_time, False), (5, end_time, True)):
+            try:
+                times[offset] = normalize_time_format(value, is_off_time=is_off_time)
+            except ValueError:
+                refuse(offset, value)
+        if not valid:
             return None
-
-        if not self._validate_dates(start_date, end_date, line_num, group, playlist_name):
+        # a time left empty is not "no time"
+        start_time, end_time = times[4] or WHOLE_DAY_FROM, times[5] or WHOLE_DAY_TO
+        if not self._validate_time_format(start_time):
+            refuse(4, start_time)
+        if not self._validate_time_format(end_time):
+            refuse(5, end_time)
+        if valid and start_time and end_time and not compare_time(start_time, end_time):
+            self._write_order_error(line_num, column + 4, column + 5, start_time, end_time, "order_error_time", context)
+            self._wrong_init_counter += 1
+            valid = False
+        if not valid:
             return None
-
-        weekdays = self._validate_weekdays(weekdays, line_num, group, playlist_name)
-        if weekdays is None:
-            return None
-
-        if not self._validate_times(start_time, end_time, line_num, group, playlist_name):
-            return None
-
         return (playlist_name, legible_to_iso(start_date), legible_to_iso(end_date),
-                weekdays, start_time, end_time)
-
-    def _validate_dates(self, start_date, end_date, line_num, group, playlist_name):
-        if start_date and not self._validate_date_format(start_date):
-            self._write_invalid_date(line_num, group, playlist_name, start_date)
-            self._wrong_init_counter += 1
-            return False
-        elif end_date and not self._validate_date_format(end_date):
-            self._write_invalid_date(line_num, group, playlist_name, end_date)
-            self._wrong_init_counter += 1
-            return False
-        elif start_date and end_date and not compare_date(start_date, end_date):
-            self._write_date_order_error(line_num, group, playlist_name, start_date, end_date)
-            self._wrong_init_counter += 1
-            return False
-        return True
-
-    def _validate_weekdays(self, weekdays_str, line_num, group, playlist_name):
-        weekdays = split_list(weekdays_str) if weekdays_str else []
-        weekdays = convert_days_of_week_to_int(weekdays)
-        if not self._validate_weekdays_format(weekdays):
-            self._write_invalid_weekdays(line_num, group, playlist_name, weekdays_str)
-            self._wrong_init_counter += 1
-            return None
-        return [int(day) for day in weekdays]
+                [int(day) for day in weekdays_list], start_time, end_time)
 
     @staticmethod
     def _validate_weekdays_format(weekdays):
@@ -1145,58 +1172,6 @@ class DetailedPlaylistProcessor(AssignProcessor):
             return all(1 <= int(day) <= 7 for day in weekdays)
         except ValueError:
             return False
-
-    def _validate_times(self, start_time, end_time, line_num, group, playlist_name):
-        if not self._validate_time_format(start_time):
-            self._write_invalid_time(line_num, group, playlist_name, start_time)
-            self._wrong_init_counter += 1
-            return False
-        if not self._validate_time_format(end_time):
-            self._write_invalid_time(line_num, group, playlist_name, end_time)
-            self._wrong_init_counter += 1
-            return False
-        if start_time and end_time and not compare_time(start_time, end_time):
-            self._write_time_order_error(line_num, group, playlist_name, start_time, end_time)
-            self._wrong_init_counter += 1
-            return False
-        return True
-
-    def _write_invalid_date(self, line_num: int, group: str, playlist: str, invalid_date: str):
-        self._logger.error(self.lang.get_message("invalid_date",
-                                                 line_num=line_num,
-                                                 group=group,
-                                                 playlist=playlist,
-                                                 invalid_date=invalid_date))
-
-    def _write_date_order_error(self, line_num: int, group: str, playlist: str, start_date: str, end_date: str):
-        self._logger.error(self.lang.get_message("date_order_error",
-                                                 line_num=line_num,
-                                                 group=group,
-                                                 playlist=playlist,
-                                                 start_date=start_date,
-                                                 end_date=end_date))
-
-    def _write_invalid_weekdays(self, line_num: int, group: str, playlist: str, invalid_weekdays: list):
-        self._logger.error(self.lang.get_message("invalid_weekdays",
-                                                 line_num=line_num,
-                                                 group=group,
-                                                 playlist=playlist,
-                                                 invalid_weekdays=invalid_weekdays))
-
-    def _write_invalid_time(self, line_num: int, group: str, playlist: str, invalid_time: str):
-        self._logger.error(self.lang.get_message("invalid_time",
-                                                 line_num=line_num,
-                                                 group=group,
-                                                 playlist=playlist,
-                                                 invalid_time=invalid_time))
-
-    def _write_time_order_error(self, line_num: int, group: str, playlist: str, start_time: str, end_time: str):
-        self._logger.error(self.lang.get_message("time_order_error_group",
-                                                 line_num=line_num,
-                                                 group=group,
-                                                 playlist=playlist,
-                                                 start_time=start_time,
-                                                 end_time=end_time))
 
 
 class PlaylistProcessor(AssignProcessor):
@@ -1233,7 +1208,7 @@ class PlaylistProcessor(AssignProcessor):
                 playlists = [(split_line[1], None, None, None, None)]
             else:
                 self._wrong_init_counter += 1
-                self._write_name_fail(i + 1, split_line[1])
+                self._write_name_fail(i + 1, split_line[1], column=2)
                 continue
             for data in self._blocks(split_line[2:], 5):
                 playlist_data = self._validate_playlist_data(i + 1, group, data, names['playlist_names'])
@@ -1366,8 +1341,10 @@ class AssetToPlaylistProcessor(AssignProcessor):
                 continue
 
             # a misspelt name would put a file into the playlist that does not exist
+            cells = line.split("\t")
             assets = [asset for asset in self._validate_assets(list(split_line[1:]))
-                      if self._validate_entity(asset, names['asset_names'], line_num)]
+                      if self._validate_entity(asset, names['asset_names'], line_num,
+                                               column=cells.index(asset) + 1 if asset in cells else 2)]
             if assets:
                 if playlist_name in playlist_assets:
                     playlist_assets[playlist_name].extend(assets)
@@ -1862,7 +1839,7 @@ class PlayerConfigLocationProcessor(AssignProcessor):
                     self._write_collision(i + 1, player)
                     continue
 
-                if not self._validate_entity(config_location, names['existing_locations'], i + 1):
+                if not self._validate_entity(config_location, names['existing_locations'], i + 1, column=2):
                     unrecognized_name_counter += 1
                     continue
 
@@ -1999,7 +1976,7 @@ class PlayerLabelsProcessor(AssignProcessor):
             invalid_labels = [label for label in labels if label not in names['label_names']]
             if invalid_labels:
                 self._wrong_init_counter += 1
-                self._write_name_fail(i + 1, ", ".join(invalid_labels))
+                self._write_name_fail(i + 1, ", ".join(invalid_labels), column=split_line.index(invalid_labels[0]) + 1)
                 continue
 
             if player in already_assigned:
@@ -2449,7 +2426,7 @@ class AddDetailedPlaylistProcessor(DetailedPlaylistProcessor):
                         playlists.append(existing_pl_data)
 
                 # Add new playlists from input
-                playlists.extend(self._validated_blocks(line_num, group, cells[1:], names['playlist_names']))
+                playlists.extend(self._validated_blocks(line_num, group, cells[1:], names['playlist_names'], first_column=2))
 
                 group_playlists[group] = playlists
 

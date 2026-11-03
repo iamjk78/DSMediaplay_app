@@ -75,8 +75,46 @@ class PastedPlaylistsTest(ProcessorCase):
             with self.subTest(cells=cells):
                 processor, logger = self.load(DetailedPlaylistProcessor, line("G1", "Default", *BLOCK_1, *cells))
 
-                self.assertIn("missing_playlist_name", self.messages(logger))
+                self.assertTrue(any(key.startswith("cell_error") for key in self.messages(logger)))
                 self.assertTrue(processor.refused)
+
+    def test_a_wrong_value_in_a_block_says_the_column_the_block_and_what_the_column_takes(self):
+        bad_block = ["Nowhere", "32.01.2026", "31.12.2026", "xx", "8am", "25:00"]
+        processor, logger = self.load(DetailedPlaylistProcessor, line("G1", "Default", *BLOCK_1, *bad_block), real_text=True,
+                                      action="set_detailed_playlists_to_groups")
+
+        errors = self.messages(logger) + self.messages(logger, "warning")
+        for message in (
+                "Řádek 1, sloupec 9 (název playlistu, blok playlistu 2): zadáno „Nowhere“, očekává se: název playlistu. "
+                "Takové jméno v účtu není (musí odpovídat přesně: velikost písmen, diakritika, bez mezer na okrajích). "
+                "Skupina „G1“.",
+                "Řádek 1, sloupec 10 (platí od, blok playlistu 2): zadáno „32.01.2026“, očekává se: datum DD.MM.RRRR, "
+                "např. 01.01.2026, nebo prázdné. "
+                "Skupina „G1“, playlist „Nowhere“.",
+                "Řádek 1, sloupec 12 (dny v týdnu, blok playlistu 2): zadáno „xx“, očekává se: kódy mo,tu,we,th,fr,sa,su "
+                "(nebo čísla 1-7) oddělené čárkou, nebo prázdné. "
+                "Skupina „G1“, playlist „Nowhere“.",
+                "Řádek 1, sloupec 13 (od kolika hodin, blok playlistu 2): zadáno „8am“, očekává se: čas HH:MM, např. "
+                "08:00, nebo prázdné (prázdné = od 00:00). "
+                "Skupina „G1“, playlist „Nowhere“.",
+                "Řádek 1, sloupec 14 (do kolika hodin, blok playlistu 2): zadáno „25:00“, očekává se: čas HH:MM, např. "
+                "18:00, nebo prázdné (prázdné = do 23:59). "
+                "Skupina „G1“, playlist „Nowhere“."):
+            self.assertIn(message, errors)
+        self.assertTrue(processor.refused)
+
+    def test_the_order_of_the_dates_and_of_the_times_names_both_columns(self):
+        block = ["Promo", "31.12.2026", "01.01.2026", "", "18:00", "08:00"]
+        processor, logger = self.load(DetailedPlaylistProcessor, line("G1", "Default", *block), real_text=True,
+                                      action="set_detailed_playlists_to_groups")
+        processor_2, logger_2 = self.load(DetailedPlaylistProcessor, line("G1", "Default", "Promo", "", "", "", "18:00",
+                                                                           "08:00"), real_text=True,
+                                          action="set_detailed_playlists_to_groups")
+
+        self.assertIn("Řádek 1, sloupce 4 a 5 (platí od / platí do, blok playlistu 1): „31.12.2026“ je po „01.01.2026“, začátek platnosti "
+                      "nesmí být po konci. Skupina „G1“, playlist „Promo“.", self.messages(logger))
+        self.assertIn("Řádek 1, sloupce 7 a 8 (od kolika hodin / do kolika hodin, blok playlistu 1): „18:00“ není před „08:00“, začátek musí "
+                      "být před koncem. Skupina „G1“, playlist „Promo“.", self.messages(logger_2))
 
     def test_a_default_playlist_that_does_not_exist_is_an_error_not_a_group_without_it(self):
         processor, logger = self.load(DetailedPlaylistProcessor, line("G1", "Deleted", *BLOCK_1))
@@ -117,6 +155,13 @@ class AddPastedPlaylistsTest(ProcessorCase):
         processor, logger = self.load(AddDetailedPlaylistProcessor, text, real_text=True)
 
         self.assertTrue(any("Řádek 3" in message for message in self.messages(logger, "warning")))
+
+    def test_the_blocks_of_the_add_action_start_in_column_2(self):
+        processor, logger = self.load(AddDetailedPlaylistProcessor, line("G1", "Promo", "x.y.z", "", "", "", ""),
+                                      real_text=True, action="set_add_detailed_playlist_to_group")
+
+        self.assertTrue(any(message.startswith("Řádek 1, sloupec 3 (platí od): zadáno „x.y.z“")
+                            for message in self.messages(logger)))
 
 
 class OlderPlaylistProcessorTest(ProcessorCase):
